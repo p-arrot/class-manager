@@ -1,0 +1,29 @@
+# Java
+target/
+*.class
+*.jar
+*.war
+*.log
+
+# Maven
+!mvnw
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.local.yml
+*.local.*
