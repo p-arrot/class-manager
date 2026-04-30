@@ -24,9 +24,6 @@ public class LoginVO {
     @Schema(description = "角色", example = "admin")
     private String role;
 
-    @Schema(description = "学校ID")
-    private Long schoolId;
-
     @Schema(description = "班级ID（学生有值）")
     private Long classId;
 }

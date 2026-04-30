@@ -36,7 +36,6 @@ public class JwtUtils {
                 .subject(String.valueOf(loginUser.getUserId()))
                 .claim("username", loginUser.getUsername())
                 .claim("role", loginUser.getRole())
-                .claim("schoolId", loginUser.getSchoolId())
                 .claim("classId", loginUser.getClassId())
                 .issuedAt(now)
                 .expiration(expiryDate)
@@ -55,7 +54,6 @@ public class JwtUtils {
                 Long.parseLong(claims.getSubject()),
                 claims.get("username", String.class),
                 claims.get("role", String.class),
-                claims.get("schoolId", Long.class),
                 claims.get("classId", Long.class)
         );
     }

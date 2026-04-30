@@ -293,19 +293,19 @@ modules/xxx
 学生登录使用：
 
 ```text
-学号 + 密码 + 学校ID
+学号 + 密码
 ```
 
 学号唯一规则：
 
 ```text
-同一学校内学号唯一，不同学校可以重复。
+学号全局唯一，不同班级不可重复。
 ```
 
 因此数据库中学生唯一索引应为：
 
 ```text
-school_id + student_no
+student_no
 ```
 
 ### 教师与班级关系
@@ -334,10 +334,10 @@ teacher_classes
 教师登录使用：
 
 ```text
-用户名 + 密码 + 学校ID
+用户名 + 密码
 ```
 
-教师所属学校决定了其可以管理的班级范围。
+教师负责的班级由其与班级的绑定关系决定。
 
 ### 管理员账号
 
@@ -357,10 +357,12 @@ teacher_classes
 
 ### 登录流程
 
-系统根据请求参数判断登录方式：
+系统不依赖学校区分用户，用户名和学号全局唯一：
 
-1. 不传 `schoolId` → 按 **username** 匹配 `admin` 角色（仅管理员可无学校登录）
-2. 传 `schoolId` → 先按 **username + schoolId** 匹配 `admin`/`teacher`，未命中则按 **student_no + schoolId** 匹配 `student`
+1. 先按 **username** 匹配 `admin` 角色
+2. 再按 **username** 匹配 `teacher` 角色
+3. 最后按 **student_no** 匹配 `student` 角色
+4. 首次命中即返回，均未命中则返回用户名或密码错误
 
 ### 学生密码重置规则
 
@@ -1297,7 +1299,9 @@ SchoolClass
 常用索引包括：
 
 ```sql
-CREATE INDEX idx_users_school_student_no ON users(school_id, student_no);
+CREATE UNIQUE INDEX idx_users_student_no ON users(student_no) WHERE student_no IS NOT NULL AND deleted = 0;
+CREATE UNIQUE INDEX idx_users_username ON users(username) WHERE username IS NOT NULL AND deleted = 0;
+CREATE UNIQUE INDEX idx_users_single_admin ON users(role) WHERE role = 'admin' AND deleted = 0;
 CREATE INDEX idx_users_class_role ON users(class_id, role);
 CREATE INDEX idx_teacher_classes_teacher ON teacher_classes(teacher_id);
 CREATE INDEX idx_teacher_classes_class ON teacher_classes(class_id);

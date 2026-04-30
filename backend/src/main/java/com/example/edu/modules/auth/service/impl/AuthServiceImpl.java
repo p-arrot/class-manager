@@ -26,17 +26,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginVO login(LoginDTO loginDTO) {
-        User user;
-
-        if (loginDTO.getSchoolId() != null) {
-            // 有 schoolId → 先查教师/管理员，再查学生
-            user = loginAsStaffInSchool(loginDTO);
-            if (user == null) {
-                user = loginAsStudent(loginDTO);
-            }
-        } else {
-            // 无 schoolId → 仅允许管理员登录
-            user = loginAsAdmin(loginDTO);
+        // 依次尝试管理员、教师、学生登录
+        User user = loginAsAdmin(loginDTO);
+        if (user == null) {
+            user = loginAsTeacher(loginDTO);
+        }
+        if (user == null) {
+            user = loginAsStudent(loginDTO);
         }
 
         if (user == null) {
@@ -59,7 +55,6 @@ public class AuthServiceImpl implements AuthService {
                 user.getId(),
                 user.getUsername() != null ? user.getUsername() : user.getStudentNo(),
                 user.getRole(),
-                user.getSchoolId(),
                 user.getClassId()
         );
 
@@ -73,13 +68,12 @@ public class AuthServiceImpl implements AuthService {
                 .username(loginUser.getUsername())
                 .name(user.getName())
                 .role(user.getRole())
-                .schoolId(user.getSchoolId())
                 .classId(user.getClassId())
                 .build();
     }
 
     /**
-     * 管理员登录（无 schoolId，仅按用户名查 role=admin）
+     * 管理员登录（按用户名查 role=admin）
      */
     private User loginAsAdmin(LoginDTO loginDTO) {
         return userMapper.selectOne(new LambdaQueryWrapper<User>()
@@ -88,22 +82,20 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 教师/管理员在指定学校内登录（按用户名 + schoolId）
+     * 教师登录（按用户名查 role=teacher）
      */
-    private User loginAsStaffInSchool(LoginDTO loginDTO) {
+    private User loginAsTeacher(LoginDTO loginDTO) {
         return userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getUsername, loginDTO.getAccount())
-                .eq(User::getSchoolId, loginDTO.getSchoolId())
-                .ne(User::getRole, "student"));
+                .eq(User::getRole, "teacher"));
     }
 
     /**
-     * 学生在指定学校内登录（按学号 + schoolId）
+     * 学生登录（按学号查 role=student）
      */
     private User loginAsStudent(LoginDTO loginDTO) {
         return userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getStudentNo, loginDTO.getAccount())
-                .eq(User::getSchoolId, loginDTO.getSchoolId())
                 .eq(User::getRole, "student"));
     }
 }

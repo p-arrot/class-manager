@@ -16,7 +16,6 @@ public class LoginUser implements UserDetails {
     private Long userId;
     private String username;
     private String role;
-    private Long schoolId;
     private Long classId;
 
     @Override

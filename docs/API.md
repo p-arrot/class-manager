@@ -84,11 +84,12 @@ POST /api/auth/login
 |------|------|------|------|
 | account | string | 是 | 教师/管理员用用户名，学生用学号 |
 | password | string | 是 | 密码 |
-| schoolId | long | 否 | 教师和学生登录时必填，管理员可省略 |
 
 > **登录逻辑**：
-> - `schoolId` 为空 → 仅按 **username** 匹配 `admin` 角色
-> - `schoolId` 非空 → 先按 **username + school_id** 匹配 `admin`/`teacher`，未命中再按 **student_no + school_id** 匹配 `student`
+> - 先按 **username** 匹配 `admin` 角色
+> - 再按 **username** 匹配 `teacher` 角色
+> - 最后按 **student_no** 匹配 `student` 角色
+> - 首次命中即返回，用户名和学号全局唯一
 
 **请求示例**
 
@@ -98,10 +99,15 @@ curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"account":"admin","password":"admin123"}'
 
+# 教师登录
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"account":"teacher01","password":"123456"}'
+
 # 学生登录
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"account":"2024001","password":"123456","schoolId":1}'
+  -d '{"account":"2024001","password":"123456"}'
 ```
 
 **成功响应 (200)**
@@ -116,7 +122,6 @@ curl -X POST http://localhost:8080/api/auth/login \
     "username": "admin",
     "name": "系统管理员",
     "role": "admin",
-    "schoolId": null,
     "classId": null
   }
 }
@@ -129,7 +134,6 @@ curl -X POST http://localhost:8080/api/auth/login \
 | username | string | 用户名或学号 |
 | name | string | 真实姓名 |
 | role | string | 角色：`admin` / `teacher` / `student` |
-| schoolId | long | 学校 ID（可为 null） |
 | classId | long | 班级 ID（学生有值，其余为 null） |
 
 **错误响应示例**

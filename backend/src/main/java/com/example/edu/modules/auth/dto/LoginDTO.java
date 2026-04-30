@@ -15,7 +15,4 @@ public class LoginDTO {
     @NotBlank(message = "密码不能为空")
     @Schema(description = "密码", example = "123456")
     private String password;
-
-    @Schema(description = "学校ID（教师和学生登录时必填，用于区分不同学校间重复账号）")
-    private Long schoolId;
 }

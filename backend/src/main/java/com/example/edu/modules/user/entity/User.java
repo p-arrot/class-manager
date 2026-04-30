@@ -22,6 +22,9 @@ public class User {
 
     private String role;
 
+    /**
+     * 学校ID（保留字段，当前不参与业务逻辑，仅供未来多校扩展使用）
+     */
     private Long schoolId;
 
     private Long classId;
