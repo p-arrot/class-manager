@@ -16,16 +16,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Implementation Status
 
-Phase 1 (backend foundation) is in progress. Currently has:
+Phase 1 (backend foundation) is complete. Phase 2 (school/class/user management) is complete.
+
+Phase 1:
 - Spring Boot app with MyBatis-Plus, Spring Security, JWT auth, Flyway, Redis
 - `common/` infrastructure: result wrapper (`R<T>`), exception handling, security config, JWT utils, SpringDoc
-- `auth/` module: login endpoint (staff via username, students via student_no + schoolId)
-- `user/` module: `User` entity + mapper only
+- `auth/` module: login endpoint (global lookup: admin/teacher by username, student by student_no)
+- `user/` module: `User` entity + mapper
 - Flyway `V1__init.sql`: `schools`, `school_classes`, `users`, `teacher_classes`, `audit_logs` tables
+- Flyway `V2__remove_school_unique.sql`: removed school-scoped uniqueness; student_no and username now globally unique
 - Docker Compose: PostgreSQL 16, Redis 7, MinIO, kkFileView
 - AdminInitializer: creates default admin (`admin`/`admin123`) on first startup
 
-Not yet started: frontend, all business modules beyond auth/user, tests, MinIO/preview integration, WebSocket.
+Phase 2:
+- `classes/` module: SchoolClass + TeacherClass entities, ClassService + ClassController (CRUD + list-all)
+- `user/` module extended: TeacherService (CRUD + batch bind/unbind), StudentService (Excel import, paginated list, password reset)
+- `audit/` module: AuditLog entity + AuditLogService (cross-cutting, never fails main operation)
+- Flyway `V3__phase2.sql`: `school_classes.school_id` nullable, performance indexes
+- MyBatis-Plus pagination configured (`MybatisPlusConfig` + `mybatis-plus-jsqlparser`)
+- Route-level role restrictions in SecurityConfig + `@PreAuthorize` on controllers
+- Teacher data isolation: teachers can only access students in their assigned classes
+
+Not yet started: frontend, course/semester/lesson modules, tests, MinIO/preview integration, WebSocket.
 
 ## Architecture
 
@@ -93,12 +105,12 @@ PostgreSQL 16 with JSONB for flexible schemas (form schemas, submissions, exam p
 
 ## JWT Authentication Flow
 
-- Login: POST `/api/auth/login` with `{account, password, schoolId?}`
-  - Admin: login via `username` (no schoolId needed)
-  - Teacher: login via `username` + `schoolId`
-  - Student: login via `student_no` + `schoolId`
-- Response: `{token, userId, username, name, role, schoolId, classId}`
-- Token claims: `sub`=userId, `username`, `role`, `schoolId`, `classId`
+- Login: POST `/api/auth/login` with `{account, password}` (no schoolId needed — session-scope only)
+  - Attempts `username` + `role=admin` first, then `username` + `role=teacher`, then `student_no` + `role=student`
+  - All three lookups are global (username and student_no each have unique indexes across all schools)
+  - Built-in constant-time defense against username enumeration
+- Response: `{token, userId, username, name, role, classId}`
+- Token claims: `sub`=userId, `username`, `role`, `classId`
 - Auth header: `Authorization: Bearer {token}`
 - Expiration: configurable via `jwt.expiration` (default 86400000ms = 24h)
 - Public endpoints: `/api/auth/login`, `/api-docs/**`, `/swagger-ui/**`
@@ -114,15 +126,18 @@ class-manager/
 │   └── src/main/java/com/example/edu/
 │       ├── EduApplication.java
 │       ├── common/
-│       │   ├── config/           # SecurityConfig, JwtAuthenticationFilter, SpringDocConfig, AdminInitializer, MyMetaObjectHandler
+│       │   ├── config/           # SecurityConfig, JwtAuthenticationFilter, SpringDocConfig, AdminInitializer, MyMetaObjectHandler, MybatisPlusConfig
 │       │   ├── exception/        # BizException, GlobalExceptionHandler
 │       │   ├── result/           # R<T>, PageResult<T>, ErrorCode
 │       │   └── security/         # JwtUtils, LoginUser
 │       └── modules/
 │           ├── auth/             # controller, dto, vo, service (login flow)
-│           └── user/             # entity (User), mapper (UserMapper)
+│           ├── user/             # entity/mapper + TeacherService, StudentService, controllers
+│           ├── classes/          # SchoolClass/TeacherClass entities, ClassService/Controller
+│           └── audit/            # AuditLog entity, AuditLogService (never fails main op)
 ├── docs/
-│   └── project-prompt.md        # Full project specification
+│   ├── project-prompt.md        # Full project specification
+│   └── API.md                   # API documentation (login endpoint, error codes, auth flow)
 └── CLAUDE.md
 ```
 
@@ -145,7 +160,12 @@ cd backend
 mvn spring-boot:run            # Start backend on port 8080
 mvn clean compile              # Compile only
 mvn clean package -DskipTests  # Package JAR
+mvn test                       # Run all tests
+mvn test -Dtest=ClassName      # Run a single test class
+mvn test -Dtest=ClassName#m    # Run a single test method
 docker-compose up -d           # Start dev services (PostgreSQL, Redis, MinIO, kkFileView)
+docker-compose down -v         # Tear down services (removes volumes/data)
+bash api-test.sh login admin   # API test helper (auto token cache, Chinese-safe)
 ```
 
 ### Frontend
@@ -167,13 +187,26 @@ Six-level grading: A(100) B(80) C(60) D(40) E(20) F(0). Teachers grade A-E; auto
 - **Semester grade** = process × 50% + result × 50% (not generated if either is missing data)
 - Radar chart from worksheet and artifact evaluations (exams and projects excluded from radar)
 
-## Development Order (8 phases)
+## Development Order (backend + frontend interleaved)
 
-1. Backend foundation (Spring Boot init, security, JWT, Flyway, Docker Compose) — **in progress**
-2. School/class/user management + student Excel import + password reset
-3. Course/semester/lesson + course resources + file upload/preview
-4. Classroom tasks (worksheet form builder + artifact submissions)
-5. Four-dimension evaluation + radar charts + auto-grade F on deadline miss
-6. WebSocket real-time aggregation on worksheet submission
-7. Exams (papers, timed exams, scoring) + project-based learning (team formation, submissions, scoring) + result evaluation
-8. Student cloud drive + teacher access + semester grade Excel export
+```
+Phase 1   ✅ Backend foundation (auth, JWT, Flyway, Docker)
+Phase 2   ✅ Class/teacher/student management + Excel import + password reset
+Phase F0       Frontend scaffold + login + 3 role layouts + API layer + router guards
+Phase 3a       Backend: Course/semester/lesson CRUD + course-class binding
+Phase F1       Frontend: Admin pages (class/teacher mgmt) + Teacher course/semester/lesson pages
+Phase 3b       Backend: MinIO file infrastructure (upload/download/preview/presigned URLs)
+Phase F2       Frontend: FileUpload/FilePreview/FileList components + course resources UI
+Phase 4        Backend: Classroom tasks (worksheet + artifact) + WebSocket real-time aggregation
+Phase F3       Frontend: Task creator + worksheet form builder + student task submission + real-time stats
+Phase 5        Backend: Four-dimension evaluation + radar charts + auto-grade F
+Phase F4       Frontend: Teacher grading UI + student radar charts
+Phase 6a       Backend: Exam system (papers, timed exams, scoring)
+Phase 6b       Backend: Project-based learning (team formation, submissions, scoring)
+Phase 6c       Backend: Result evaluation
+Phase F5       Frontend: Exam UI + project UI + result evaluation views
+Phase 7        Backend: Student cloud drive + semester grade Excel export
+Phase F6       Frontend: Student drive UI + grade export page
+```
+
+Frontend phases start from F0 (scaffold) and run ~1 phase behind backend, keeping each increment deliverable and testable.
