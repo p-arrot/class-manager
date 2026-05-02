@@ -76,6 +76,13 @@ Token 有效期：24 小时（可配置）。
 | 40402 | 班级不存在 |
 | 40403 | 教师不存在 |
 | 40404 | 学生不存在 |
+| **课程权限** | |
+| 40310 | 无权操作该课程 |
+| **课程模块** | |
+| 40410 | 课程不存在 |
+| 40411 | 学期不存在 |
+| 40412 | 课时不存在 |
+| 40413 | 资源不存在 |
 | **冲突** | |
 | 409 | 数据冲突 |
 | 40901 | 学号已存在 |
@@ -83,6 +90,11 @@ Token 有效期：24 小时（可配置）。
 | 40903 | 班级下还有学生，无法删除 |
 | 40904 | 班级还有关联教师，无法删除 |
 | 40905 | 用户名已存在 |
+| 40910 | 课程名称已存在 |
+| 40911 | 该课程下学期名称已存在 |
+| 40912 | 课程下还有学期，无法删除 |
+| 40913 | 学期下还有课时，无法删除 |
+| 40914 | 文件夹下还有子资源，无法删除 |
 | **服务器** | |
 | 500 | 服务器内部错误 |
 | 50001 | 文件服务异常 |
@@ -481,7 +493,274 @@ curl -X PUT http://localhost:8080/api/students/3/password \
 
 ---
 
-### 7. 测试辅助脚本
+### 7. 课程管理
+
+需要 `TEACHER` 角色进行写操作，`ADMIN`/`TEACHER`/`STUDENT` 角色可读。教师只能管理自己创建的课程。
+
+#### 7.1 创建课程
+
+```
+POST /api/courses
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 课程名称 |
+| description | string | 否 | 课程介绍 |
+| coverUrl | string | 否 | 封面图片 URL |
+| classIds | long[] | 否 | 绑定的授课班级 ID |
+
+> 课程名称在同一个教师下唯一。
+
+**请求示例**
+```bash
+curl -X POST http://localhost:8080/api/courses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Python编程基础","description":"面向初学者的Python入门课程","classIds":[1,2]}'
+```
+
+**成功响应**
+```json
+{"code":0,"msg":"ok","data":{"id":1,"name":"Python编程基础","teacherId":2,"teacherName":"张老师","classCount":2,"createdAt":"..."}}
+```
+
+---
+
+#### 7.2 分页查询课程
+
+```
+GET /api/courses?page=1&size=20&keyword=Python
+```
+
+> 教师只看到自己创建的课程；学生只看到关联班级的课程；管理员可看到所有。
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 否 | 页码，默认 1 |
+| size | int | 否 | 每页条数，默认 20 |
+| keyword | string | 否 | 按课程名称模糊搜索 |
+
+---
+
+#### 7.3 获取课程详情
+
+```
+GET /api/courses/{id}
+```
+
+> 返回课程信息（含班级绑定）和学期列表。权限：课程创建者 / 管理员 / 关联班级的学生。
+
+**响应示例**
+```json
+{
+  "code":0,"msg":"ok",
+  "data":{
+    "id":1,"name":"Python编程基础",
+    "teacherId":2,"teacherName":"张老师",
+    "classIds":[1,2],"classCount":2,
+    "semesters":[
+      {"id":1,"name":"2026年秋季学期","startTime":"...","endTime":"...","lessonCount":5}
+    ],
+    "createdAt":"...","updatedAt":"..."
+  }
+}
+```
+
+---
+
+#### 7.4 更新课程
+
+```
+PUT /api/courses/{id}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 课程名称 |
+| description | string | 否 | 课程介绍 |
+| coverUrl | string | 否 | 封面图片 URL |
+| classIds | long[] | 否 | 授课班级（传 null 不修改，传 [] 清空绑定） |
+
+---
+
+#### 7.5 删除课程
+
+```
+DELETE /api/courses/{id}
+```
+
+> 教师只能删除自己创建的课程，管理员可删除任何课程。课程下有学期时无法删除（返回 40912）。
+
+---
+
+### 8. 学期管理
+
+需要 `TEACHER` 角色进行写操作，`TEACHER`/`STUDENT` 角色可读。操作前回溯课程验证权限。
+
+#### 8.1 创建学期
+
+```
+POST /api/courses/{courseId}/semesters
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 学期名称 |
+| startTime | string | 是 | 开始时间，格式 `yyyy-MM-dd HH:mm:ss` |
+| endTime | string | 是 | 结束时间 |
+
+> 学期名称在同一课程下唯一。
+
+**请求示例**
+```bash
+curl -X POST http://localhost:8080/api/courses/1/semesters \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"2026年秋季学期","startTime":"2026-09-01 00:00:00","endTime":"2027-01-15 00:00:00"}'
+```
+
+---
+
+#### 8.2 获取课程下的学期列表
+
+```
+GET /api/courses/{courseId}/semesters
+```
+
+> 按 start_time 倒序排列。
+
+---
+
+#### 8.3 其他学期操作
+
+```
+GET    /api/semesters/{id}       详情
+PUT    /api/semesters/{id}       更新（参数同创建）
+DELETE /api/semesters/{id}       删除（学期下有课时时返回 40913）
+```
+
+---
+
+### 9. 课时管理
+
+需要 `TEACHER` 角色进行写操作。操作前回溯学期→课程验证权限。
+
+#### 9.1 创建课时
+
+```
+POST /api/semesters/{semesterId}/lessons
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 课时名称 |
+
+> 新建课时自动追加到末尾（sort_order = 当前最大 + 1）。
+
+**请求示例**
+```bash
+curl -X POST http://localhost:8080/api/semesters/1/lessons \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"第一课：认识Python"}'
+```
+
+---
+
+#### 9.2 获取学期下的课时列表
+
+```
+GET /api/semesters/{semesterId}/lessons
+```
+
+> 按 sort_order 升序排列。
+
+---
+
+#### 9.3 调整课时顺序
+
+```
+PUT /api/lessons/{id}/sort
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| targetIndex | int | 是 | 目标位置（从 0 开始） |
+
+**请求示例**
+```bash
+curl -X PUT http://localhost:8080/api/lessons/3/sort \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"targetIndex":0}'
+```
+
+---
+
+#### 9.4 其他课时操作
+
+```
+GET    /api/lessons/{id}         详情
+PUT    /api/lessons/{id}         更新名称
+DELETE /api/lessons/{id}         删除
+```
+
+---
+
+### 10. 课程资源管理
+
+需要 `TEACHER` 角色写操作。课程资源为树形文件夹结构（文件上传在 Phase 3b 实现）。
+
+#### 10.1 获取资源树
+
+```
+GET /api/courses/{courseId}/resources/tree
+```
+
+> 返回完整嵌套树结构。
+
+**响应示例**
+```json
+{
+  "code":0,"msg":"ok",
+  "data":[
+    {"id":1,"name":"课件资料","type":"FOLDER","parentId":null,"sortOrder":1,
+      "children":[
+        {"id":2,"name":"第1课","type":"FOLDER","parentId":1,"sortOrder":1,"children":[]}
+      ]
+    }
+  ]
+}
+```
+
+---
+
+#### 10.2 创建文件夹
+
+```
+POST /api/courses/{courseId}/resources
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 文件夹名称 |
+| parentId | long | 否 | 父文件夹 ID，空则创建在根目录 |
+
+---
+
+#### 10.3 其他资源操作
+
+```
+GET    /api/courses/{courseId}/resources?parentId=    获取子资源列表
+PUT    /api/resources/{id}                            重命名
+DELETE /api/resources/{id}                            删除（递归软删除子节点）
+PUT    /api/resources/{id}/move                       移动（targetParentId + targetSortOrder）
+```
+
+---
+
+### 11. 测试辅助脚本
 
 项目提供了 `backend/api-test.sh`，解决 Windows bash 下 curl 中文参数编码问题：
 
@@ -494,6 +773,10 @@ bash api-test.sh class list-all       # 全部班级
 bash api-test.sh teacher create       # 创建教师
 bash api-test.sh teacher bind 2       # 绑定班级到教师ID=2
 bash api-test.sh student list         # 学生列表
+bash api-test.sh course create        # 创建课程
+bash api-test.sh course list          # 课程列表
+bash api-test.sh semester create 1    # 在课程1下创建学期
+bash api-test.sh lesson create 1      # 在学期1下创建课时
 ```
 
 脚本自动缓存 Token，支持在一个 shell 会话中连续调用。测试 JSON 文件在 `backend/test-payloads/` 目录下。

@@ -41,18 +41,30 @@
 - 3 个管理员占位页 + 教师/学生首页
 - 署名：Tatakai
 
+### Phase 3a — 后端：课程、学期、课时 ✅
+
+- Course 实体 + CRUD（`/api/courses`），含创建时批量绑定班级
+- CourseClass 关系表（课程-班级多对多）
+- Semester 实体 + CRUD（`/api/courses/{id}/semesters`），含开始/结束时间
+- Lesson 实体 + CRUD（`/api/semesters/{id}/lessons`），含排序号 + 拖拽重排
+- 课程资源文件夹（树形目录结构，支持创建/重命名/移动/级联删除）
+- 权限：教师管理自己创建的课程；学生仅可见关联班级的课程
+- Flyway V4 迁移（5 张新表 + 9 个索引）
+- SecurityUtils 工具类（统一从 SecurityContext 获取当前用户）
+- 18 个 REST 端点
+
 ---
 
 ## 未完成
 
-### Phase 3a — 后端：课程、学期、课时
+### Phase 3a — 后端：课程、学期、课时 ✅
 
-- [ ] Course 实体 + CRUD
-- [ ] CourseClass 关系表（课程绑定授课班级）
-- [ ] Semester 实体 + CRUD（属于课程）
-- [ ] Lesson 实体 + CRUD（属于学期，含排序号）
-- [ ] 课程资源文件夹（树形目录结构）
-- [ ] 权限校验：教师管理自己的课程；学生只看到关联班级的课程
+- [x] Course 实体 + CRUD
+- [x] CourseClass 关系表（课程绑定授课班级）
+- [x] Semester 实体 + CRUD（属于课程）
+- [x] Lesson 实体 + CRUD（属于学期，含排序号）
+- [x] 课程资源文件夹（树形目录结构）
+- [x] 权限校验：教师管理自己的课程；学生只看到关联班级的课程
 
 ### Phase F1 — 前端：管理员端 + 教师课程页
 
@@ -162,7 +174,7 @@
 | Phase 1 | 后端基础工程 | ✅ 已完成 |
 | Phase 2 | 班级、教师、学生管理 | ✅ 已完成 |
 | Phase F0 | 前端脚手架 + 登录 + Layout | ✅ 已完成 |
-| Phase 3a | 后端：课程、学期、课时 | ⬜ 待开始 |
+| Phase 3a | 后端：课程、学期、课时 | ✅ 已完成 |
 | Phase F1 | 前端：管理员端 + 教师课程页 | ⬜ 待开始 |
 | Phase 3b | 后端：MinIO 文件基础设施 | ⬜ 待开始 |
 | Phase F2 | 前端：文件组件 + 课程资源 | ⬜ 待开始 |

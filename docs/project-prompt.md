@@ -396,44 +396,84 @@ teacher_classes
                     └── 课堂作品 Artifact
 ```
 
-课程字段包括：
+### 6.1 课程实体字段
 
-- 课程名
-- 课程介绍
-- 课程封面
-- 创建教师
-- 创建时间
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK, GENERATED ALWAYS AS IDENTITY | 课程 ID |
+| name | VARCHAR(200) | NOT NULL | 课程名称 |
+| description | TEXT | 可空 | 课程介绍 |
+| cover_url | VARCHAR(500) | 可空 | 课程封面图片 URL（MinIO 存储） |
+| teacher_id | BIGINT | NOT NULL, FK → users(id) | 创建教师 |
+| created_at | TIMESTAMP | NOT NULL DEFAULT now() | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL DEFAULT now() | 更新时间 |
+| deleted | SMALLINT | NOT NULL DEFAULT 0 | 逻辑删除标记 |
 
-课程需要关联授课班级。
-
-使用关系表：
+### 6.2 课程-班级关系表
 
 ```text
-course_classes
+course_classes (course_id, class_id)
 ```
 
+- 多对多关系，一个课程可绑定多个授课班级
+- 关系表无软删除（删除课程时级联删除绑定关系）
+- 唯一约束：`(course_id, class_id)`
+- 索引：`idx_course_classes_course`，`idx_course_classes_class`
+
 只有课程关联班级中的学生才能看到该课程。
+
+### 6.3 课程接口
+
+```
+POST   /api/courses                  创建课程（TEACHER）
+GET    /api/courses                  分页列表（ADMIN/TEACHER/STUDENT，按角色过滤）
+GET    /api/courses/{id}             课程详情（含学期列表和班级绑定）
+PUT    /api/courses/{id}             更新课程（TEACHER，仅创建者）
+DELETE /api/courses/{id}             删除课程（ADMIN/TEACHER，需检查学期依赖）
+```
+
+**创建课程请求体：**
+```json
+{
+  "name": "Python编程基础",
+  "description": "面向初学者的Python入门课程",
+  "coverUrl": null,
+  "classIds": [1, 2]
+}
+```
+
+- `classIds` 可选，创建时可同时绑定授课班级
+- 课程名称在同一教师下唯一
+- 教师只能操作自己创建的课程（admin 可查看全部但不可写）
 
 ---
 
 ## 七、学期和课时
 
-教师可以在课程中创建学期。
+### 7.1 学期实体字段
 
-学期字段包括：
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK, GENERATED ALWAYS AS IDENTITY | 学期 ID |
+| name | VARCHAR(200) | NOT NULL | 学期名称 |
+| start_time | TIMESTAMP | NOT NULL | 开始时间 |
+| end_time | TIMESTAMP | NOT NULL | 结束时间 |
+| course_id | BIGINT | NOT NULL, FK → courses(id) | 所属课程 |
+| created_at | TIMESTAMP | NOT NULL DEFAULT now() | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL DEFAULT now() | 更新时间 |
+| deleted | SMALLINT | NOT NULL DEFAULT 0 | 逻辑删除标记 |
 
-- 学期名
-- 开始时间
-- 结束时间
-- 所属课程
+### 7.2 课时实体字段
 
-教师可以在学期中创建课时。
-
-课时字段包括：
-
-- 课时名称
-- 所属学期
-- 排序号
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK, GENERATED ALWAYS AS IDENTITY | 课时 ID |
+| name | VARCHAR(200) | NOT NULL | 课时名称 |
+| sort_order | INT | NOT NULL DEFAULT 0 | 排序号（同一学期下递增） |
+| semester_id | BIGINT | NOT NULL, FK → semesters(id) | 所属学期 |
+| created_at | TIMESTAMP | NOT NULL DEFAULT now() | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL DEFAULT now() | 更新时间 |
+| deleted | SMALLINT | NOT NULL DEFAULT 0 | 逻辑删除标记 |
 
 课时中可以添加：
 
@@ -441,38 +481,108 @@ course_classes
 - 学习单任务
 - 课堂作品任务
 
+### 7.3 学期接口（嵌套在课程路径下）
+
+```
+GET    /api/courses/{courseId}/semesters      学期列表（按 start_time 倒序）
+POST   /api/courses/{courseId}/semesters      创建学期（TEACHER，需验证课程所有权）
+GET    /api/semesters/{id}                    学期详情
+PUT    /api/semesters/{id}                    更新学期（TEACHER）
+DELETE /api/semesters/{id}                    删除学期（TEACHER，需检查课时依赖）
+```
+
+**创建学期请求体：**
+```json
+{
+  "name": "2026年秋季学期",
+  "startTime": "2026-09-01 00:00:00",
+  "endTime": "2027-01-15 00:00:00"
+}
+```
+
+- 学期名称在同一课程下唯一
+- 删除学期前检查是否有课时（有课时则返回 40913）
+
+### 7.4 课时接口（嵌套在学期路径下）
+
+```
+GET    /api/semesters/{semesterId}/lessons    课时列表（按 sort_order 升序）
+POST   /api/semesters/{semesterId}/lessons    创建课时（TEACHER，sort_order 自动取 max+1）
+GET    /api/lessons/{id}                      课时详情
+PUT    /api/lessons/{id}                      更新课时（TEACHER）
+DELETE /api/lessons/{id}                      删除课时（TEACHER）
+PUT    /api/lessons/{id}/sort                 调整顺序（TEACHER，内存重排后批量更新）
+```
+
+**调整顺序请求体：**
+```json
+{
+  "targetIndex": 0
+}
+```
+
+- 新建课时自动追加到末尾（sort_order = 当前最大 + 1）
+- 排序调整：将指定课时移到 targetIndex 位置，其他课时顺延
+- 权限回溯：操作课时前回溯到学期 → 课程，验证教师所有权
+
 ---
 
 ## 八、课程资源和课时资源
 
-课程中有课程资源文件夹。
+### 8.1 课程资源文件夹（树形结构）
 
-课程资源支持树形目录结构。
+课程资源用于存放教师提供的课件、参考资料等。Phase 3a 实现文件夹管理（树形目录），Phase 3b 实现文件上传。
 
-学生可以在课程资源中下载教师提供的资料。
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | BIGINT | PK, GENERATED ALWAYS AS IDENTITY | 资源 ID |
+| course_id | BIGINT | NOT NULL, FK → courses(id) | 所属课程 |
+| parent_id | BIGINT | 可空, FK → course_resources(id) | 父文件夹 ID（null=根目录） |
+| name | VARCHAR(200) | NOT NULL | 文件夹名称 |
+| type | VARCHAR(20) | NOT NULL DEFAULT 'FOLDER' | 资源类型（目前仅 FOLDER） |
+| sort_order | INT | NOT NULL DEFAULT 0 | 同级排序号 |
+| created_at | TIMESTAMP | NOT NULL DEFAULT now() | 创建时间 |
+| updated_at | TIMESTAMP | NOT NULL DEFAULT now() | 更新时间 |
+| deleted | SMALLINT | NOT NULL DEFAULT 0 | 逻辑删除标记 |
 
-课时资源属于某一节课。
+文件存储使用 MinIO，文件预览使用 kkFileView，下载使用预签名 GET URL，大文件上传使用预签名 PUT URL 由前端直传。
 
-课时资源支持：
+### 8.2 课程资源接口
 
-- 上传
-- 下载
-- 预览
+```
+GET    /api/courses/{courseId}/resources/tree     获取完整资源树（嵌套结构）
+GET    /api/courses/{courseId}/resources          获取指定文件夹下的子资源（?parentId=）
+POST   /api/courses/{courseId}/resources          创建文件夹（TEACHER）
+PUT    /api/resources/{id}                        重命名资源（TEACHER）
+DELETE /api/resources/{id}                        删除资源（TEACHER，递归软删除子孙节点）
+PUT    /api/resources/{id}/move                   移动资源（TEACHER，可修改 parentId + sortOrder）
+```
 
-资源预览支持：
+**创建文件夹请求体：**
+```json
+{
+  "name": "课件资料",
+  "parentId": null
+}
+```
 
-- Word
-- PPT
-- PDF
-- HTML
+**移动资源请求体：**
+```json
+{
+  "targetParentId": 5,
+  "targetSortOrder": 2
+}
+```
 
-文件存储使用 MinIO。
+- 移动时校验目标不能是自身的子孙节点
+- 树接口返回嵌套 JSON 结构：`{id, name, children: [...]}`
+- 删除时递归收集所有子孙节点 ID，逐个软删除
 
-文件预览使用 kkFileView。
+### 8.3 课时资源（Phase 3b 实现）
 
-下载使用 MinIO 预签名 GET URL。
+课时资源属于某一节课，支持上传、下载、预览。存储在 `lesson_resources` 表（Phase 3b 建表）。
 
-大文件上传使用 MinIO 预签名 PUT URL，由前端直传。
+课时资源支持格式：Word、PPT、PDF、HTML、图片。预览通过 kkFileView，上传/下载通过 MinIO 预签名 URL。
 
 ---
 
@@ -1246,71 +1356,330 @@ created_at
 
 ## 二十五、数据库要求
 
-数据库使用 PostgreSQL。
+数据库使用 PostgreSQL。使用 Flyway 管理 DDL。JSON 数据使用 JSONB。
 
-使用 Flyway 管理 DDL。
+### 命名约定
 
-JSON 数据使用 JSONB。
+- 表名：复数 snake_case（`school_classes`，不是 `classes`）
+- PK：`id BIGINT GENERATED ALWAYS AS IDENTITY`
+- FK：`{表名单数}_id`（如 `course_id`, `teacher_id`）
+- 时间戳：`created_at`, `updated_at`，类型 TIMESTAMP，NOT NULL DEFAULT now()
+- 逻辑删除：`deleted SMALLINT NOT NULL DEFAULT 0`
+- 索引：`idx_{表}_{列}`
 
-核心表包括：
+### 已完成表（Phase 1-3a 建表）
 
-```text
-schools
-school_classes
-users
-teacher_classes
-courses
-course_classes
-course_resources
-semesters
-lessons
-lesson_resources
-tasks
-submissions
-evaluations
-exam_papers
-exams
-exam_classes
-exam_submissions
-projects
-project_teams
-project_team_members
-project_submissions
-project_scores
-user_drive
-audit_logs
-```
+**schools** — 学校（预留，暂未使用）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | 学校名称 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
 
-班级表命名为：
+**school_classes** — 班级
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| school_id | BIGINT FK 可空 | 所属学校（预留） |
+| grade | VARCHAR(50) NOT NULL | 年级，如"三年级" |
+| name | VARCHAR(100) NOT NULL | 班级名，如"1班" |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
 
-```text
-school_classes
-```
+**users** — 用户（管理员/教师/学生统一表）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| username | VARCHAR(100) 可空 | 教师/管理员用户名（全局唯一） |
+| student_no | VARCHAR(100) 可空 | 学号（全局唯一） |
+| name | VARCHAR(100) NOT NULL | 真实姓名 |
+| password | VARCHAR(255) NOT NULL | BCrypt 加密 |
+| role | VARCHAR(20) NOT NULL | admin/teacher/student |
+| school_id | BIGINT FK 可空 | 学校（预留） |
+| class_id | BIGINT FK 可空 | 班级（仅学生） |
+| phone | VARCHAR(30) 可空 | |
+| email | VARCHAR(100) 可空 | |
+| enabled | SMALLINT NOT NULL DEFAULT 1 | |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
 
-不要使用 `classes` 作为表名。
+**teacher_classes** — 教师-班级绑定（多对多）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| teacher_id | BIGINT NOT NULL FK | |
+| class_id | BIGINT NOT NULL FK | |
+| created_at | TIMESTAMP | |
 
-对应实体类命名为：
+**courses** — 课程
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | |
+| description | TEXT 可空 | |
+| cover_url | VARCHAR(500) 可空 | |
+| teacher_id | BIGINT NOT NULL FK→users | 创建教师 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
 
-```text
-SchoolClass
-```
+**course_classes** — 课程-班级绑定（多对多）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| course_id | BIGINT NOT NULL FK | |
+| class_id | BIGINT NOT NULL FK | |
+| created_at | TIMESTAMP | |
+| UNIQUE(course_id, class_id) | | |
 
-常用索引包括：
+**semesters** — 学期
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | |
+| start_time | TIMESTAMP NOT NULL | |
+| end_time | TIMESTAMP NOT NULL | |
+| course_id | BIGINT NOT NULL FK→courses | |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**lessons** — 课时
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | |
+| sort_order | INT NOT NULL DEFAULT 0 | |
+| semester_id | BIGINT NOT NULL FK→semesters | |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**course_resources** — 课程资源文件夹（树形结构）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| course_id | BIGINT NOT NULL FK→courses | |
+| parent_id | BIGINT FK 可空→course_resources | null=根目录 |
+| name | VARCHAR(200) NOT NULL | |
+| type | VARCHAR(20) NOT NULL DEFAULT 'FOLDER' | |
+| sort_order | INT NOT NULL DEFAULT 0 | |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**audit_logs** — 审计日志
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| user_id | BIGINT 可空 | |
+| action | VARCHAR(200) NOT NULL | 操作描述 |
+| target_type | VARCHAR(100) NOT NULL | 目标类型 |
+| target_id | BIGINT 可空 | 目标 ID |
+| detail | TEXT 可空 | 详情 |
+| ip | VARCHAR(50) 可空 | |
+| user_agent | TEXT 可空 | |
+| created_at | TIMESTAMP | |
+
+### 待建表（Phase 3b-7，字段为设计预期）
+
+**lesson_resources** — 课时资源（Phase 3b，MinIO 文件）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| lesson_id | BIGINT NOT NULL FK | |
+| name | VARCHAR(200) NOT NULL | 文件名 |
+| file_size | BIGINT | 文件大小（字节） |
+| content_type | VARCHAR(100) | MIME 类型 |
+| object_name | VARCHAR(500) | MinIO 对象名 |
+| created_at | TIMESTAMP | |
+| updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**tasks** — 课堂任务（Phase 4）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| title | VARCHAR(200) NOT NULL | 任务标题 |
+| type | VARCHAR(20) NOT NULL | worksheet / artifact |
+| lesson_id | BIGINT NOT NULL FK→lessons | 所属课时 |
+| form_schema | JSONB 可空 | 学习单 schema（仅 worksheet） |
+| description | TEXT 可空 | 任务说明 |
+| deadline | TIMESTAMP 可空 | 截止时间 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**submissions** — 学生提交（Phase 4-5）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| task_id | BIGINT NOT NULL FK→tasks | |
+| student_id | BIGINT NOT NULL FK→users | |
+| status | VARCHAR(20) NOT NULL | submitted / graded / special |
+| content | JSONB 可空 | 学习单答案 / 作品文件列表 |
+| submitted_at | TIMESTAMP | |
+| created_at, updated_at | TIMESTAMP | |
+
+**evaluations** — 四维度评分（Phase 5）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| student_id | BIGINT NOT NULL FK→users | |
+| source_type | VARCHAR(20) NOT NULL | worksheet / artifact / project |
+| source_id | BIGINT NOT NULL | 任务或项目 ID |
+| dimension | VARCHAR(30) NOT NULL | AWARENESS/COMPUTING/DIGITAL_LEARNING/RESPONSIBILITY |
+| grade | VARCHAR(1) NOT NULL | A/B/C/D/E/F |
+| is_special | SMALLINT DEFAULT 0 | 特殊情况标记 |
+| created_at | TIMESTAMP | |
+
+**exam_papers** — 试卷（Phase 6a）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| title | VARCHAR(200) NOT NULL | 试卷标题 |
+| content | JSONB NOT NULL | 题目 JSON |
+| total_score | INT NOT NULL | 总分 |
+| teacher_id | BIGINT NOT NULL FK | 创建教师 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**exams** — 考试任务（Phase 6a）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | 考试名称 |
+| semester_id | BIGINT NOT NULL FK | |
+| paper_id | BIGINT NOT NULL FK→exam_papers | |
+| start_time | TIMESTAMP NOT NULL | |
+| end_time | TIMESTAMP NOT NULL | |
+| weight | DECIMAL(3,2) DEFAULT 1.0 | 结果评价权重 |
+| deleted | SMALLINT | |
+| created_at, updated_at | TIMESTAMP | |
+
+**exam_classes** — 考试-班级绑定（Phase 6a）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| exam_id | BIGINT NOT NULL FK | |
+| class_id | BIGINT NOT NULL FK | |
+
+**exam_submissions** — 考试提交（Phase 6a）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| exam_id | BIGINT NOT NULL FK | |
+| student_id | BIGINT NOT NULL FK | |
+| answers | JSONB | 答案 |
+| score | INT 可空 | 得分 |
+| status | VARCHAR(20) | submitted / absent / special |
+| submitted_at | TIMESTAMP | |
+
+**projects** — 项目化学习（Phase 6b）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| name | VARCHAR(200) NOT NULL | |
+| description | TEXT | |
+| semester_id | BIGINT NOT NULL FK | |
+| max_team_size | INT DEFAULT 1 | 最大组队人数 |
+| deadline | TIMESTAMP | |
+| weight | DECIMAL(3,2) DEFAULT 1.0 | |
+| deleted | SMALLINT | |
+| created_at, updated_at | TIMESTAMP | |
+
+**project_teams** — 项目队伍（Phase 6b）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| project_id | BIGINT NOT NULL FK | |
+| name | VARCHAR(200) | 队伍名 |
+| created_at | TIMESTAMP | |
+
+**project_team_members** — 队伍成员（Phase 6b）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| team_id | BIGINT NOT NULL FK | |
+| student_id | BIGINT NOT NULL FK | |
+| created_at | TIMESTAMP | |
+
+**project_submissions** — 项目提交（Phase 6b）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| project_id | BIGINT NOT NULL FK | |
+| team_id | BIGINT FK 可空 | 队伍提交时有值 |
+| student_id | BIGINT NOT NULL FK | |
+| content | JSONB | 作品文件列表 |
+| submitted_at | TIMESTAMP | |
+| created_at | TIMESTAMP | |
+
+**project_scores** — 项目评分（Phase 6b）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| project_id | BIGINT NOT NULL FK | |
+| student_id | BIGINT NOT NULL FK | |
+| grade | VARCHAR(1) NOT NULL | A-F |
+| is_special | SMALLINT DEFAULT 0 | |
+| created_at | TIMESTAMP | |
+
+**user_drive** — 学生网盘（Phase 7）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| user_id | BIGINT NOT NULL FK | |
+| parent_id | BIGINT FK 可空 | 树形目录 |
+| name | VARCHAR(200) NOT NULL | |
+| type | VARCHAR(20) NOT NULL | FOLDER / FILE |
+| file_size | BIGINT | |
+| content_type | VARCHAR(100) | |
+| object_name | VARCHAR(500) | MinIO 对象名 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+### 常用索引
 
 ```sql
+-- users
 CREATE UNIQUE INDEX idx_users_student_no ON users(student_no) WHERE student_no IS NOT NULL AND deleted = 0;
 CREATE UNIQUE INDEX idx_users_username ON users(username) WHERE username IS NOT NULL AND deleted = 0;
 CREATE UNIQUE INDEX idx_users_single_admin ON users(role) WHERE role = 'admin' AND deleted = 0;
 CREATE INDEX idx_users_class_role ON users(class_id, role);
+
+-- teacher_classes
 CREATE INDEX idx_teacher_classes_teacher ON teacher_classes(teacher_id);
 CREATE INDEX idx_teacher_classes_class ON teacher_classes(class_id);
+
+-- courses
+CREATE INDEX idx_courses_teacher ON courses(teacher_id);
+CREATE INDEX idx_courses_name ON courses(name);
+
+-- course_classes
+CREATE UNIQUE INDEX idx_cc_course_class ON course_classes(course_id, class_id);
 CREATE INDEX idx_course_classes_course ON course_classes(course_id);
 CREATE INDEX idx_course_classes_class ON course_classes(class_id);
+
+-- semesters
+CREATE INDEX idx_semesters_course ON semesters(course_id);
+CREATE INDEX idx_semesters_time ON semesters(start_time, end_time);
+
+-- lessons
 CREATE INDEX idx_lessons_semester ON lessons(semester_id);
+CREATE INDEX idx_lessons_sort ON lessons(semester_id, sort_order);
+
+-- course_resources
+CREATE INDEX idx_cr_course ON course_resources(course_id);
+CREATE INDEX idx_cr_parent ON course_resources(parent_id);
+
+-- tasks
 CREATE INDEX idx_tasks_lesson ON tasks(lesson_id);
+
+-- submissions
 CREATE INDEX idx_submissions_task_student ON submissions(task_id, student_id);
+
+-- evaluations
 CREATE INDEX idx_eval_student_dim_time ON evaluations(student_id, dimension, created_at);
 CREATE INDEX idx_eval_source ON evaluations(source_type, source_id);
+
+-- user_drive
 CREATE INDEX idx_drive_user_parent ON user_drive(user_id, parent_id);
 ```
 
@@ -1318,29 +1687,24 @@ CREATE INDEX idx_drive_user_parent ON user_drive(user_id, parent_id);
 
 ## 二十六、接口设计规范
 
-接口统一前缀：
+接口统一前缀 `/api`，REST 风格。
 
-```text
-/api
-```
+### URL 设计约定
 
-REST 风格：
+| 规则 | 示例 |
+|------|------|
+| CRUD 主资源 | `GET/POST /api/courses`, `GET/PUT/DELETE /api/courses/{id}` |
+| 嵌套子资源 | `/api/courses/{courseId}/semesters`, `/api/semesters/{semesterId}/lessons` |
+| 特殊操作 | `PUT /api/lessons/{id}/sort`, `PUT /api/resources/{id}/move` |
+| 下拉列表 | `GET /api/courses/list-all`（无分页，用于选择器） |
 
-```text
-GET    /api/courses
-GET    /api/courses/{id}
-POST   /api/courses
-PUT    /api/courses/{id}
-DELETE /api/courses/{id}
-```
+### 分页参数
 
-分页参数统一：
-
-```text
-page
-size
-keyword
-```
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| page | int | 1 | 页码 |
+| size | int | 20 | 每页条数 |
+| keyword | string | — | 模糊搜索（通常按名称） |
 
 分页返回结构：
 
@@ -1355,6 +1719,165 @@ keyword
     "size": 10
   }
 }
+```
+
+### 权限控制
+
+- Controller 层：`@PreAuthorize("hasRole('TEACHER')")` 等方法级注解
+- Service 层：所有写操作回溯到顶层资源（Course）验证所有权
+- 规则：教师只能操作自己创建的课程及其子资源；学生只能查看关联班级的课程
+- admin 可查看全部但不可直接操作课程（课程属于教师）
+
+### 审计日志约定
+
+以下操作必须调用 `auditLogService.record(action, targetType, targetId, detail)`：
+
+- 创建/更新/删除课程 → targetType = "course"
+- 创建/更新/删除学期 → targetType = "semester"
+- 创建/更新/删除课时 → targetType = "lesson"
+- 创建/重命名/删除/移动资源 → targetType = "course_resource"
+- 审计日志写入失败不应影响主操作（catch 后 log.warn）
+
+### 各模块端点汇总
+
+**认证（Phase 1）**
+```
+POST /api/auth/login
+```
+
+**班级管理（Phase 2）**
+```
+GET    /api/classes                分页列表（ADMIN）
+GET    /api/classes/list-all       全部下拉（ADMIN/TEACHER）
+GET    /api/classes/{id}           详情（ADMIN）
+POST   /api/classes                创建（ADMIN）
+PUT    /api/classes/{id}           更新（ADMIN）
+DELETE /api/classes/{id}           删除（ADMIN）
+```
+
+**教师管理（Phase 2）**
+```
+GET    /api/teachers               分页列表（ADMIN）
+GET    /api/teachers/{id}          详情（ADMIN）
+POST   /api/teachers               创建（ADMIN）
+PUT    /api/teachers/{id}          更新（ADMIN）
+GET    /api/teachers/{id}/classes  查看绑定班级（ADMIN）
+POST   /api/teachers/{id}/classes  批量绑定班级（ADMIN）
+DELETE /api/teachers/{id}/classes  批量解绑班级（ADMIN）
+```
+
+**学生管理（Phase 2）**
+```
+GET    /api/students               分页列表（ADMIN/TEACHER，教师只看到负责班级）
+POST   /api/students/import        Excel 导入（ADMIN/TEACHER，multipart/form-data）
+PUT    /api/students/{id}/password  重置密码（ADMIN/TEACHER）
+```
+
+**课程管理（Phase 3a）**
+```
+GET    /api/courses                分页列表（ADMIN/TEACHER/STUDENT，按角色过滤）
+POST   /api/courses                创建（TEACHER，可带 classIds 绑定班级）
+GET    /api/courses/{id}           详情含学期列表+classIds
+PUT    /api/courses/{id}           更新（TEACHER，仅创建者）
+DELETE /api/courses/{id}           删除（ADMIN/TEACHER，需检查学期依赖）
+```
+
+**学期管理（Phase 3a）**
+```
+GET    /api/courses/{courseId}/semesters      列表（按 start_time 倒序）
+POST   /api/courses/{courseId}/semesters      创建（TEACHER）
+GET    /api/semesters/{id}                    详情
+PUT    /api/semesters/{id}                    更新（TEACHER）
+DELETE /api/semesters/{id}                    删除（TEACHER，需检查课时依赖）
+```
+
+**课时管理（Phase 3a）**
+```
+GET    /api/semesters/{semesterId}/lessons    列表（按 sort_order 升序）
+POST   /api/semesters/{semesterId}/lessons    创建（TEACHER）
+GET    /api/lessons/{id}                      详情
+PUT    /api/lessons/{id}                      更新（TEACHER）
+DELETE /api/lessons/{id}                      删除（TEACHER）
+PUT    /api/lessons/{id}/sort                 调整顺序（TEACHER，targetIndex）
+```
+
+**课程资源（Phase 3a，文件夹树）**
+```
+GET    /api/courses/{courseId}/resources/tree   完整资源树
+GET    /api/courses/{courseId}/resources        子资源列表（?parentId=）
+POST   /api/courses/{courseId}/resources        创建文件夹（TEACHER）
+PUT    /api/resources/{id}                      重命名（TEACHER）
+DELETE /api/resources/{id}                      删除（TEACHER，递归软删除）
+PUT    /api/resources/{id}/move                 移动（TEACHER，targetParentId+targetSortOrder）
+```
+
+**文件操作（Phase 3b）**
+```
+POST /api/files/upload/presigned      获取预签名 PUT URL
+POST /api/files/download/presigned    获取预签名 GET URL
+GET  /api/files/preview/{id}          kkFileView 预览
+```
+
+**课堂任务（Phase 4）**
+```
+GET    /api/lessons/{lessonId}/tasks         任务列表
+POST   /api/lessons/{lessonId}/tasks         创建任务（worksheet/artifact）
+GET    /api/tasks/{id}                       任务详情
+PUT    /api/tasks/{id}                       编辑任务
+DELETE /api/tasks/{id}                       删除任务
+POST   /api/tasks/{id}/submit               学生提交（学习单答案/作品附件）
+GET    /api/tasks/{id}/submissions           教师查看提交列表
+GET    /api/submissions/{id}                 查看单个提交详情
+```
+
+**评价（Phase 5）**
+```
+POST   /api/evaluations                     教师评分（按维度 A-E）
+GET    /api/students/{id}/evaluation         学生查看自己的评价
+GET    /api/students/{id}/radar              学期雷达图数据
+GET    /api/students/{id}/radar/progress     进步雷达图（前后学期对比）
+```
+
+**考试（Phase 6a）**
+```
+GET    /api/exam-papers                      试卷列表
+POST   /api/exam-papers                      创建试卷
+GET    /api/exams                            考试任务列表
+POST   /api/exams                            创建考试任务
+POST   /api/exams/{id}/start                 学生开始考试
+POST   /api/exams/{id}/submit                学生提交考试
+GET    /api/exams/{id}/submissions           教师查看考试提交
+```
+
+**项目化学习（Phase 6b）**
+```
+GET    /api/projects                         项目列表
+POST   /api/projects                         创建项目
+POST   /api/projects/{id}/teams              创建队伍
+POST   /api/teams/{id}/join                  加入队伍
+POST   /api/projects/{id}/submit             提交项目作品
+POST   /api/projects/{id}/scores             教师评分（组队同分）
+```
+
+**学生网盘（Phase 7）**
+```
+GET    /api/drive/tree                       个人网盘树
+POST   /api/drive/folders                    创建文件夹
+POST   /api/drive/files                      上传文件
+DELETE /api/drive/{id}                       删除文件/文件夹
+GET    /api/drive/{id}/download              下载文件
+```
+
+**成绩导出（Phase 7）**
+```
+GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
+```
+
+### WebSocket 端点
+
+```
+/topic/task/{taskId}                         学习单提交实时推送（教师订阅）
+/app/submit                                  学生提交消息
 ```
 
 所有接口都需要考虑当前登录用户权限。
