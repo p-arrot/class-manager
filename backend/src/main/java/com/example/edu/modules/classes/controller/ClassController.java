@@ -62,7 +62,7 @@ public class ClassController {
 
     @Operation(summary = "获取全部班级列表（下拉选择用）")
     @GetMapping("/list-all")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER', 'STUDENT')")
     public R<List<ClassVO>> listAll() {
         return R.ok(classService.listAll());
     }

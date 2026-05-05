@@ -1,10 +1,18 @@
-# 信息科技课堂管理系统开发总 Prompt
+# 信息科技课堂管理系统 — 项目规格说明书
 
-你现在是一名资深全栈架构师和开发助手，请协助我开发一个“信息科技课堂管理系统”。
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| `SPECIFICATION.md` (本文档) | 项目整体规格：技术栈、架构、角色体系、数据库、API、设计规范 |
+| `API.md` | 接口文档（已实现端点详情） |
+| `PROGRESS.md` | 开发进度跟踪（各阶段完成情况） |
+| `FRONTEND_PLAN.md` | 前端完整规划：页面清单、路由结构、组件设计、交互逻辑、分阶段计划 |
+| `BACKEND_PLAN.md` | 后端模块规划：模块依赖、实现模式、技术决策 |
 
 本系统面向中小学信息科技课堂教学，用于教师进行课程管理、课堂任务管理、学习单管理、课堂作品收集、考试管理、项目化学习管理、过程评价、结果评价、学生能力雷达图分析、学生网盘管理和学期总评导出。
 
-请在后续所有代码生成、架构设计、数据库设计、接口设计、前端页面开发中，始终遵守本文档约定。
+所有代码生成、架构设计、数据库设计、接口设计、前端页面开发，必须遵守本文档约定。
 
 ---
 
@@ -68,55 +76,48 @@
 
 后端使用 Spring Boot 单体应用，按照业务领域分包，每个业务模块保持独立边界，方便后期扩展或拆分。
 
-后端模块包括：
+后端模块（✅=已实现，🔲=计划中）：
 
-- auth：登录认证
-- user：用户、学生、教师管理
-- school：学校和班级
-- course：课程和课程资源
-- semester：学期
-- lesson：课时和课时资源
-- task：课堂任务、学习单、课堂作品
-- evaluation：四维度评价
-- exam：试卷和考试
-- project：项目化学习
-- drive：学生网盘
-- stats：统计分析、雷达图、学期总评
-- realtime：WebSocket 实时汇总
-- audit：审计日志
+- auth ✅ — 登录认证
+- user ✅ — 用户、学生、教师管理
+- classes ✅ — 班级管理
+- course ✅ — 课程 + 学期 + 课时 + 课程资源文件夹
+- task 🔲 — 课堂任务、学习单、课堂作品（Phase 4）
+- evaluation 🔲 — 四维度评价（Phase 5）
+- exam 🔲 — 试卷和考试（Phase 6a）
+- project 🔲 — 项目化学习（Phase 6b）
+- drive 🔲 — 学生网盘（Phase 7）
+- stats 🔲 — 统计分析、雷达图、学期总评（Phase 5/7）
+- realtime 🔲 — WebSocket 实时汇总（Phase 4）
+- audit ✅ — 审计日志
 
-后端目录结构参考：
+> 注：`semester` 和 `lesson` 作为 `course` 模块的子包实现，不独立为顶层模块。`school` 表预留但未实现 CRUD。
+
+后端目录结构：
 
 ```text
 src/main/java/com/example/edu
 ├── EduApplication.java
-├── common
-│   ├── config
-│   ├── security
-│   ├── exception
-│   ├── result
-│   ├── utils
-│   └── constants
-├── modules
-│   ├── auth
-│   ├── user
-│   ├── school
-│   ├── course
-│   ├── semester
-│   ├── lesson
-│   ├── task
-│   ├── evaluation
-│   ├── exam
-│   ├── project
-│   ├── drive
-│   ├── stats
-│   ├── realtime
-│   └── audit
-└── infrastructure
-    ├── minio
-    ├── redis
-    └── preview
-```
+├── common/
+│   ├── config/       # SecurityConfig, JwtFilter, MybatisPlusConfig, AdminInitializer
+│   ├── security/     # JwtUtils, LoginUser
+│   ├── exception/    # BizException, GlobalExceptionHandler
+│   ├── result/       # R<T>, PageResult<T>, ErrorCode
+│   └── utils/        # SecurityUtils
+├── modules/
+│   ├── auth/         # ✅ 登录认证
+│   ├── user/         # ✅ 用户、教师、学生管理
+│   ├── classes/      # ✅ 班级管理
+│   ├── course/       # ✅ 课程 + 学期 + 课时 + 资源文件夹
+│   ├── audit/        # ✅ 审计日志
+│   ├── task/         # 🔲 Phase 4
+│   ├── evaluation/   # 🔲 Phase 5
+│   ├── exam/         # 🔲 Phase 6a
+│   ├── project/      # 🔲 Phase 6b
+│   ├── drive/        # 🔲 Phase 7
+│   ├── stats/        # 🔲 Phase 5/7
+│   └── realtime/     # 🔲 Phase 4
+└── infrastructure/   # 🔲 MinIO / Redis / Preview（待 Phase 3b）
 
 每个业务模块按照以下结构组织：
 
@@ -1256,7 +1257,7 @@ E：0-39.99
 导入模板字段：
 
 ```text
-年级
+入学年份
 班级
 学号
 姓名
@@ -1382,7 +1383,7 @@ created_at
 |----|------|------|
 | id | BIGINT PK | |
 | school_id | BIGINT FK 可空 | 所属学校（预留） |
-| grade | VARCHAR(50) NOT NULL | 年级，如"三年级" |
+| grade | VARCHAR(50) NOT NULL | 入学年份，如"2026"，配合 name 组成"2026级1班" |
 | name | VARCHAR(100) NOT NULL | 班级名，如"1班" |
 | created_at, updated_at | TIMESTAMP | |
 | deleted | SMALLINT | |
@@ -1764,13 +1765,19 @@ PUT    /api/teachers/{id}          更新（ADMIN）
 GET    /api/teachers/{id}/classes  查看绑定班级（ADMIN）
 POST   /api/teachers/{id}/classes  批量绑定班级（ADMIN）
 DELETE /api/teachers/{id}/classes  批量解绑班级（ADMIN）
+DELETE /api/teachers/{id}          删除教师（ADMIN）
 ```
 
 **学生管理（Phase 2）**
 ```
-GET    /api/students               分页列表（ADMIN/TEACHER，教师只看到负责班级）
-POST   /api/students/import        Excel 导入（ADMIN/TEACHER，multipart/form-data）
+GET    /api/students                分页列表（ADMIN/TEACHER，教师只看到负责班级）
+POST   /api/students                创建学生（ADMIN/TEACHER）
+PUT    /api/students/{id}           编辑学生（ADMIN/TEACHER）
+DELETE /api/students/{id}           删除学生（ADMIN/TEACHER，软删除）
+POST   /api/students/import         Excel 导入（ADMIN/TEACHER，multipart/form-data）
 PUT    /api/students/{id}/password  重置密码（ADMIN/TEACHER）
+POST   /api/students/batch/delete   批量删除（ADMIN/TEACHER）
+POST   /api/students/batch/password 批量重置密码（ADMIN/TEACHER）
 ```
 
 **课程管理（Phase 3a）**
@@ -1884,39 +1891,68 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
 
 ---
 
-## 二十七、前端 UI 要求
+## 二十七、前端页面体系
 
-整体界面要求：
+> **详细规划文档：** `docs/FRONTEND_PLAN.md`（31 个页面的功能说明、路由结构、组件设计、分阶段计划）
 
-- 简洁
-- 美观
-- 现代
-- 操作清晰
-- 适合课堂教学场景
-- 支持深色主题和浅色主题切换
+### 页面总览
 
-学生端重点：
+```
+/login                           登录页
 
-- 课程入口明显
-- 当前课时清晰
-- 待完成任务突出
-- 雷达图直观
-- 网盘易用
+/admin                            管理员布局（侧边栏导航）
+  /admin/classes                  班级管理
+  /admin/teachers                 教师管理
+  /admin/students                 学生管理
 
-教师端重点：
+/teacher                          教师布局（侧边栏 + 顶栏，含班级选择器）
+  /teacher/home                   教师工作台（仪表板）
+  /teacher/courses                课程列表
+  /teacher/courses/:id            课程详情
+  /teacher/courses/:id/resources  课程资源管理（Phase F2）
+  /teacher/...                    考试管理、项目管理、数据分析、成绩导出（后续阶段）
 
-- 班级筛选方便
-- 数据统计清晰
-- 批改效率高
-- 实时汇总直观
-- Excel 导入导出方便
-- 资源管理方便
+/student                          学生布局（侧边栏导航）
+  /student/home                   我的课程
+  /student/courses/:id            课程详情
+  /student/...                    考试、项目、评价、网盘（后续阶段）
+```
+
+### 布局设计
+
+| 角色 | 布局结构 | 导航方式 |
+|------|----------|----------|
+| 管理员 AdminLayout | 侧边栏 (230px) + 内容区 | NMenu（班级管理 / 教师管理 / 学生管理） |
+| 教师 TeacherLayout | 侧边栏 + 顶栏（含班级选择器） | NMenu（工作台 / 课程 / 考试 / 项目 / 分析 / 导出） |
+| 学生 StudentLayout | 侧边栏 + 顶栏 | NMenu（课程 / 考试 / 项目 / 评价 / 网盘） |
+
+### 共享组件
+
+| 组件 | 用途 |
+|------|------|
+| `CourseCard` | 课程卡片（封面、名称、描述、操作插槽） |
+| `PageHeader` | 页面标题栏（标题 + 描述 + 操作按钮插槽） |
+| `FileUpload` | 文件上传（拖拽、进度条、类型校验） |
+| `FilePreview` | kkFileView iframe 预览 |
+| `FileTree` | 文件夹树组件 |
+| `RadarChart` | ECharts 雷达图封装 |
+
+### 角色体验重点
+
+学生端：
+- 课程入口明显、当前课时清晰、待完成任务突出
+- 雷达图直观、网盘易用
+
+教师端：
+- 班级筛选方便、数据统计清晰
+- 批改效率高、实时汇总直观
+- Excel 导入导出方便、资源管理方便
 
 ---
 
 ## 二十八、前端设计规范 — Quiet Precision
 
-> 署名：**Tatakai**
+> 署名：**Tatakai** | 组件与页面清单见 `docs/FRONTEND_PLAN.md`
 
 ### 设计理念
 
@@ -1989,232 +2025,113 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
 
 ## 二十九、开发顺序
 
-请按以下顺序开发，不要一次性堆所有功能。
+> **进度状态与待办清单见 `PROGRESS.md`**。本节仅概述各阶段核心目标。前端页面细节见 `FRONTEND_PLAN.md`。
 
-> 后端与前端交错推进，每个后端阶段完成后，下一个前端阶段交付对应的 UI。
-> 前端阶段编号 F0-F6，后端阶段编号 1-7。
+后端与前端交错推进，每个后端阶段完成后，下一个前端阶段交付对应 UI。前端阶段编号 F0-F6，后端阶段编号 1-7。
 
----
-
-### 阶段一：后端基础工程 ✅
-
-1. Spring Boot 项目初始化
-2. Maven 依赖、application.yml
-3. Docker Compose 开发环境
-4. PostgreSQL、Redis 连接
-5. Flyway 配置
-6. 统一响应 R / PageResult / ErrorCode
-7. BizException / GlobalExceptionHandler
-8. SpringDoc OpenAPI
-9. Spring Security + JWT
-10. 登录接口 + User 表 + 默认管理员初始化
-
-### 阶段二：班级、教师、学生 ✅
-
-1. 班级管理
-2. 教师管理
-3. 教师与班级绑定
-4. 学生 Excel 导入
-5. 学生列表查询 + 按班级筛选
-6. 重置学生密码
-7. 审计日志
-
-> 系统为单学校内部使用，`school_id` 为预留字段，暂不实现学校 CRUD。
+| 阶段 | 核心目标 | 状态 |
+|------|----------|------|
+| Phase 1 | 后端基础：Spring Boot + JWT + Flyway + Docker | ✅ |
+| Phase 2 | 班级/教师/学生管理 + Excel 导入 | ✅ |
+| Phase F0 | 前端脚手架：登录 + 三套 Layout + 路由守卫 | ✅ |
+| Phase 3a | 后端：Course/Semester/Lesson + 课程资源文件夹 | ✅ |
+| Phase F1 | 前端：管理员管理页 + 教师/学生课程页 | 🔄 |
+| Phase 3b | 后端：MinIO 文件基础设施（预签名 URL、kkFileView） | ✅ |
+| Phase F2 | 前端：文件组件（Upload/Preview/Tree）+ 课程资源管理 | ✅ |
+| Phase 4 | 后端：课堂任务（worksheet/artifact）+ WebSocket | ⬜ |
+| Phase F3 | 前端：任务创建 + 学习单填写 + 作品提交 + 实时统计 | ⬜ |
+| Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ⬜ |
+| Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ⬜ |
+| Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ⬜ |
+| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ⬜ |
+| Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ⬜ |
+| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ⬜ |
+| Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ⬜ |
+| Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ⬜ |
 
 ---
 
-### 阶段 F0：前端脚手架 + 登录 + 三套 Layout
+## 三十、开发约定
 
-> 独立阶段，不依赖后续后端。Phase 2 API 已全部可用。
+所有新功能开发必须遵守以下规则：
 
-1. Vite + Vue 3 + TypeScript 项目初始化
-2. Naive UI、Pinia、Vue Router、Axios、ECharts 依赖
-3. Axios 封装（拦截器、token 注入、401 跳转）
-4. 登录页（账号 + 密码，角色自动识别）
-5. 路由守卫（按 role 分发到不同 Layout）
-6. AdminLayout / TeacherLayout / StudentLayout 三套骨架
-7. Pinia auth store + theme store（深色/浅色切换）
-8. 从 SpringDoc `/v3/api-docs` 自动生成 TypeScript 类型
+1. 先列出将创建或修改的文件清单，再逐个实现。
+2. 代码必须完整，不可省略 import 或使用伪代码。
+3. 涉及数据库时必须同时给出 Flyway SQL 迁移脚本。
+4. 涉及接口时必须给出 Controller、DTO、VO、Service、ServiceImpl、Mapper、Entity。
+5. 涉及前端时必须给出 API 封装、页面、组件和路由。
+6. 涉及权限时必须说明权限校验逻辑（Controller 层 + Service 层双重校验）。
+7. 涉及敏感操作时必须写审计日志（审计失败不影响主操作）。
+8. 代码应可直接运行，不可擅自更换技术栈。
+9. Entity 不直接返回前端（始终转换为 VO）。
+10. 密码必须 BCrypt 加密，不可保存明文。
+11. Service 层权限校验不可绕过。
 
-### 阶段三(a)：后端 — 课程、学期、课时
+### 后端文件清单（新模块标准结构）
 
-1. Course 实体 + CRUD
-2. CourseClass 关系表（课程绑定授课班级）
-3. Semester 实体 + CRUD（属于课程）
-4. Lesson 实体 + CRUD（属于学期，含排序号）
-5. 课程资源文件夹（树形目录结构）
-6. 权限：教师管理自己创建的课程；学生只能看到关联班级的课程
+```
+modules/xxx/
+├── controller/XxxController.java
+├── service/XxxService.java
+├── service/impl/XxxServiceImpl.java
+├── mapper/XxxMapper.java
+├── entity/Xxx.java
+├── dto/XxxCreateDTO.java / XxxUpdateDTO.java / ...
+├── vo/XxxVO.java / XxxDetailVO.java
+└── enums/XxxEnum.java
+```
 
-### 阶段 F1：前端 — 管理员端 + 教师课程页
+### 前端文件清单（新功能标准结构）
 
-1. 管理员端：班级管理页（列表/新建/编辑/删除）
-2. 管理员端：教师管理页（列表/新建/编辑/班级绑定）
-3. 管理员端：学生管理页（列表/Excel导入/重置密码）
-4. 教师端：课程列表 + 新建/编辑课程
-5. 教师端：学期管理 + 课时管理（嵌套路由）
-
-### 阶段三(b)：后端 — MinIO 文件基础设施
-
-> 本阶段是 Phase 4/6/7 文件操作的前置依赖。
-
-1. MinIO 客户端配置（现有 Docker 容器）
-2. 文件上传（预签名 PUT URL，前端直传）
-3. 文件下载（预签名 GET URL）
-4. kkFileView 预览对接
-5. 课程封面上传
-6. 课时资源上传/下载/预览
-
-### 阶段 F2：前端 — 文件组件 + 课程资源
-
-1. FileUpload 组件（拖拽/点击、进度条）
-2. FilePreview 组件（kkFileView iframe 嵌入）
-3. FileList 组件（图标/列表视图）
-4. 课程资源文件夹树 + 上传/下载/预览
-5. 课时资源管理
-
-### 阶段四：后端 — 课堂任务 + 实时汇总
-
-1. Task 模块（`type` 字段区分 worksheet / artifact）
-2. 学习单 JSON Schema 设计（radio / checkbox / text / textarea / table）
-3. 教师创建学习单 + 课堂作品任务
-4. 学生填写学习单 / 提交作品附件
-5. 教师查看/下载/预览提交
-6. WebSocket + STOMP 配置
-7. 学习单提交实时推送 + 教师端统计汇总
-
-### 阶段 F3：前端 — 课堂任务 + 实时统计
-
-1. 教师端：任务创建页（学习单 schema 编辑器 + 作品任务表单）
-2. 学生端：学习单填写（JSON Schema 动态渲染表单）
-3. 学生端：作品提交（FileUpload 组件）
-4. 教师端：提交列表 + 实时统计图表（ECharts 柱状图/饼图）
-5. WebSocket 订阅 Hook（`useSocket` composable，按需连接/断开）
-
-### 阶段五：后端 — 评分和雷达图
-
-1. Evaluation 模块（四维度评分）
-2. 教师评分（A-E，可选 1-4 个维度）
-3. 特殊情况标记
-4. 截止未交自动评 F
-5. 过程评价计算（worksheet 权重 1.0 + artifact 权重 1.5）
-6. 学期雷达图 + 进步雷达图数据
-
-### 阶段 F4：前端 — 评分 + 雷达图
-
-1. 教师端：评分页（四维度 A-E 选择器）
-2. 学生端：我的评分 + 学期雷达图（ECharts radar）
-3. 学生端：进步雷达图（双雷达叠加对比）
-4. 雷达图组件封装（`<RadarChart :data />`）
-
-### 阶段六(a)：后端 — 考试系统
-
-1. 试卷管理（JSONB 题目）
-2. 考试任务创建（定时、班级、权重）
-3. 学生参加考试（计时答题）
-4. 考试提交与评分
-5. 缺考处理
-
-### 阶段六(b)：后端 — 项目化学习
-
-1. 项目创建 + 组队
-2. 项目作品提交
-3. 教师评分（组队同分）
-
-### 阶段六(c)：后端 — 结果评价
-
-1. 考试/项目加权平均
-2. 无数据时"暂无数据"处理
-
-### 阶段 F5：前端 — 考试 + 项目 + 结果评价
-
-1. 教师端：试卷编辑器 + 考试任务创建
-2. 学生端：考试答题页（计时器、题型渲染）
-3. 学生端：项目组队 + 作品提交
-4. 教师端：项目评分页
-5. 结果评价展示
-
-### 阶段七：后端 — 网盘和总评导出
-
-1. 学生网盘（树形目录、MinIO、容量限制）
-2. 教师查看负责班级学生网盘
-3. 学期总评计算（过程 × 50% + 结果 × 50%）
-4. EasyExcel 按班级分 Sheet 导出
-
-### 阶段 F6：前端 — 网盘 + 总评导出
-
-1. 学生端：网盘页（树形目录、上传/下载/预览/删除）
-2. 教师端：学生网盘查看
-3. 教师端：总评导出按钮 + 导出进度反馈
+```
+src/
+├── api/xxx.ts               # API 请求封装
+├── types/api.ts              # 类型定义（追加）
+├── views/<role>/XxxPage.vue  # 页面组件
+├── components/Xxx.vue        # 共享组件（如有）
+└── router/index.ts           # 路由（追加）
+```
 
 ---
 
-## 三十、代码生成要求
+## 三十一、Phase 1 启动清单（已实现）
 
-当我要求你生成代码时，请遵守：
+项目启动时需完成以下基础工程（Phase 1 已全部实现）：
 
-1. 先说明将创建或修改哪些文件。
-2. 再逐个输出完整代码。
-3. 代码必须完整，不要省略 import。
-4. 不要写伪代码。
-5. 涉及数据库时必须同时给出 Flyway SQL。
-6. 涉及接口时必须给出 Controller、DTO、VO、Service、ServiceImpl、Mapper、Entity。
-7. 涉及前端时必须给出 API 封装、页面、组件和路由。
-8. 涉及权限时必须说明权限校验逻辑。
-9. 涉及敏感操作时必须写审计日志。
-10. 代码过多时请分批生成，并告诉我下一步继续生成什么。
-11. 生成的代码应尽量可直接运行。
-12. 不要擅自更换技术栈。
-13. 不要把 Entity 直接返回给前端。
-14. 不要保存明文密码。
-15. 不要绕过 Service 层权限校验。
+1. `pom.xml` + `application.yml`
+2. 基础包结构（common/ + modules/）
+3. `R<T>` / `PageResult<T>` / `ErrorCode`（27 个错误码）
+4. `BizException` / `GlobalExceptionHandler`
+5. `SecurityConfig` + `JwtUtils` + `LoginUser`
+6. `User` Entity + `UserMapper`
+7. `AuthController` + `AuthService`（登录流程）
+8. Flyway V1 建表：schools, school_classes, users, teacher_classes, audit_logs
+9. AdminInitializer（自动创建 admin/admin123）
+10. SpringDoc OpenAPI 配置
+11. Docker Compose：PostgreSQL 16 + Redis 7 + MinIO + kkFileView
 
----
+## 三十二、开发流程与质量保障
 
-## 三十一、首次启动任务
+开发过程中应遵循系统化的开发流程：
 
-如果我要你开始生成项目，请先从“后端基础工程”开始。
+### 开发流程
 
-首次任务请生成：
+| 步骤 | 说明 |
+|------|------|
+| 1. 需求确认 | 明确功能范围，对照本文档和 `FRONTEND_PLAN.md` / `BACKEND_PLAN.md` |
+| 2. 方案设计 | 编写实现计划（文件清单、数据流、组件树） |
+| 3. 逐步实现 | 后端：Entity → Mapper → Service → Controller；前端：API → Store → 页面 → 路由 |
+| 4. 编译验证 | `mvn clean compile` + `vue-tsc --noEmit` |
+| 5. 功能测试 | Playwright 测试关键用户流程，检查控制台错误 |
+| 6. 代码审查 | 权限漏洞、N+1 查询、安全风险 |
+| 7. 文档更新 | 更新 `PROGRESS.md`、`FRONTEND_PLAN.md`、`BACKEND_PLAN.md` |
 
-1. `pom.xml`
-2. `application.yml`
-3. 基础包结构
-4. `R<T>` 统一响应
-5. `PageResult<T>` 分页响应
-6. `ErrorCode`
-7. `BizException`
-8. `GlobalExceptionHandler`
-9. `SecurityConfig`
-10. `JwtUtils`
-11. `LoginUser`
-12. `User` 实体
-13. `UserMapper`
-14. `AuthController`
-15. `AuthService`
-16. `AuthServiceImpl`
-17. 登录 DTO
-18. 登录 VO
-19. Flyway 初始 SQL，至少包含：
-    - `schools`
-    - `school_classes`
-    - `users`
-    - `teacher_classes`
-    - `audit_logs`
-20. 默认管理员初始化逻辑
-21. Swagger 配置
-22. Docker Compose 开发环境，包含：
-    - PostgreSQL
-    - Redis
-    - MinIO
-    - kkFileView
+### 质量检查清单
 
-要求：
-
-- 代码完整
-- 可运行
-- 数据库使用 PostgreSQL
-- 使用 MyBatis-Plus
-- 使用 JWT
-- 使用 BCrypt
-- 使用 Spring Security 6
-- 使用 Spring Boot 3
+- [ ] 多表写入添加 `@Transactional(rollbackFor = Exception.class)`
+- [ ] 敏感操作写入审计日志（审计失败不抛异常）
+- [ ] Service 层权限校验（不绕过 Controller 注解）
+- [ ] Entity → VO 转换（不直接返回 Entity）
+- [ ] 新表通过 Flyway 迁移脚本创建
+- [ ] 前端类型定义与后端 DTO/VO 保持一致
+- [ ] 暗色/浅色主题下均可正常使用

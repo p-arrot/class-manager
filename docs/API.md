@@ -1,6 +1,8 @@
 # API 接口文档
 
-> 信息科技课堂管理系统 v1.0.0 | 后端地址: `http://localhost:8080` | Swagger: `http://localhost:8080/swagger-ui.html`
+> **用途：** 已实现 API 端点的参考文档。包含请求/响应示例、错误码。
+> **相关文档：** 完整规格见 `SPECIFICATION.md`，进度见 `PROGRESS.md`
+> 后端地址: `http://localhost:8080` | Swagger: `http://localhost:8080/swagger-ui.html`
 
 ---
 
@@ -394,6 +396,14 @@ DELETE /api/teachers/{id}/classes
 |------|------|------|------|
 | classIds | long[] | 是 | 要解绑的班级 ID 数组 |
 
+#### 5.4 删除教师
+
+```
+DELETE /api/teachers/{id}
+```
+
+需要 `ADMIN` 角色。删除前自动解绑所有班级关系，软删除用户记录并写入审计日志。
+
 ---
 
 ### 6. 学生管理
@@ -490,6 +500,76 @@ curl -X PUT http://localhost:8080/api/students/3/password \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
+
+---
+
+#### 6.4 创建学生
+
+```
+POST /api/students
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| studentNo | string | 是 | 学号（全局唯一） |
+| name | string | 是 | 姓名 |
+| classId | long | 是 | 班级 ID |
+| password | string | 否 | 密码，默认 `123456` |
+
+> 教师只能创建到自己负责的班级。
+
+**请求示例**
+```bash
+curl -X POST http://localhost:8080/api/students \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"studentNo":"2025001","name":"李四","classId":1}'
+```
+
+---
+
+#### 6.5 编辑学生
+
+```
+PUT /api/students/{id}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 姓名 |
+| classId | long | 否 | 班级 ID |
+| enabled | boolean | 否 | 启用/禁用 |
+
+---
+
+#### 6.6 删除学生
+
+```
+DELETE /api/students/{id}
+```
+
+> 软删除。教师只能删除自己负责班级的学生。
+
+#### 6.7 批量删除学生
+
+```
+POST /api/students/batch/delete
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| ids | long[] | 是 | 学生 ID 数组 |
+
+#### 6.8 批量重置密码
+
+```
+POST /api/students/batch/password
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| ids | long[] | 是 | 学生 ID 数组 |
+| newPassword | string | 否 | 新密码，不传则重置为 `123456` |
 
 ---
 
@@ -710,7 +790,7 @@ DELETE /api/lessons/{id}         删除
 
 ### 10. 课程资源管理
 
-需要 `TEACHER` 角色写操作。课程资源为树形文件夹结构（文件上传在 Phase 3b 实现）。
+需要 `TEACHER` 角色写操作。课程资源为树形文件夹+文件结构（文件操作见 10.4）。
 
 #### 10.1 获取资源树
 
@@ -760,7 +840,106 @@ PUT    /api/resources/{id}/move                       移动（targetParentId + 
 
 ---
 
-### 11. 测试辅助脚本
+#### 10.4 文件上传/下载/预览（Phase 3b）
+
+文件通过 MinIO 预签名 URL 由前端直传，后端只存元数据。预览通过 kkFileView。
+
+##### 10.4.1 获取预签名上传 URL
+
+```
+POST /api/files/upload/presigned
+```
+> TEACHER 角色。创建 CourseResource(type=FILE) 记录并返回预签名 PUT URL。
+
+**请求体**
+```json
+{
+  "fileName": "report.pdf",
+  "contentType": "application/pdf",
+  "fileSize": 1048576,
+  "courseId": 1,
+  "parentId": null
+}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| fileName | string | 是 | 原始文件名 |
+| contentType | string | 是 | 文件 MIME 类型 |
+| fileSize | long | 是 | 文件大小（字节），最大 200MB |
+| courseId | long | 是 | 所属课程 ID |
+| parentId | long | 否 | 父文件夹 ID，空则上传到根目录 |
+
+**响应示例**
+```json
+{
+  "code":0,"msg":"ok",
+  "data":{
+    "presignedUrl": "http://localhost:9000/edu/1/2026-05/a1b2c3d4_report.pdf?...",
+    "resourceId": 15,
+    "objectName": "1/2026-05/a1b2c3d4_report.pdf"
+  }
+}
+```
+
+前端拿到 `presignedUrl` 后直接 `PUT` 到 MinIO（Header: `Content-Type`）。
+
+##### 10.4.2 获取文件下载 URL
+
+```
+GET /api/files/{resourceId}/download
+```
+> TEACHER/STUDENT 角色。返回预签名 GET URL。
+
+**响应示例**
+```json
+{
+  "code":0,"msg":"ok",
+  "data":{
+    "url": "http://localhost:9000/edu/1/2026-05/a1b2c3d4_report.pdf?..."
+  }
+}
+```
+
+##### 10.4.3 获取文件预览 URL
+
+```
+GET /api/files/{resourceId}/preview
+```
+> TEACHER/STUDENT 角色。返回 kkFileView 预览 URL。
+
+**响应示例**
+```json
+{
+  "code":0,"msg":"ok",
+  "data":{
+    "url": "http://localhost:8012/onlinePreview?url=http%3A%2F%2F..."
+  }
+}
+```
+
+##### 文件校验规则
+
+| 规则 | 说明 |
+|------|------|
+| 文件大小 | ≤ 200MB（40005 FILE_SIZE_EXCEEDED） |
+| 文件类型 | 仅允许：doc/docx/ppt/pptx/pdf/xls/xlsx/txt/html/htm/jpg/jpeg/png/gif/bmp/mp3/mp4/zip/rar（40006 FILE_TYPE_NOT_ALLOWED） |
+| 对象命名 | `{courseId}/{yyyy-MM}/{uuid8}_{fileName}` — 服务端生成，消除冲突 |
+
+##### 资源树中的文件
+
+获取资源树（10.1）时，FILE 类型节点包含文件元数据：
+```json
+{
+  "id":15,"name":"report.pdf","type":"FILE","parentId":1,"sortOrder":3,
+  "fileSize":1048576,"contentType":"application/pdf",
+  "objectName":"1/2026-05/a1b2c3d4_report.pdf",
+  "children":[]
+}
+```
+
+---
+
 
 项目提供了 `backend/api-test.sh`，解决 Windows bash 下 curl 中文参数编码问题：
 
@@ -780,6 +959,17 @@ bash api-test.sh lesson create 1      # 在学期1下创建课时
 ```
 
 脚本自动缓存 Token，支持在一个 shell 会话中连续调用。测试 JSON 文件在 `backend/test-payloads/` 目录下。
+
+---
+
+### 11. 教师密码重置
+
+```
+PUT /api/teachers/{id}/password
+```
+> ADMIN 角色。将教师密码重置为默认密码或指定新密码。
+
+**请求体（可选）** `{ "newPassword": "newPass123" }` — 不传则重置为 `123456`。
 
 ---
 

@@ -38,6 +38,8 @@ public class TeacherServiceImpl implements TeacherService {
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
+    private static final String DEFAULT_PASSWORD = "123456";
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public TeacherVO create(TeacherCreateDTO dto) {
@@ -218,6 +220,36 @@ public class TeacherServiceImpl implements TeacherService {
                                 .eq(TeacherClass::getTeacherId, teacherId))
                 .stream().map(TeacherClass::getClassId)
                 .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(Long id) {
+        User user = userMapper.selectById(id);
+        if (user == null || !"teacher".equals(user.getRole())) {
+            throw new BizException(ErrorCode.TEACHER_NOT_FOUND);
+        }
+        // Remove class bindings first
+        teacherClassMapper.delete(
+                new LambdaQueryWrapper<TeacherClass>()
+                        .eq(TeacherClass::getTeacherId, id));
+        // Soft delete the user
+        userMapper.deleteById(id);
+        auditLogService.record("删除教师", "teacher", id, "username: " + user.getUsername());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resetPassword(Long id, PasswordResetDTO dto) {
+        User user = userMapper.selectById(id);
+        if (user == null || !"teacher".equals(user.getRole())) {
+            throw new BizException(ErrorCode.TEACHER_NOT_FOUND);
+        }
+        String newPassword = (dto != null && dto.getNewPassword() != null && !dto.getNewPassword().isEmpty())
+                ? dto.getNewPassword() : DEFAULT_PASSWORD;
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userMapper.updateById(user);
+        auditLogService.record("重置教师密码", "teacher", id, "username: " + user.getUsername());
     }
 
     private Map<Long, List<Long>> getClassIdMap(List<Long> teacherIds) {

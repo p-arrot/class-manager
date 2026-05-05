@@ -39,13 +39,28 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresRole: 'teacher' },
     children: [
       {
+        path: 'courses',
+        name: 'TeacherCourses',
+        component: () => import('@/views/teacher/CourseList.vue'),
+      },
+      {
+        path: 'courses/:courseId',
+        name: 'TeacherCourseDetail',
+        component: () => import('@/views/teacher/CourseDetail.vue'),
+      },
+      {
+        path: 'courses/:courseId/resources',
+        name: 'TeacherCourseResources',
+        component: () => import('@/views/teacher/CourseResources.vue'),
+      },
+      {
         path: 'home',
         name: 'TeacherHome',
         component: () => import('@/views/teacher/HomeView.vue'),
       },
       {
         path: '',
-        redirect: '/teacher/home',
+        redirect: '/teacher/courses',
       },
     ],
   },
@@ -58,6 +73,16 @@ const routes: RouteRecordRaw[] = [
         path: 'home',
         name: 'StudentHome',
         component: () => import('@/views/student/HomeView.vue'),
+      },
+      {
+        path: 'courses/:courseId',
+        name: 'StudentCourseDetail',
+        component: () => import('@/views/student/CourseDetail.vue'),
+      },
+      {
+        path: 'courses/:courseId/resources',
+        name: 'StudentCourseResources',
+        component: () => import('@/views/student/CourseResources.vue'),
       },
       {
         path: '',

@@ -24,10 +24,13 @@ jwt:
   expiration: 86400000
 
 minio:
-  endpoint: http://localhost:9000
+  endpoint: http://host.docker.internal:9000
   access-key: minioadmin
   secret-key: minioadmin
   bucket: edu
+
+kkfileview:
+  base-url: http://localhost:8012
 
 logging:
   level:

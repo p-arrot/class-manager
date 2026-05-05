@@ -10,6 +10,9 @@ public class CoursePageDTO {
     @Schema(description = "关键字（按课程名称搜索）")
     private String keyword;
 
+    @Schema(description = "按班级ID筛选（教师端班级选择器联动）")
+    private Long classId;
+
     @Schema(description = "页码", example = "1")
     private int page = 1;
 

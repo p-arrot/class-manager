@@ -1,18 +1,42 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, h, type Component } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import {
-  NLayout, NLayoutHeader, NLayoutContent,
-  NButton, NSpace, NIcon,
+  NLayoutSider, NLayoutHeader,
+  NButton, NSpace, NIcon, NMenu,
 } from 'naive-ui'
-import { SunnyOutline, MoonOutline, LogOutOutline } from '@vicons/ionicons5'
+import type { MenuOption } from 'naive-ui'
+import {
+  SunnyOutline, MoonOutline, LogOutOutline,
+  BookOutline, HomeOutline,
+} from '@vicons/ionicons5'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const isDark = computed(() => theme.isDark)
+
+function renderIcon(icon: Component) { return () => h(NIcon, null, () => h(icon)) }
+
+const menuOptions: MenuOption[] = [
+  { label: '我的课程', key: '/student/home', icon: renderIcon(BookOutline) },
+  // Phase F4: { label: '我的评价', key: '/student/grades', icon: renderIcon(...) },
+  // Phase F5: { label: '我的考试', key: '/student/exams', icon: renderIcon(...) },
+  // Phase F5: { label: '我的项目', key: '/student/projects', icon: renderIcon(...) },
+  // Phase F6: { label: '我的网盘', key: '/student/drive', icon: renderIcon(...) },
+]
+
+const activeKey = computed(() => {
+  const path = route.path
+  if (path.startsWith('/student/home')) return '/student/home'
+  if (path.startsWith('/student/courses')) return '/student/home'
+  return path
+})
+
+function handleMenuChange(key: string) { router.push(key) }
 
 function handleLogout() {
   auth.logout()
@@ -21,34 +45,59 @@ function handleLogout() {
 </script>
 
 <template>
-  <NLayout style="min-height: 100vh">
-    <NLayoutHeader bordered class="top-header">
-      <div class="header-left">
-        <span class="brand" :style="{ color: isDark ? '#e8e6e1' : '#1a1a18' }">信息科技课堂</span>
-      </div>
-      <NSpace align="center" :size="2">
-        <span class="user-tag" :style="{ color: isDark ? '#8a8a84' : '#6b6b65' }">
-          {{ auth.userInfo?.name }}
+  <div class="layout-root">
+    <NLayoutSider
+      bordered
+      :width="200"
+      :style="{ background: isDark ? '#1a1a18' : '#f5f4f1' }"
+    >
+      <div class="sider-top">
+        <span class="brand" :style="{ color: isDark ? '#e8e6e1' : '#1a1a18' }">
+          <span class="brand-dot" />信息科技课堂
         </span>
-        <NButton quaternary circle size="small" @click="theme.toggleTheme()">
-          <template #icon>
-            <NIcon :size="18"><SunnyOutline v-if="isDark" /><MoonOutline v-else /></NIcon>
-          </template>
-        </NButton>
-        <NButton quaternary circle size="small" @click="handleLogout">
-          <template #icon>
-            <NIcon :size="18"><LogOutOutline /></NIcon>
-          </template>
-        </NButton>
-      </NSpace>
-    </NLayoutHeader>
-    <NLayoutContent class="main-content">
-      <router-view />
-    </NLayoutContent>
-  </NLayout>
+      </div>
+      <NMenu
+        :value="activeKey"
+        :options="menuOptions"
+        @update:value="handleMenuChange"
+      />
+    </NLayoutSider>
+
+    <div class="layout-right">
+      <NLayoutHeader bordered class="top-header">
+        <div class="header-left">
+          <span class="section-label" :style="{ color: isDark ? '#8a8a84' : '#6b6b65' }">{{ auth.userInfo?.name }}</span>
+        </div>
+        <NSpace align="center" :size="2">
+          <NButton quaternary circle size="small" @click="theme.toggleTheme()">
+            <template #icon>
+              <NIcon :size="18"><SunnyOutline v-if="isDark" /><MoonOutline v-else /></NIcon>
+            </template>
+          </NButton>
+          <NButton quaternary circle size="small" @click="handleLogout">
+            <template #icon>
+              <NIcon :size="18"><LogOutOutline /></NIcon>
+            </template>
+          </NButton>
+        </NSpace>
+      </NLayoutHeader>
+      <div class="main-content">
+        <router-view />
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.layout-root { display: flex; min-height: 100vh; }
+.layout-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sider-top {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+}
+.brand { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; transition: color 0.2s ease; }
+.brand-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--n-primary-color); display: inline-block; flex-shrink: 0; }
 .top-header {
   height: 52px;
   padding: 0 24px;
@@ -56,25 +105,9 @@ function handleLogout() {
   align-items: center;
   justify-content: space-between;
 }
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.brand {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  transition: color 0.2s ease;
-}
-.user-tag {
-  font-size: 13px;
-  font-weight: 500;
-  margin-right: 4px;
-  transition: color 0.2s ease;
-}
-.main-content {
-  padding: 28px 32px;
-  max-width: 1200px;
-}
+.header-left { display: flex; align-items: center; gap: 14px; }
+.section-label { font-size: 13px; font-weight: 500; transition: color 0.2s ease; }
+.main-content { padding: 28px 32px; flex: 1; overflow: auto; display: flex; flex-direction: column; width: 100%; }
+.main-content > :deep(*) { flex: 1; min-height: 100%; }
+.main-content :deep(.page) { max-width: none; }
 </style>

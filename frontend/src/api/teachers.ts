@@ -1,7 +1,7 @@
 import http from './request'
 import type {
   TeacherVO, TeacherCreateDTO, TeacherUpdateDTO, TeacherClassVO,
-  BatchBindDTO, PageResult, PageQuery
+  BatchBindDTO, PasswordResetDTO, PageResult, PageQuery
 } from '@/types/api'
 
 export function createTeacher(data: TeacherCreateDTO): Promise<TeacherVO> {
@@ -30,4 +30,12 @@ export function bindClasses(id: number, data: BatchBindDTO): Promise<number> {
 
 export function unbindClasses(id: number, data: BatchBindDTO): Promise<number> {
   return http.delete(`/teachers/${id}/classes`, { data })
+}
+
+export function deleteTeacher(id: number): Promise<void> {
+  return http.delete(`/teachers/${id}`)
+}
+
+export function resetTeacherPassword(id: number, data?: PasswordResetDTO): Promise<void> {
+  return http.put(`/teachers/${id}/password`, data || {})
 }

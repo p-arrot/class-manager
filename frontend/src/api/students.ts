@@ -1,8 +1,20 @@
 import http from './request'
 import type {
   StudentVO, StudentImportResultVO, StudentPageQuery,
-  PasswordResetDTO, PageResult
+  PasswordResetDTO, StudentCreateDTO, StudentUpdateDTO, StudentBatchDTO, PageResult
 } from '@/types/api'
+
+export function createStudent(data: StudentCreateDTO): Promise<StudentVO> {
+  return http.post('/students', data)
+}
+
+export function updateStudent(id: number, data: StudentUpdateDTO): Promise<StudentVO> {
+  return http.put(`/students/${id}`, data)
+}
+
+export function deleteStudent(id: number): Promise<void> {
+  return http.delete(`/students/${id}`)
+}
 
 export function listStudents(params: StudentPageQuery): Promise<PageResult<StudentVO>> {
   return http.get('/students', { params })
@@ -19,4 +31,12 @@ export function importStudents(file: File): Promise<StudentImportResultVO> {
 
 export function resetPassword(id: number, data: PasswordResetDTO): Promise<void> {
   return http.put(`/students/${id}/password`, data)
+}
+
+export function batchDeleteStudents(data: StudentBatchDTO): Promise<void> {
+  return http.post('/students/batch/delete', data)
+}
+
+export function batchResetPassword(data: StudentBatchDTO): Promise<void> {
+  return http.post('/students/batch/password', data)
 }

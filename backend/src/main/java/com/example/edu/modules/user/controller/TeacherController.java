@@ -65,4 +65,18 @@ public class TeacherController {
     public R<Integer> batchUnbind(@PathVariable Long id, @Valid @RequestBody BatchUnbindDTO dto) {
         return R.ok(teacherService.batchUnbind(id, dto));
     }
+
+    @Operation(summary = "删除教师")
+    @DeleteMapping("/{id}")
+    public R<Void> delete(@PathVariable Long id) {
+        teacherService.delete(id);
+        return R.ok();
+    }
+
+    @Operation(summary = "重置教师密码")
+    @PutMapping("/{id}/password")
+    public R<Void> resetPassword(@PathVariable Long id, @RequestBody PasswordResetDTO dto) {
+        teacherService.resetPassword(id, dto);
+        return R.ok();
+    }
 }

@@ -15,6 +15,9 @@ public class CourseResource {
     private String name;
     private String type;
     private Integer sortOrder;
+    private Long fileSize;
+    private String contentType;
+    private String objectName;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

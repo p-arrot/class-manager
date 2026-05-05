@@ -12,9 +12,13 @@ import com.example.edu.modules.classes.entity.SchoolClass;
 import com.example.edu.modules.classes.entity.TeacherClass;
 import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.classes.mapper.TeacherClassMapper;
+import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.user.dto.PasswordResetDTO;
+import com.example.edu.modules.user.dto.StudentBatchIdsDTO;
+import com.example.edu.modules.user.dto.StudentCreateDTO;
 import com.example.edu.modules.user.dto.StudentExcelRowDTO;
 import com.example.edu.modules.user.dto.StudentPageDTO;
+import com.example.edu.modules.user.dto.StudentUpdateDTO;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
 import com.example.edu.modules.user.service.StudentService;
@@ -22,7 +26,6 @@ import com.example.edu.modules.user.vo.StudentImportResultVO;
 import com.example.edu.modules.user.vo.StudentVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,7 +72,7 @@ public class StudentServiceImpl implements StudentService {
             throw new BizException(ErrorCode.FILE_PARSE_ERROR, "文件中无数据");
         }
 
-        LoginUser loginUser = getCurrentUser();
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
         Set<Long> myClassIds = null;
         if ("teacher".equals(loginUser.getRole())) {
             myClassIds = teacherClassMapper.selectList(
@@ -148,7 +151,7 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public IPage<StudentVO> listStudents(StudentPageDTO dto) {
-        LoginUser loginUser = getCurrentUser();
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
 
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<User>()
                 .eq(User::getRole, "student");
@@ -206,7 +209,7 @@ public class StudentServiceImpl implements StudentService {
         }
 
         // 教师权限检查
-        LoginUser loginUser = getCurrentUser();
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
         if ("teacher".equals(loginUser.getRole())) {
             List<TeacherClass> bindings = teacherClassMapper.selectList(
                     new LambdaQueryWrapper<TeacherClass>()
@@ -233,6 +236,157 @@ public class StudentServiceImpl implements StudentService {
                 "重置学生 " + student.getName() + "(ID:" + id + ") 密码");
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public StudentVO create(StudentCreateDTO dto) {
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
+
+        // Check duplicate
+        User existing = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getStudentNo, dto.getStudentNo())
+                        .eq(User::getRole, "student"));
+        if (existing != null) {
+            throw new BizException(ErrorCode.STUDENT_NO_DUPLICATE);
+        }
+
+        // Teacher permission: verify class belongs to teacher
+        SchoolClass sc = schoolClassMapper.selectById(dto.getClassId());
+        if (sc == null) {
+            throw new BizException(ErrorCode.CLASS_NOT_FOUND);
+        }
+        checkTeacherClassAccess(loginUser, dto.getClassId());
+
+        String pwd = StringUtils.hasText(dto.getPassword()) ? dto.getPassword() : DEFAULT_PASSWORD;
+        User student = new User();
+        student.setStudentNo(dto.getStudentNo());
+        student.setName(dto.getName());
+        student.setPassword(passwordEncoder.encode(pwd));
+        student.setRole("student");
+        student.setClassId(dto.getClassId());
+        student.setEnabled(true);
+        userMapper.insert(student);
+
+        auditLogService.record("创建学生", "student", student.getId(),
+                student.getStudentNo() + " " + student.getName());
+        return toVO(student, sc);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public StudentVO update(Long id, StudentUpdateDTO dto) {
+        User student = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getId, id)
+                        .eq(User::getRole, "student"));
+        if (student == null) {
+            throw new BizException(ErrorCode.STUDENT_NOT_FOUND);
+        }
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
+        checkTeacherStudentAccess(loginUser, student);
+
+        if (StringUtils.hasText(dto.getName())) {
+            student.setName(dto.getName());
+        }
+        if (dto.getClassId() != null) {
+            checkTeacherClassAccess(loginUser, dto.getClassId());
+            student.setClassId(dto.getClassId());
+        }
+        if (dto.getEnabled() != null) {
+            student.setEnabled(dto.getEnabled());
+        }
+        userMapper.updateById(student);
+
+        SchoolClass sc = student.getClassId() != null
+                ? schoolClassMapper.selectById(student.getClassId()) : null;
+
+        auditLogService.record("编辑学生", "student", id,
+                student.getStudentNo() + " " + student.getName());
+        return toVO(userMapper.selectById(id), sc);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(Long id) {
+        User student = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getId, id)
+                        .eq(User::getRole, "student"));
+        if (student == null) {
+            throw new BizException(ErrorCode.STUDENT_NOT_FOUND);
+        }
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
+        checkTeacherStudentAccess(loginUser, student);
+
+        userMapper.deleteById(id);
+        auditLogService.record("删除学生", "student", id,
+                student.getStudentNo() + " " + student.getName());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchDelete(StudentBatchIdsDTO dto) {
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
+        int count = 0;
+        for (Long id : dto.getIds()) {
+            User student = userMapper.selectById(id);
+            if (student == null || !"student".equals(student.getRole())) continue;
+            try {
+                checkTeacherStudentAccess(loginUser, student);
+                userMapper.deleteById(id);
+                count++;
+            } catch (BizException ignored) { /* skip unauthorized */ }
+        }
+        auditLogService.record("批量删除学生", "student", null, "删除" + count + "名学生");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchResetPassword(StudentBatchIdsDTO dto) {
+        LoginUser loginUser = SecurityUtils.getCurrentUser();
+        String newPassword = StringUtils.hasText(dto.getNewPassword())
+                ? dto.getNewPassword() : DEFAULT_PASSWORD;
+        String encoded = passwordEncoder.encode(newPassword);
+        int count = 0;
+        for (Long id : dto.getIds()) {
+            User student = userMapper.selectById(id);
+            if (student == null || !"student".equals(student.getRole())) continue;
+            try {
+                checkTeacherStudentAccess(loginUser, student);
+                student.setPassword(encoded);
+                userMapper.updateById(student);
+                count++;
+            } catch (BizException ignored) { /* skip unauthorized */ }
+        }
+        auditLogService.record("批量重置密码", "student", null, "重置" + count + "名学生密码");
+    }
+
+    // ---- private helpers ----
+
+    private void checkTeacherStudentAccess(LoginUser loginUser, User student) {
+        if (!"teacher".equals(loginUser.getRole())) return;
+        List<TeacherClass> bindings = teacherClassMapper.selectList(
+                new LambdaQueryWrapper<TeacherClass>()
+                        .eq(TeacherClass::getTeacherId, loginUser.getUserId()));
+        Set<Long> myClassIds = bindings.stream()
+                .map(TeacherClass::getClassId).collect(Collectors.toSet());
+        if (student.getClassId() == null || !myClassIds.contains(student.getClassId())) {
+            throw new BizException(ErrorCode.TEACHER_NOT_IN_CHARGE);
+        }
+    }
+
+    private void checkTeacherClassAccess(LoginUser loginUser, Long classId) {
+        if (!"teacher".equals(loginUser.getRole())) return;
+        List<TeacherClass> bindings = teacherClassMapper.selectList(
+                new LambdaQueryWrapper<TeacherClass>()
+                        .eq(TeacherClass::getTeacherId, loginUser.getUserId()));
+        Set<Long> myClassIds = bindings.stream()
+                .map(TeacherClass::getClassId).collect(Collectors.toSet());
+        if (!myClassIds.contains(classId)) {
+            throw new BizException(ErrorCode.TEACHER_NOT_IN_CHARGE);
+        }
+    }
+
     private SchoolClass findOrCreateClass(String grade, String className) {
         SchoolClass sc = schoolClassMapper.selectOne(
                 new LambdaQueryWrapper<SchoolClass>()
@@ -245,15 +399,6 @@ public class StudentServiceImpl implements StudentService {
             schoolClassMapper.insert(sc);
         }
         return sc;
-    }
-
-    private LoginUser getCurrentUser() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated()
-                && auth.getPrincipal() instanceof LoginUser loginUser) {
-            return loginUser;
-        }
-        throw new BizException(ErrorCode.UNAUTHORIZED);
     }
 
     private StudentVO toVO(User user, SchoolClass sc) {

@@ -8,8 +8,8 @@ import lombok.Data;
 @Schema(description = "创建班级请求")
 public class ClassCreateDTO {
 
-    @NotBlank(message = "年级不能为空")
-    @Schema(description = "年级", example = "三年级")
+    @NotBlank(message = "入学年份不能为空")
+    @Schema(description = "入学年份", example = "2026")
     private String grade;
 
     @NotBlank(message = "班级名称不能为空")

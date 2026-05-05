@@ -1,173 +1,9 @@
-# 开发进程
+# 开发进度
 
-## 已完成
+> **用途：** 项目进度的唯一跟踪文件。记录各阶段完成状态、待办清单。
+> **相关文档：** 规格见 `SPECIFICATION.md`，前端规划见 `FRONTEND_PLAN.md`，后端规划见 `BACKEND_PLAN.md`，API 见 `API.md`
 
-### Phase 1 — 后端基础工程 ✅
-
-- Spring Boot 3.4.1 项目 + Maven + application.yml
-- Docker Compose 开发环境（PostgreSQL 16, Redis 7, MinIO, kkFileView）
-- Flyway 数据库迁移（V1: users, schools, school_classes, teacher_classes, audit_logs）
-- 统一响应 `R<T>` / `PageResult<T>` / `ErrorCode`（27 个错误码）
-- `BizException` / `GlobalExceptionHandler`
-- Spring Security 6 + JWT 鉴权（全局查找：admin/teacher 按 username，student 按 student_no）
-- BCrypt 密码加密，默认管理员自动初始化（admin/admin123）
-- SpringDoc OpenAPI（`/api-docs`）
-- MyBatis-Plus + 分页插件 + 元数据自动填充
-- 审计日志基础设施
-
-### Phase 2 — 班级、教师、学生管理 ✅
-
-- 班级管理 CRUD（`/api/classes`），含学生/教师关联检查
-- 教师管理 CRUD（`/api/teachers`），含班级批量绑定/解绑
-- 学生 Excel 导入（EasyExcel，含失败原因反馈）
-- 学生分页列表查询，按班级筛选
-- 学生密码重置（默认密码/指定新密码，BCrypt 加密，审计日志记录）
-- 教师数据隔离：教师只能访问自己负责班级的学生
-- Flyway V2 + V3 迁移（全局唯一索引、性能索引）
-- 16 个 REST 端点，全部通过 API 测试
-
-### Phase F0 — 前端脚手架 + 登录 + 三套 Layout ✅
-
-- Vite + Vue 3 + TypeScript 项目
-- Naive UI 主题系统（浅色/深色两套 themeOverrides，"Quiet Precision" 设计风格）
-- Geist 字体 + 系统中文字体
-- Axios 封装（token 注入、双格式响应处理、401 自动跳转）
-- 登录页（左右双栏布局，"让每一堂课都有迹可循"）
-- 路由守卫（按 role 分发，未登录 → `/login`，角色不匹配 → 跳回首页）
-- AdminLayout / TeacherLayout / StudentLayout 三套骨架
-- Pinia auth store + theme store（localStorage 持久化）
-- 5 个 API 模块（auth, classes, teachers, students）
-- TypeScript 类型定义（LoginRequest/Response, ClassVO, TeacherVO, StudentVO 等）
-- 3 个管理员占位页 + 教师/学生首页
-- 署名：Tatakai
-
-### Phase 3a — 后端：课程、学期、课时 ✅
-
-- Course 实体 + CRUD（`/api/courses`），含创建时批量绑定班级
-- CourseClass 关系表（课程-班级多对多）
-- Semester 实体 + CRUD（`/api/courses/{id}/semesters`），含开始/结束时间
-- Lesson 实体 + CRUD（`/api/semesters/{id}/lessons`），含排序号 + 拖拽重排
-- 课程资源文件夹（树形目录结构，支持创建/重命名/移动/级联删除）
-- 权限：教师管理自己创建的课程；学生仅可见关联班级的课程
-- Flyway V4 迁移（5 张新表 + 9 个索引）
-- SecurityUtils 工具类（统一从 SecurityContext 获取当前用户）
-- 18 个 REST 端点
-
----
-
-## 未完成
-
-### Phase 3a — 后端：课程、学期、课时 ✅
-
-- [x] Course 实体 + CRUD
-- [x] CourseClass 关系表（课程绑定授课班级）
-- [x] Semester 实体 + CRUD（属于课程）
-- [x] Lesson 实体 + CRUD（属于学期，含排序号）
-- [x] 课程资源文件夹（树形目录结构）
-- [x] 权限校验：教师管理自己的课程；学生只看到关联班级的课程
-
-### Phase F1 — 前端：管理员端 + 教师课程页
-
-- [ ] 管理员端：班级管理页（列表/新建/编辑/删除）
-- [ ] 管理员端：教师管理页（列表/新建/编辑/班级绑定）
-- [ ] 管理员端：学生管理页（列表/Excel 导入/重置密码）
-- [ ] 教师端：课程列表 + 新建/编辑课程
-- [ ] 教师端：学期管理 + 课时管理（嵌套路由）
-
-### Phase 3b — 后端：MinIO 文件基础设施
-
-- [ ] MinIO 客户端配置
-- [ ] 文件上传（预签名 PUT URL，前端直传）
-- [ ] 文件下载（预签名 GET URL）
-- [ ] kkFileView 预览对接
-- [ ] 课程封面上传
-- [ ] 课时资源上传/下载/预览
-
-### Phase F2 — 前端：文件组件 + 课程资源
-
-- [ ] FileUpload 组件（拖拽/点击、进度条）
-- [ ] FilePreview 组件（kkFileView iframe 嵌入）
-- [ ] FileList 组件（图标/列表视图）
-- [ ] 课程资源文件夹树 + 上传/下载/预览
-- [ ] 课时资源管理
-
-### Phase 4 — 后端：课堂任务 + 实时汇总
-
-- [ ] Task 模块（worksheet / artifact）
-- [ ] 学习单 JSON Schema 设计（radio / checkbox / text / textarea / table）
-- [ ] 教师创建学习单 + 课堂作品任务
-- [ ] 学生填写学习单 / 提交作品附件
-- [ ] 教师查看/下载/预览提交
-- [ ] WebSocket + STOMP 配置
-- [ ] 学习单提交实时推送 + 教师端统计汇总
-
-### Phase F3 — 前端：课堂任务 + 实时统计
-
-- [ ] 教师端：任务创建页（学习单 schema 编辑器 + 作品任务表单）
-- [ ] 学生端：学习单填写（JSON Schema 动态渲染表单）
-- [ ] 学生端：作品提交
-- [ ] 教师端：提交列表 + 实时统计图表（ECharts）
-- [ ] WebSocket 订阅 Hook（`useSocket` composable）
-
-### Phase 5 — 后端：评分和雷达图
-
-- [ ] Evaluation 模块（四维度评分 A-E）
-- [ ] 教师评分（可选 1-4 个维度）
-- [ ] 特殊情况标记
-- [ ] 截止未交自动评 F
-- [ ] 过程评价计算（worksheet 权重 1.0 + artifact 权重 1.5）
-- [ ] 学期雷达图 + 进步雷达图数据
-
-### Phase F4 — 前端：评分 + 雷达图
-
-- [ ] 教师端：评分页（四维度 A-E 选择器）
-- [ ] 学生端：我的评分 + 学期雷达图（ECharts radar）
-- [ ] 学生端：进步雷达图（双雷达叠加对比）
-- [ ] 雷达图组件封装
-
-### Phase 6a — 后端：考试系统
-
-- [ ] 试卷管理（JSONB 题目）
-- [ ] 考试任务创建（定时、班级、权重）
-- [ ] 学生参加考试（计时答题）
-- [ ] 考试提交与评分
-- [ ] 缺考处理
-
-### Phase 6b — 后端：项目化学习
-
-- [ ] 项目创建 + 组队
-- [ ] 项目作品提交
-- [ ] 教师评分（组队同分）
-
-### Phase 6c — 后端：结果评价
-
-- [ ] 考试/项目加权平均
-- [ ] 无数据时"暂无数据"处理
-
-### Phase F5 — 前端：考试 + 项目 + 结果评价
-
-- [ ] 教师端：试卷编辑器 + 考试任务创建
-- [ ] 学生端：考试答题页（计时器、题型渲染）
-- [ ] 学生端：项目组队 + 作品提交
-- [ ] 教师端：项目评分页
-- [ ] 结果评价展示
-
-### Phase 7 — 后端：网盘和总评导出
-
-- [ ] 学生网盘（树形目录、MinIO、容量限制）
-- [ ] 教师查看负责班级学生网盘
-- [ ] 学期总评计算（过程 × 50% + 结果 × 50%）
-- [ ] EasyExcel 按班级分 Sheet 导出
-
-### Phase F6 — 前端：网盘 + 总评导出
-
-- [ ] 学生端：网盘页（树形目录、上传/下载/预览/删除）
-- [ ] 教师端：学生网盘查看
-- [ ] 教师端：总评导出按钮 + 导出进度反馈
-
----
-
-## 进度概览
+## 进度总览
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
@@ -175,9 +11,9 @@
 | Phase 2 | 班级、教师、学生管理 | ✅ 已完成 |
 | Phase F0 | 前端脚手架 + 登录 + Layout | ✅ 已完成 |
 | Phase 3a | 后端：课程、学期、课时 | ✅ 已完成 |
-| Phase F1 | 前端：管理员端 + 教师课程页 | ⬜ 待开始 |
-| Phase 3b | 后端：MinIO 文件基础设施 | ⬜ 待开始 |
-| Phase F2 | 前端：文件组件 + 课程资源 | ⬜ 待开始 |
+| Phase F1 | 前端：管理员端 + 教师/学生课程页 | ✅ 已完成 |
+| Phase 3b | 后端：MinIO 文件基础设施 | ✅ 已完成 |
+| Phase F2 | 前端：文件组件 + 课程资源 | ✅ 已完成 |
 | Phase 4 | 后端：课堂任务 + 实时汇总 | ⬜ 待开始 |
 | Phase F3 | 前端：课堂任务 + 实时统计 | ⬜ 待开始 |
 | Phase 5 | 后端：评分和雷达图 | ⬜ 待开始 |
@@ -188,3 +24,135 @@
 | Phase F5 | 前端：考试 + 项目 + 结果评价 | ⬜ 待开始 |
 | Phase 7 | 后端：网盘和总评导出 | ⬜ 待开始 |
 | Phase F6 | 前端：网盘 + 总评导出 | ⬜ 待开始 |
+
+---
+
+## Phase 1 — 后端基础工程 ✅
+
+- Spring Boot 3.4.1 + Maven + application.yml
+- Docker Compose（PostgreSQL 16, Redis 7, MinIO, kkFileView）
+- Flyway V1：schools, school_classes, users, teacher_classes, audit_logs
+- 统一响应 `R<T>` / `PageResult<T>` / `ErrorCode`（27 个错误码）
+- `BizException` / `GlobalExceptionHandler`
+- Spring Security 6 + JWT（全局查找：admin/teacher 按 username，student 按 student_no）
+- BCrypt 密码加密，AdminInitializer（admin/admin123）
+- SpringDoc OpenAPI + MyBatis-Plus 分页 + 审计日志基础设施
+
+## Phase 2 — 班级、教师、学生管理 ✅
+
+- 班级 CRUD + 教师 CRUD + 班级绑定/解绑
+- 学生 Excel 导入（EasyExcel，含失败原因反馈）+ 分页列表 + 按班级筛选
+- 学生密码重置（默认/指定新密码，BCrypt，审计日志）
+- 教师数据隔离：只能访问负责班级的学生
+- Flyway V2 + V3（全局唯一索引、性能索引）
+- 16 个 REST 端点
+
+## Phase F0 — 前端脚手架 ✅
+
+- Vite + Vue 3 + TypeScript + Naive UI（Quiet Precision 主题）
+- Axios 封装（token 注入、双格式响应处理、401 跳转）
+- 登录页（左右双栏）+ 路由守卫（按 role 分发）
+- AdminLayout / TeacherLayout / StudentLayout 三套骨架
+- Pinia auth + theme store
+- 5 个 API 模块 + TypeScript 类型定义
+
+## Phase 3a — 后端：课程、学期、课时 ✅
+
+- Course CRUD + CourseClass 关系表（课程-班级多对多）
+- Semester CRUD + Lesson CRUD（含排序号 + 拖拽重排）
+- 课程资源文件夹（树形目录结构）
+- 权限：教师管理自己的课程；学生仅可见关联班级的课程
+- Flyway V4（5 张新表 + 9 个索引）+ 18 个 REST 端点
+
+---
+
+## Phase F1 — 前端：管理员 + 教师/学生课程页 🔄
+
+### 已完成 ✅
+
+- [x] 管理员：班级管理（NDataTable + 年级筛选 + CRUD 弹窗）
+- [x] 管理员：教师管理（表格 + 创建/编辑/班级绑定 + 删除按钮）
+- [x] 管理员：学生管理（表格 + 班级筛选 + Excel 导入 + 密码重置 + 批量操作）
+- [x] 教师：课程列表（卡片网格 + 创建/编辑/删除 + 班级多选）
+- [x] 教师：课程详情（学期 Tab + 课时 Tab + 排序 + 面包屑）
+- [x] 学生：课程列表 + 课程详情（只读卡片 + 只读学期/课时）
+- [x] 改造 TeacherLayout：侧边栏 + 顶栏（NMenu：工作台/课程管理）
+- [x] 改造 StudentLayout：侧边栏导航（NMenu：我的课程）
+- [x] 三套布局统一 `min-height:100vh`（div flex 方案替代 NLayout 高度依赖）
+- [x] 抽取共享组件：`CourseCard.vue`、`PageHeader.vue`
+- [x] 抽取工具函数：`utils/date.ts`（dayjs，替换 5 处手写 formatDate）
+- [x] 后端新增 `DELETE /api/teachers/{id}` 端点
+- [x] API 模块：courses.ts / semesters.ts / lessons.ts + 12 个 TS 类型
+- [x] Bug 修复：getCourse 导入、学生 HomeView 静态页、SecurityConfig 权限、卡片高度统一
+
+- [x] 班级命名从年级制改为入学年份制（grade: "三年级" → "2024"，显示格式: "2024级1班"）
+- [x] TeacherLayout 班级选择器接入 Pinia 全局过滤（useClassFilterStore + 后端 classId 筛选）
+
+### 待完成 🔲
+
+（无待完成项）
+
+---
+
+## Phase 3b — 后端：MinIO 文件基础设施 ✅
+
+> 详细设计见 `BACKEND_PLAN.md` §六
+
+### MinIO 基础设施
+
+- [x] `infrastructure/minio/MinioProperties.java` — `@ConfigurationProperties(prefix="minio")`
+- [x] `infrastructure/minio/MinioConfig.java` — `MinioClient` Bean
+- [x] `infrastructure/minio/MinioService.java` — 预签名 PUT/GET URL、deleteObject、getObjectInfo、ensureBucketExists
+
+### kkFileView 预览集成
+
+- [x] `infrastructure/preview/PreviewProperties.java` — `@ConfigurationProperties(prefix="kkfileview")`
+- [x] `infrastructure/preview/PreviewService.java` — `generatePreviewUrl(presignedGetUrl)`
+
+### 数据库迁移 (Flyway V5)
+
+- [x] `V5__phase3b.sql` — `course_resources` 加 `file_size`/`content_type`/`object_name`；新建 `lesson_resources` 表
+
+### 课程资源文件支持
+
+- [x] `CourseResource.java` entity — 加 `fileSize`/`contentType`/`objectName` 字段
+- [x] `CourseResourceVO.java` — 同上
+- [x] `CourseResourceServiceImpl.java` — `delete()` 加 MinIO 清理；`toVO()` 加文件字段映射；注入 `MinioService`
+- [x] `FileUploadDTO.java` + `FileUploadVO.java`
+- [x] `FileService.java` + `FileServiceImpl.java` — 校验→创建 CourseResource→生成预签名 URL→审计日志
+- [x] `FileController.java` — 3 个端点：`POST /api/files/upload/presigned`、`GET /api/files/{id}/download`、`GET /api/files/{id}/preview`
+
+### 课时资源预建
+
+- [x] `LessonResource.java` entity — `lesson_resources` 表实体（CRUD 后续扩展）
+
+### 错误码与配置
+
+- [x] `ErrorCode.java` — 新增 `FILE_SIZE_EXCEEDED(40005)` / `FILE_TYPE_NOT_ALLOWED(40006)` / `FILE_NOT_FOUND(40414)`
+- [x] `application-dev.yml` — 新增 `kkfileview.base-url: http://localhost:8012`
+
+---
+
+
+> 详细任务清单见 `FRONTEND_PLAN.md` 第六节和 `SPECIFICATION.md` 第二十九节。
+
+### 后端待开始
+
+| 阶段 | 关键产出 |
+|------|----------|
+| Phase 4 | Task 模块、学习单 JSON Schema、WebSocket + STOMP |
+| Phase 5 | Evaluation 模块、四维度评分 A-E、雷达图数据 |
+| Phase 6a | 试卷管理（JSONB）、考试任务、缺考处理 |
+| Phase 6b | 项目创建 + 组队、项目评分（组队同分） |
+| Phase 6c | 结果评价计算（加权平均、"暂无数据"） |
+| Phase 7 | 学生网盘（MinIO、树形目录）、学期总评 Excel 导出 |
+
+### 前端待开始
+
+| 阶段 | 关键页面 |
+|------|----------|
+| Phase F2 | FileUpload/FilePreview/FileTree 组件、课程资源管理页 |
+| Phase F3 | 任务创建页（schema 编辑器）、学习单填写、作品提交、实时统计 |
+| Phase F4 | 评分页（A-E 选择器）、雷达图、学生评价页 |
+| Phase F5 | 试卷编辑器、考试答题页、项目组队页、项目评分页 |
+| Phase F6 | 学生网盘页、学期总评预览 + Excel 导出 |

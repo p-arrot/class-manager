@@ -15,6 +15,8 @@ public enum ErrorCode {
     FILE_PARSE_ERROR(40002, "文件解析失败"),
     FILE_EMPTY(40003, "文件为空"),
     EXCEL_FORMAT_ERROR(40004, "Excel格式错误或缺少必要列"),
+    FILE_SIZE_EXCEEDED(40005, "文件大小超过限制"),
+    FILE_TYPE_NOT_ALLOWED(40006, "不支持的文件类型"),
 
     // 401
     UNAUTHORIZED(401, "未登录或登录已过期"),
@@ -41,6 +43,7 @@ public enum ErrorCode {
     SEMESTER_NOT_FOUND(40411, "学期不存在"),
     LESSON_NOT_FOUND(40412, "课时不存在"),
     RESOURCE_NOT_FOUND(40413, "资源不存在"),
+    FILE_NOT_FOUND(40414, "文件不存在"),
 
     // 409
     CONFLICT(409, "数据冲突"),

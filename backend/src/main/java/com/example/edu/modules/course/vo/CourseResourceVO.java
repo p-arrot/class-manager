@@ -30,6 +30,12 @@ public class CourseResourceVO {
     @Schema(description = "排序号")
     private Integer sortOrder;
 
+    @Schema(description = "文件大小（字节）")
+    private Long fileSize;
+
+    @Schema(description = "文件 MIME 类型")
+    private String contentType;
+
     @Schema(description = "子节点列表")
     private List<CourseResourceVO> children;
 

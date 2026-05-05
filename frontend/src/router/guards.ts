@@ -2,37 +2,36 @@ import type { Router } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 export function setupGuards(router: Router) {
-  router.beforeEach((to, _from, next) => {
+  router.beforeEach((to, _from) => {
     const auth = useAuthStore()
 
     // Public routes
     if (to.meta.public) {
-      // If already logged in, redirect to role home
       if (auth.isLoggedIn && to.path === '/login') {
-        return next(getRoleHome(auth.role!))
+        return getRoleHome(auth.role!)
       }
-      return next()
+      return true
     }
 
     // Not logged in
     if (!auth.isLoggedIn) {
-      return next('/login')
+      return '/login'
     }
 
     // Role check
     const requiredRole = to.meta.requiresRole as string | undefined
     if (requiredRole && auth.role !== requiredRole) {
-      return next(getRoleHome(auth.role!))
+      return getRoleHome(auth.role!)
     }
 
-    next()
+    return true
   })
 }
 
 function getRoleHome(role: string): string {
   switch (role) {
     case 'admin': return '/admin/classes'
-    case 'teacher': return '/teacher/home'
+    case 'teacher': return '/teacher/courses'
     case 'student': return '/student/home'
     default: return '/login'
   }

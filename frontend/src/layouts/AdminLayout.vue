@@ -47,7 +47,7 @@ function handleLogout() {
 </script>
 
 <template>
-  <NLayout style="min-height: 100vh">
+  <NLayout has-sider style="min-height: 100vh">
     <NLayoutSider
       bordered
       collapse-mode="width"
@@ -182,6 +182,7 @@ function handleLogout() {
 }
 .main-content {
   padding: 28px 32px;
-  max-width: 1200px;
+  width: 100%;
 }
+.main-content :deep(.page) { max-width: none; }
 </style>

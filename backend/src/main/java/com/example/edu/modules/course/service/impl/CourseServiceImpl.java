@@ -60,14 +60,10 @@ public class CourseServiceImpl implements CourseService {
         courseMapper.insert(course);
 
         if (!CollectionUtils.isEmpty(dto.getClassIds())) {
-            List<CourseClass> bindings = new ArrayList<>();
             for (Long classId : dto.getClassIds()) {
                 CourseClass cc = new CourseClass();
                 cc.setCourseId(course.getId());
                 cc.setClassId(classId);
-                bindings.add(cc);
-            }
-            for (CourseClass cc : bindings) {
                 courseClassMapper.insert(cc);
             }
         }
@@ -185,6 +181,20 @@ public class CourseServiceImpl implements CourseService {
 
         if ("teacher".equals(role)) {
             wrapper.eq(Course::getTeacherId, userId);
+            if (dto.getClassId() != null) {
+                List<CourseClass> bindings = courseClassMapper.selectList(
+                        new LambdaQueryWrapper<CourseClass>()
+                                .eq(CourseClass::getClassId, dto.getClassId()));
+                List<Long> filteredIds = bindings.stream()
+                        .map(CourseClass::getCourseId)
+                        .distinct()
+                        .collect(Collectors.toList());
+                if (filteredIds.isEmpty()) {
+                    wrapper.eq(Course::getId, -1L);
+                } else {
+                    wrapper.in(Course::getId, filteredIds);
+                }
+            }
         } else if ("student".equals(role)) {
             Long classId = SecurityUtils.getCurrentUserClassId();
             if (classId != null) {

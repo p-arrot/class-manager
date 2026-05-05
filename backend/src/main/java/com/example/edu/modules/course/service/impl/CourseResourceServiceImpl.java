@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
+import com.example.edu.infrastructure.minio.MinioService;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.course.dto.CourseResourceCreateDTO;
 import com.example.edu.modules.course.dto.CourseResourceMoveDTO;
 import com.example.edu.modules.course.dto.CourseResourceUpdateDTO;
@@ -34,6 +36,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
     private final CourseResourceMapper courseResourceMapper;
     private final CourseMapper courseMapper;
     private final CourseClassMapper courseClassMapper;
+    private final MinioService minioService;
     private final AuditLogService auditLogService;
 
     @Override
@@ -43,7 +46,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkTeacherOwnsCourse(course);
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
 
         // Validate parent exists and belongs to same course
         if (dto.getParentId() != null) {
@@ -84,7 +87,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (resource == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
         }
-        checkResourceOwner(resource);
+        CoursePermissionHelper.checkResourceOwner(resource, courseMapper);
 
         resource.setName(dto.getName());
         courseResourceMapper.updateById(resource);
@@ -100,18 +103,30 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (resource == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
         }
-        checkResourceOwner(resource);
+        CoursePermissionHelper.checkResourceOwner(resource, courseMapper);
 
         // Recursively collect and delete all descendants
         List<Long> idsToDelete = new ArrayList<>();
         collectDescendantIds(id, idsToDelete);
         idsToDelete.add(id);
 
+        // Delete MinIO objects for FILE type resources (best-effort)
+        List<CourseResource> toDelete = courseResourceMapper.selectBatchIds(idsToDelete);
+        for (CourseResource r : toDelete) {
+            if ("FILE".equals(r.getType()) && r.getObjectName() != null) {
+                try {
+                    minioService.deleteObject(r.getObjectName());
+                } catch (Exception e) {
+                    log.error("MinIO delete failed, orphaned object: objectName={}", r.getObjectName(), e);
+                }
+            }
+        }
+
         for (Long rid : idsToDelete) {
             courseResourceMapper.deleteById(rid);
         }
 
-        auditLogService.record("删除资源文件夹", "course_resource", id, resource.getName());
+        auditLogService.record("删除资源", "course_resource", id, resource.getName());
     }
 
     @Override
@@ -121,7 +136,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (resource == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
         }
-        checkResourceOwner(resource);
+        CoursePermissionHelper.checkResourceOwner(resource, courseMapper);
 
         // Validate target parent
         if (dto.getTargetParentId() != null) {
@@ -160,6 +175,8 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         }
 
         courseResourceMapper.updateById(resource);
+
+        auditLogService.record("移动资源", "course_resource", id, resource.getName());
     }
 
     @Override
@@ -168,7 +185,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkCourseAccess(course);
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
 
         List<CourseResource> all = courseResourceMapper.selectList(
                 new LambdaQueryWrapper<CourseResource>()
@@ -188,7 +205,7 @@ public class CourseResourceServiceImpl implements CourseResourceService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkCourseAccess(course);
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
 
         List<CourseResource> resources = courseResourceMapper.selectList(
                 new LambdaQueryWrapper<CourseResource>()
@@ -209,6 +226,8 @@ public class CourseResourceServiceImpl implements CourseResourceService {
                 .parentId(resource.getParentId())
                 .type(resource.getType())
                 .sortOrder(resource.getSortOrder())
+                .fileSize(resource.getFileSize())
+                .contentType(resource.getContentType())
                 .children(List.of())
                 .createdAt(resource.getCreatedAt())
                 .build();
@@ -235,44 +254,5 @@ public class CourseResourceServiceImpl implements CourseResourceService {
             collectDescendantIds(child.getId(), result);
         }
     }
-
-    private void checkTeacherOwnsCourse(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if (!"admin".equals(role) && !course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-        }
-    }
-
-    private void checkResourceOwner(CourseResource resource) {
-        Course course = courseMapper.selectById(resource.getCourseId());
-        if (course == null) {
-            throw new BizException(ErrorCode.COURSE_NOT_FOUND);
-        }
-        checkTeacherOwnsCourse(course);
-    }
-
-    private void checkCourseAccess(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if ("admin".equals(role)) {
-            return;
-        }
-        if ("teacher".equals(role)) {
-            if (!course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-            }
-            return;
-        }
-        if ("student".equals(role)) {
-            Long classId = SecurityUtils.getCurrentUserClassId();
-            if (classId != null) {
-                Long count = courseClassMapper.selectCount(
-                        new LambdaQueryWrapper<CourseClass>()
-                                .eq(CourseClass::getCourseId, course.getId())
-                                .eq(CourseClass::getClassId, classId));
-                if (count == 0) {
-                    throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-                }
-            }
-        }
-    }
 }
+

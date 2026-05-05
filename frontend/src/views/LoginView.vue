@@ -16,7 +16,7 @@ const errorMsg = ref('')
 
 const roleHomeMap: Record<string, string> = {
   admin: '/admin/classes',
-  teacher: '/teacher/home',
+  teacher: '/teacher/courses',
   student: '/student/home',
 }
 

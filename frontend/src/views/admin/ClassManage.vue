@@ -1,36 +1,245 @@
 <script setup lang="ts">
+import {ref, reactive, computed, onMounted, h} from 'vue'
+import { formatDate } from '@/utils/date'
+import {
+  NButton,
+  NDataTable,
+  NModal,
+  NForm,
+  NFormItem,
+  NInput,
+  NSpace,
+  NIcon,
+  NEmpty,
+  useMessage,
+  useDialog
+} from 'naive-ui'
+import {AddOutline, CreateOutline, TrashOutline} from '@vicons/ionicons5'
+import {listClasses, createClass, updateClass, deleteClass} from '@/api/classes'
+import type {ClassVO, ClassCreateDTO, ClassUpdateDTO, ClassPageQuery} from '@/types/api'
+import type {DataTableColumns, FormInst, FormRules} from 'naive-ui'
+
+const message = useMessage()
+const dialog = useDialog()
+
+const loading = ref(false)
+const records = ref<ClassVO[]>([])
+const total = ref(0)
+const query = reactive<ClassPageQuery>({page: 1, size: 10, grade: undefined, keyword: ''})
+
+const showModal = ref(false)
+const modalTitle = ref('新建班级')
+const editingId = ref<number | null>(null)
+const formRef = ref<FormInst | null>(null)
+const formValue = reactive<ClassCreateDTO>({grade: '', name: ''})
+
+const rules: FormRules = {
+  grade: {required: true, message: '请输入入学年份', trigger: 'blur'},
+  name: {required: true, message: '请输入班级名称', trigger: 'blur'},
+}
+
+const gradeOptions = computed(() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({length: 9}, (_, i) => {
+    const year = currentYear - 5 + i
+    return { label: year + '级', value: String(year) }
+  })
+})
+
+const columns: DataTableColumns<ClassVO> = [
+  {
+    title: '年级', key: 'grade', width: 120,
+    render(row: ClassVO) { return row.grade + '级' },
+    filterOptions: gradeOptions.value,
+    filter(value: string | number, row: ClassVO) {
+      return !value || row.grade === value
+    },
+  },
+  {title: '班级名称', key: 'name', width: 150},
+  {
+    title: '创建时间', key: 'createdAt', width: 180, render(row: ClassVO) {
+      return formatDate(row.createdAt)
+    }
+  },
+  {
+    title: '操作', key: 'actions', width: 140,
+    render(row: ClassVO) {
+      return h(NSpace, {size: 2}, () => [
+        h(NButton, {
+          size: 'tiny',
+          quaternary: true,
+          onClick: () => openEdit(row)
+        }, () => h(NIcon, {size: 15}, () => h(CreateOutline))),
+        h(NButton, {
+          size: 'tiny',
+          quaternary: true,
+          onClick: () => handleDelete(row)
+        }, () => h(NIcon, {size: 15}, () => h(TrashOutline))),
+      ])
+    },
+  },
+]
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const r = await listClasses(query);
+    records.value = r.records;
+    total.value = r.total
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '操作失败'
+    message.error(msg || '加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function handlePageChange(page: number) {
+  query.page = page;
+  fetchData()
+}
+
+function handleFilter(filters: Record<string, string[]>) {
+  query.grade = filters.grade?.[0] || undefined;
+  query.page = 1;
+  fetchData()
+}
+
+function openCreate() {
+  modalTitle.value = '新建班级';
+  editingId.value = null
+  formValue.grade = '';
+  formValue.name = '';
+  showModal.value = true
+}
+
+function openEdit(row: ClassVO) {
+  modalTitle.value = '编辑班级';
+  editingId.value = row.id
+  formValue.grade = row.grade;
+  formValue.name = row.name;
+  showModal.value = true
+}
+
+async function handleSubmit() {
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
+  try {
+    if (editingId.value) {
+      await updateClass(editingId.value, formValue as ClassUpdateDTO);
+      message.success('更新成功')
+    } else {
+      await createClass(formValue as ClassCreateDTO);
+      message.success('创建成功')
+    }
+    showModal.value = false;
+    fetchData()
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '操作失败'
+    message.error(msg || '操作失败')
+  }
+}
+
+function handleDelete(row: ClassVO) {
+  dialog.warning({
+    title: '确认删除', content: `确定删除 ${row.grade}${row.name}？`, positiveText: '删除', negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await deleteClass(row.id);
+        message.success('已删除');
+        fetchData()
+      } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '操作失败'
+        message.error(msg || '删除失败')
+      }
+    },
+  })
+}
+
+
+onMounted(fetchData)
 </script>
 
 <template>
   <div class="page">
-    <h2 class="page-title">班级管理</h2>
-    <p class="page-hint">创建和管理学校班级。此功能将在下一阶段实现。</p>
-    <div class="empty-state">
-      <div class="empty-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
-      </div>
-      <p>暂无班级数据</p>
+    <div class="page-head">
+      <h2 class="page-title">班级管理</h2>
+      <NButton type="primary" size="small" @click="openCreate">
+        <template #icon>
+          <NIcon :size="16">
+            <AddOutline/>
+          </NIcon>
+        </template>
+        新建班级
+      </NButton>
     </div>
+    <NDataTable :columns="columns" :data="records" :loading="loading"
+                :pagination="{ page: query.page, pageSize: query.size, itemCount: total, prefix: () => `共 ${total} 条` }"
+                remote :row-key="(r: ClassVO) => r.id" @update:page="handlePageChange"
+                @update:page-size="(s: number) => { query.size = s; fetchData() }" @update:filters="handleFilter"
+                size="small">
+      <template #empty>
+        <NEmpty description="暂无班级数据"/>
+      </template>
+    </NDataTable>
+
+    <NModal v-model:show="showModal" :title="modalTitle" preset="card" style="width:400px">
+      <NForm ref="formRef" :model="formValue" :rules="rules" label-placement="left" label-width="72">
+        <NFormItem label="年级" path="grade">
+          <NInput v-model:value="formValue.grade" placeholder="如：2026"/>
+        </NFormItem>
+        <NFormItem label="班级名称" path="name">
+          <NInput v-model:value="formValue.name" placeholder="如：1班"/>
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showModal = false">取消</NButton>
+          <NButton type="primary" @click="handleSubmit">确定</NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <style scoped>
-.page { max-width: 900px; }
-.page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: #1a1a18; margin-bottom: 6px; }
-.page-hint { font-size: 14px; color: #8a8a84; margin-bottom: 40px; }
-.empty-state {
+.page {
+  max-width: 900px;
+  min-height: 100vh;
+  animation: fadein 200ms ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 0;
-  border: 1px dashed #d8d6d0;
-  border-radius: 12px;
-  color: #b0b0a8;
-  font-size: 14px;
-  gap: 12px;
 }
-.empty-icon { opacity: 0.3; }
+
+.table-wrap {
+  flex: 1;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
 </style>

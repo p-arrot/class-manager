@@ -1,0 +1,21 @@
+import dayjs from 'dayjs'
+
+/**
+ * Format an ISO timestamp string for display.
+ * @param s - ISO timestamp string
+ * @param fmt - output format: 'date' = YYYY-MM-DD, 'datetime' = YYYY-MM-DD HH:mm:ss, 'full' = YYYY-MM-DD HH:mm:ss
+ */
+export function formatDate(s: string | null | undefined, fmt: 'date' | 'datetime' | 'full' = 'datetime'): string {
+  if (!s) return ''
+  const d = dayjs(s)
+  if (!d.isValid()) return ''
+  if (fmt === 'date') return d.format('YYYY-MM-DD')
+  return d.format('YYYY-MM-DD HH:mm:ss')
+}
+
+/**
+ * Format a date range for display.
+ */
+export function formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
+  return `${formatDate(start, 'date')} — ${formatDate(end, 'date')}`
+}

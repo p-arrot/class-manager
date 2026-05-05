@@ -22,4 +22,8 @@ public interface TeacherService {
     int batchBind(Long teacherId, BatchBindDTO dto);
 
     int batchUnbind(Long teacherId, BatchUnbindDTO dto);
+
+    void delete(Long id);
+
+    void resetPassword(Long id, PasswordResetDTO dto);
 }

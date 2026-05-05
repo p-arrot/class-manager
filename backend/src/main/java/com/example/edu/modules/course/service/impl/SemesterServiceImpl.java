@@ -3,12 +3,11 @@ package com.example.edu.modules.course.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
-import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.course.dto.SemesterCreateDTO;
 import com.example.edu.modules.course.dto.SemesterUpdateDTO;
 import com.example.edu.modules.course.entity.Course;
-import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
@@ -187,34 +186,10 @@ public class SemesterServiceImpl implements SemesterService {
     }
 
     private void checkTeacherOwnsCourse(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if (!"admin".equals(role) && !course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-        }
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
     }
 
     private void checkCourseAccess(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if ("admin".equals(role)) {
-            return;
-        }
-        if ("teacher".equals(role)) {
-            if (!course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-            }
-            return;
-        }
-        if ("student".equals(role)) {
-            Long classId = SecurityUtils.getCurrentUserClassId();
-            if (classId != null) {
-                Long count = courseClassMapper.selectCount(
-                        new LambdaQueryWrapper<CourseClass>()
-                                .eq(CourseClass::getCourseId, course.getId())
-                                .eq(CourseClass::getClassId, classId));
-                if (count == 0) {
-                    throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-                }
-            }
-        }
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
     }
 }
