@@ -158,6 +158,19 @@ public class CourseServiceImpl implements CourseService {
         User teacher = userMapper.selectById(course.getTeacherId());
         String teacherName = teacher != null ? teacher.getName() : null;
 
+        // Query semesters
+        List<Semester> semesters = semesterMapper.selectList(
+                new LambdaQueryWrapper<Semester>()
+                        .eq(Semester::getCourseId, id)
+                        .orderByDesc(Semester::getStartTime));
+        List<com.example.edu.modules.course.vo.SemesterVO> semesterVOs = semesters.stream()
+                .map(s -> com.example.edu.modules.course.vo.SemesterVO.builder()
+                        .id(s.getId()).name(s.getName())
+                        .startTime(s.getStartTime()).endTime(s.getEndTime())
+                        .courseId(s.getCourseId()).lessonCount(0)
+                        .createdAt(s.getCreatedAt()).updatedAt(s.getUpdatedAt()).build())
+                .collect(Collectors.toList());
+
         return CourseDetailVO.builder()
                 .id(course.getId())
                 .name(course.getName())
@@ -167,7 +180,7 @@ public class CourseServiceImpl implements CourseService {
                 .teacherName(teacherName)
                 .classCount(classIds.size())
                 .classIds(classIds)
-                .semesters(List.of())  // Semesters loaded separately by the controller or frontend
+                .semesters(semesterVOs)
                 .createdAt(course.getCreatedAt())
                 .updatedAt(course.getUpdatedAt())
                 .build();
