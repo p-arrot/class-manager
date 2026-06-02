@@ -1,7 +1,6 @@
 package com.example.edu.modules.evaluation.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
 import java.util.List;
@@ -10,8 +9,7 @@ import java.util.List;
 @Schema(description = "教师评分请求")
 public class EvaluateDTO {
 
-    @NotEmpty(message = "评分列表不能为空")
-    @Schema(description = "各维度评分")
+    @Schema(description = "各维度评分（特殊情况时可为空）")
     private List<DimensionGrade> dimensions;
 
     @Data
