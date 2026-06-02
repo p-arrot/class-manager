@@ -68,7 +68,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/tasks/*/submissions").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers(HttpMethod.GET, "/api/tasks/*").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers("/api/tasks/**").hasAnyRole("ADMIN", "TEACHER")
-                        // Students
+                        // Students (submissions sub-path also open to student viewing own data)
+                        .requestMatchers(HttpMethod.GET, "/api/students/*/submissions", "/api/students/*/evaluations", "/api/students/*/radar").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers("/api/students/**").hasAnyRole("ADMIN", "TEACHER")
                         // Courses, Semesters, Lessons (non-task), Resources
                         .requestMatchers(HttpMethod.GET, "/api/courses/**", "/api/semesters/**", "/api/lessons/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")

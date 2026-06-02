@@ -239,6 +239,33 @@ public class TaskServiceImpl implements TaskService {
         return toSubmissionVO(sub);
     }
 
+    @Override
+    public List<SubmissionVO> getStudentSubmissions(Long studentId, Long semesterId) {
+        // Verify self or teacher access
+        String role = SecurityUtils.getCurrentUserRole();
+        Long userId = SecurityUtils.getCurrentUserId();
+        if ("student".equals(role) && !userId.equals(studentId)) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+
+        // Get all tasks in semester's lessons
+        List<Lesson> lessons = lessonMapper.selectList(
+                new LambdaQueryWrapper<Lesson>().eq(Lesson::getSemesterId, semesterId));
+        List<Long> lessonIds = lessons.stream().map(Lesson::getId).toList();
+        if (lessonIds.isEmpty()) return List.of();
+
+        List<Task> tasks = taskMapper.selectList(
+                new LambdaQueryWrapper<Task>().in(Task::getLessonId, lessonIds));
+        List<Long> taskIds = tasks.stream().map(Task::getId).toList();
+        if (taskIds.isEmpty()) return List.of();
+
+        List<Submission> subs = submissionMapper.selectList(
+                new LambdaQueryWrapper<Submission>()
+                        .eq(Submission::getStudentId, studentId)
+                        .in(Submission::getTaskId, taskIds));
+        return subs.stream().map(this::toSubmissionVO).toList();
+    }
+
     // ========== private helpers ==========
 
     private void checkLessonOwner(Lesson lesson) {
