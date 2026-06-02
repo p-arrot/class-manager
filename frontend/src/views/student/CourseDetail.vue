@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, h } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { formatDate } from '@/utils/date'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NDataTable, NTag, NTabs, NTabPane, NSpace, NIcon, NSelect, NEmpty, useMessage } from 'naive-ui'
@@ -25,10 +25,11 @@ const activeSemesterId = ref<number | null>(null)
 const allClasses = ref<ClassVO[]>([])
 const classMap = computed(() => new Map(allClasses.value.map(c => [c.id, c])))
 
-const selectedLessonId = ref<number | null>(null)
+const lesExpandedKeys = ref<number[]>([])
 const lesColumns: DataTableColumns<LessonVO> = [
+  { type: 'expand', key: 'expand' },
   { title: '序号', key: 'sortOrder', width: 60 },
-  { title: '课时名称', key: 'name', render(row: LessonVO) { return h('span', { style: 'cursor:pointer;font-weight:' + (selectedLessonId.value === row.id ? '600' : '400'), onClick: () => { selectedLessonId.value = selectedLessonId.value === row.id ? null : row.id } }, row.name) } },
+  { title: '课时名称', key: 'name' },
 ]
 
 async function loadCourse() {
@@ -122,10 +123,12 @@ onMounted(async () => {
           :data="lessons"
           size="small"
           :row-key="(r: LessonVO) => r.id"
-        />
-        <div v-if="selectedLessonId" style="margin-top:12px;padding:12px 16px;border:1px solid var(--n-border-color);border-radius:8px">
-          <LessonTaskPanel :lesson-id="selectedLessonId" readonly />
-        </div>
+          v-model:expanded-row-keys="lesExpandedKeys"
+        >
+          <template #expand="{ row }">
+            <LessonTaskPanel :lesson-id="row.id" readonly />
+          </template>
+        </NDataTable>
         <NEmpty v-else-if="activeSemesterId" description="该学期暂无课时" class="empty-hint" />
         <NEmpty v-else description="请先选择一个学期" class="empty-hint" />
       </NTabPane>
