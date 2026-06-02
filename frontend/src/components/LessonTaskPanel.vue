@@ -141,7 +141,10 @@ onMounted(loadTasks)
       </div>
     </div>
 
-    <div v-else class="task-empty">暂无任务</div>
+    <div v-else-if="!loading" class="task-empty">
+      <span>暂无任务</span>
+      <NButton v-if="!readonly" size="tiny" text type="primary" @click="openCreate()">+ 创建第一个任务</NButton>
+    </div>
 
     <!-- Create/Edit Modal -->
     <NModal v-model:show="showModal" :title="editingId ? '编辑任务' : '创建任务'" preset="card" style="width:560px">
@@ -201,5 +204,5 @@ onMounted(loadTasks)
 .task-title { font-size: 13px; font-weight: 500; }
 .task-meta { font-size: 11px; color: var(--n-text-color-3); }
 .task-deadline { font-size: 11px; color: var(--n-text-color-3); }
-.task-empty { font-size: 12px; color: var(--n-text-color-3); padding: 8px 0; }
+.task-empty { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px dashed var(--n-border-color); border-radius: 6px; font-size: 13px; color: var(--n-text-color-3); }
 </style>
