@@ -54,6 +54,7 @@ public class StatsService {
     private final AuditLogService auditLogService;
 
     public record GradeRow(
+            Long studentId,
             String school, String className, String studentNo, String studentName,
             Integer awareness, Integer computing, Integer digitalLearn, Integer responsibility,
             Double processScore, Double examScore, Double projectScore,
@@ -203,6 +204,7 @@ public class StatsService {
             else if (resultScore == null) remark = "缺结果评价";
 
             rows.add(new GradeRow(
+                    sid,
                     sc != null ? sc.getGrade() + "级" + sc.getName() : "",
                     sc != null ? sc.getGrade() + "级" + sc.getName() : "",
                     u.getStudentNo(), u.getName(),

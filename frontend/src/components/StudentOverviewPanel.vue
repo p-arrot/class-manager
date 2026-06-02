@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NSelect, NDataTable, NTag, NEmpty, NSpin } from 'naive-ui'
+import { NSelect, NDataTable, NTag, NEmpty, NSpin, NButton, NIcon } from 'naive-ui'
+import { PersonOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
-import { formatDate } from '@/utils/date'
+import StudentProfileModal from '@/components/StudentProfileModal.vue'
 
 const props = defineProps<{ courseId: number }>()
 const semesters = ref<any[]>([])
 const activeSemesterId = ref<number | null>(null)
 const rows = ref<any[]>([])
 const loading = ref(false)
+const profileStudentId = ref<number | null>(null)
+const profileStudentName = ref('')
 
 watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch { /* */ } }, { immediate: true })
 watch(activeSemesterId, async (sid) => {
@@ -18,8 +21,10 @@ watch(activeSemesterId, async (sid) => {
   finally { loading.value = false }
 })
 
-function gradeLabel(s: number): string { if (s >= 90) return 'A'; if (s >= 75) return 'B'; if (s >= 60) return 'C'; if (s >= 40) return 'D'; return 'E' }
-function gradeColor(s: number): string { if (s >= 90) return '#4CAF50'; if (s >= 75) return '#8BC34A'; if (s >= 60) return '#FF9800'; if (s >= 40) return '#F44336'; return '#9E9E9E' }
+function openProfile(row: any) {
+  profileStudentId.value = row.studentId
+  profileStudentName.value = row.studentName
+}
 </script>
 
 <template>
@@ -29,16 +34,18 @@ function gradeColor(s: number): string { if (s >= 90) return '#4CAF50'; if (s >=
     </div>
     <NSpin :show="loading">
       <NDataTable v-if="rows.length" :data="rows" size="small" :columns="[
-        {title:'学号',key:'studentNo',width:100},{title:'姓名',key:'studentName',width:100},
+        {title:'学号',key:'studentNo',width:100},
+        {title:'姓名',key:'studentName',width:100},
         {title:'过程分',key:'processScore',width:80,render:(r:any)=>r.processScore!=null?r.processScore.toFixed(1):'-'},
         {title:'考试',key:'examScore',width:70,render:(r:any)=>r.examScore!=null?r.examScore.toFixed(1):'-'},
         {title:'项目',key:'projectScore',width:70,render:(r:any)=>r.projectScore!=null?r.projectScore.toFixed(1):'-'},
-        {title:'总评',key:'totalScore',width:90,render:(r:any)=>r.totalScore!=null?r.totalScore.toFixed(1):r.totalGrade||'-'},
-        {title:'等级',key:'totalGrade',width:70,render:(r:any)=>r.totalGrade!=='暂无数据'?h(NTag,{size:'tiny',color:{color:gradeColor(r.totalScore||0),textColor:'#fff'},bordered:false},()=>r.totalGrade):h('span',{style:'color:var(--n-text-color-3)'},'-')},
-        {title:'备注',key:'remark',ellipsis:{tooltip:true},width:120},
+        {title:'总评',key:'totalScore',width:90,render:(r:any)=>r.totalScore!=null?r.totalScore.toFixed(1):'-'},
+        {title:'等级',key:'totalGrade',width:70,render:(r:any)=>r.totalGrade&&r.totalGrade!=='暂无数据'?h(NTag,{size:'tiny',color:{color:r.totalScore>=60?'#4CAF50':'#F44336',textColor:'#fff'},bordered:false},()=>r.totalGrade):h('span',{},'-')},
+        {title:'',key:'actions',width:70,render:(r:any)=>h(NButton,{size:'tiny',quaternary:true,onClick:()=>openProfile(r)},()=>[h(NIcon,{size:14},()=>h(PersonOutline)),' 雷达'])}
       ]" :row-key="(r:any)=>r.studentNo" />
       <NEmpty v-else-if="activeSemesterId" description="暂无评价数据" style="padding:40px 0" />
     </NSpin>
+    <StudentProfileModal :student-id="profileStudentId" :student-name="profileStudentName" :semester-id="activeSemesterId" @close="profileStudentId = null" />
   </div>
 </template>
 
