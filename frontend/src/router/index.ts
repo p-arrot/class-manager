@@ -21,6 +21,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'exams', name: 'TeacherExams', component: () => import('@/views/teacher/ExamManage.vue') },
       { path: 'projects', name: 'TeacherProjects', component: () => import('@/views/teacher/ProjectManage.vue') },
       { path: 'export', name: 'TeacherExport', component: () => import('@/views/teacher/GradeExport.vue') },
+      { path: 'grading/:taskId', name: 'TeacherGrading', component: () => import('@/views/teacher/GradingView.vue') },
       { path: '', redirect: '/teacher/courses' },
     ],
   },

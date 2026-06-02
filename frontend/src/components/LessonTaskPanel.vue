@@ -6,9 +6,12 @@ import { AddOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
 import { listTasks, createTask, updateTask, deleteTask } from '@/api/tasks'
 import { formatDate } from '@/utils/date'
 import WorksheetEditor from '@/components/WorksheetEditor.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { TaskVO, TaskCreateDTO, TaskUpdateDTO } from '@/types/api'
+import http from '@/api/request'
 
 const router = useRouter()
+const auth = useAuthStore()
 
 const props = defineProps<{
   lessonId: number
@@ -18,6 +21,7 @@ const props = defineProps<{
 const message = useMessage()
 const tasks = ref<TaskVO[]>([])
 const loading = ref(false)
+const mySubmissions = ref<Record<number, { status: string; id: number }>>({})
 
 // Task modal
 const showModal = ref(false)
@@ -34,6 +38,18 @@ async function loadTasks() {
   try { tasks.value = await listTasks(props.lessonId) }
   catch { /* ignore */ }
   finally { loading.value = false }
+  // Check student submission status for each task
+  if (props.readonly && auth.userInfo?.userId) {
+    const subs: Record<number, any> = {}
+    for (const t of tasks.value) {
+      try {
+        const r: any = await http.get(`/tasks/${t.id}/submissions`)
+        const mine = (r || []).find((s: any) => s.studentId === auth.userInfo?.userId)
+        if (mine) subs[t.id] = { status: mine.status, id: mine.id }
+      } catch { /* no access */ }
+    }
+    mySubmissions.value = subs
+  }
 }
 
 function openCreate() {
@@ -100,11 +116,14 @@ onMounted(loadTasks)
             {{ typeLabel(t.type) }}
           </NTag>
           <span class="task-title">{{ t.title }}</span>
-          <span class="task-meta">{{ t.submissionCount }} 人提交</span>
+          <span v-if="!readonly" class="task-meta">{{ t.submissionCount }} 人提交</span>
           <span v-if="t.deadline" class="task-deadline">截止 {{ formatDate(t.deadline, 'date') }}</span>
+          <NTag v-if="readonly && mySubmissions[t.id]?.status === 'submitted'" size="tiny" type="warning" :bordered="false">已提交 · 待评分</NTag>
+          <NTag v-if="readonly && mySubmissions[t.id]?.status === 'graded'" size="tiny" type="success" :bordered="false">已评分</NTag>
+          <NTag v-if="readonly && !mySubmissions[t.id]" size="tiny" :bordered="false" style="opacity:0.5">未提交</NTag>
         </div>
-        <NButton v-if="readonly" size="tiny" @click="router.push(`/student/tasks/${t.id}`)">
-          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>作答
+        <NButton v-if="readonly" size="tiny" :type="mySubmissions[t.id] ? 'default' : 'primary'" @click="router.push(`/student/tasks/${t.id}`)">
+          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>{{ mySubmissions[t.id] ? '查看' : '作答' }}
         </NButton>
         <NSpace v-if="!readonly" :size="2">
           <NButton size="tiny" quaternary @click="openEdit(t)">
