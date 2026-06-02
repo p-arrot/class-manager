@@ -126,6 +126,7 @@ onMounted(loadTasks)
           <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>{{ mySubmissions[t.id] ? '查看' : '作答' }}
         </NButton>
         <NSpace v-if="!readonly" :size="2">
+          <NButton size="tiny" @click="router.push(`/teacher/grading/${t.id}`)">评分</NButton>
           <NButton size="tiny" quaternary @click="openEdit(t)">
             <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>
           </NButton>
