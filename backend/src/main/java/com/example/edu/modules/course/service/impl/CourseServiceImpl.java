@@ -16,6 +16,7 @@ import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.course.service.CourseService;
 import com.example.edu.modules.course.vo.CourseDetailVO;
 import com.example.edu.modules.course.vo.CourseVO;
@@ -79,7 +80,7 @@ public class CourseServiceImpl implements CourseService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkTeacherOwnsCourse(course);
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
 
         // Check if course has semesters
         long semesterCount = semesterMapper.selectCount(
@@ -106,7 +107,7 @@ public class CourseServiceImpl implements CourseService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkTeacherOwnsCourse(course);
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
 
         if (StringUtils.hasText(dto.getName())) {
             checkNameDuplicate(dto.getName(), course.getTeacherId(), id);
@@ -144,7 +145,7 @@ public class CourseServiceImpl implements CourseService {
         if (course == null) {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
-        checkCourseAccess(course);
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
 
         // Query classIds
         List<CourseClass> bindings = courseClassMapper.selectList(
@@ -313,37 +314,5 @@ public class CourseServiceImpl implements CourseService {
         }
     }
 
-    private void checkTeacherOwnsCourse(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if (!"admin".equals(role) && !course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-        }
-    }
-
-    private void checkCourseAccess(Course course) {
-        String role = SecurityUtils.getCurrentUserRole();
-        if ("admin".equals(role)) {
-            return;
-        }
-        if ("teacher".equals(role)) {
-            if (!course.getTeacherId().equals(SecurityUtils.getCurrentUserId())) {
-                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-            }
-            return;
-        }
-        if ("student".equals(role)) {
-            Long classId = SecurityUtils.getCurrentUserClassId();
-            if (classId != null) {
-                Long count = courseClassMapper.selectCount(
-                        new LambdaQueryWrapper<CourseClass>()
-                                .eq(CourseClass::getCourseId, course.getId())
-                                .eq(CourseClass::getClassId, classId));
-                if (count == 0) {
-                    throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-                }
-                return;
-            }
-        }
-        throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-    }
+    // Delegates to CoursePermissionHelper — no duplicate logic
 }
