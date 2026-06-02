@@ -58,7 +58,13 @@ async function submitGrade() {
 
 async function markSpecial() {
   const sub = current.value; if (!sub) return
-  try { await http.post(`/submissions/${sub.id}/evaluate`, { isSpecial: true, dimensions: [] }); message.success('已标记特殊情况'); if (currentIdx.value < submissions.value.length - 1) currentIdx.value++ }
+  try { await http.post(`/submissions/${sub.id}/evaluate`, { isSpecial: true, dimensions: [] }); message.success('已标记特殊情况'); loadSubmissions() }
+  catch (e: any) { message.error(e.message || '操作失败') }
+}
+
+async function unmarkSpecial() {
+  const sub = current.value; if (!sub) return
+  try { await http.post(`/submissions/${sub.id}/evaluate`, { isSpecial: false, dimensions: [] }); message.success('已取消标记'); loadSubmissions() }
   catch (e: any) { message.error(e.message || '操作失败') }
 }
 
@@ -104,7 +110,8 @@ onMounted(loadSubmissions)
         <NSpace justify="center" :size="12" class="actions">
           <NButton :disabled="currentIdx === 0" @click="currentIdx--"><template #icon><NIcon><ChevronBackOutline /></NIcon></template>上一个</NButton>
           <NButton type="primary" @click="submitGrade">提交评分</NButton>
-          <NButton @click="markSpecial">特殊标记</NButton>
+          <NButton v-if="current && current.status !== 'special'" @click="markSpecial" type="warning">特殊标记</NButton>
+          <NButton v-else @click="unmarkSpecial">取消标记</NButton>
           <NButton :disabled="currentIdx >= submissions.length - 1" @click="currentIdx++">下一个<template #icon><NIcon><ChevronForwardOutline /></NIcon></template></NButton>
         </NSpace>
       </div>

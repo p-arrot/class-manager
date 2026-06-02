@@ -66,7 +66,11 @@ public class EvaluationServiceImpl implements EvaluationService {
         checkTaskOwner(task);
 
         boolean isSpecial = dto.getIsSpecial() != null && dto.getIsSpecial();
-        sub.setStatus(isSpecial ? "special" : "graded");
+        boolean hasDimensions = dto.getDimensions() != null && !dto.getDimensions().isEmpty();
+
+        if (isSpecial) sub.setStatus("special");
+        else if (hasDimensions) sub.setStatus("graded");
+        else sub.setStatus("submitted"); // unmark: reset to submitted
         submissionMapper.updateById(sub);
 
         // Delete old evaluations for this submission
@@ -74,7 +78,7 @@ public class EvaluationServiceImpl implements EvaluationService {
                 .eq(Evaluation::getSourceType, task.getType())
                 .eq(Evaluation::getSourceId, submissionId));
 
-        if (!isSpecial && dto.getDimensions() != null) {
+        if (hasDimensions) {
             for (EvaluateDTO.DimensionGrade dg : dto.getDimensions()) {
                 Evaluation eval = new Evaluation();
                 eval.setStudentId(sub.getStudentId());
