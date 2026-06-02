@@ -9,11 +9,13 @@ import { listSemesters, createSemester, updateSemester, deleteSemester } from '@
 import { listLessons, createLesson, updateLesson, deleteLesson, reorderLesson } from '@/api/lessons'
 import { listAllClasses } from '@/api/classes'
 import { useThemeStore } from '@/stores/theme'
+import http from '@/api/request'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
 import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
 import ExamPanel from '@/components/ExamPanel.vue'
 import ProjectPanel from '@/components/ProjectPanel.vue'
 import ExportPanel from '@/components/ExportPanel.vue'
+import StudentOverviewPanel from '@/components/StudentOverviewPanel.vue'
 import type { CourseDetailVO, SemesterVO, SemesterCreateDTO, LessonVO, ClassVO } from '@/types/api'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
 
@@ -50,10 +52,12 @@ const lesRules: FormRules = { name: { required: true, message: '请输入课时�
 
 // Lesson columns
 const lesExpandedKeys = ref<number[]>([])
+const lessonTaskCounts = ref<Record<number, number>>({})
 const lesColumns: DataTableColumns<LessonVO> = [
   { type: 'expand', key: 'expand' },
   { title: '序号', key: 'sortOrder', width: 60 },
   { title: '课时名称', key: 'name' },
+  { title: '任务', key: 'taskCount', width: 70, render(row: LessonVO) { return h('span', { style: 'font-size:12px;color:var(--n-text-color-3)' }, `${lessonTaskCounts.value[row.id] || 0}个`) } },
   {
     title: '操作', key: 'actions', width: 190,
     render(row: LessonVO, index: number) {
@@ -79,6 +83,13 @@ async function loadSemesters() {
 async function loadLessons() {
   if (!activeSemesterId.value) { lessons.value = []; return }
   try { lessons.value = await listLessons(activeSemesterId.value) } catch { /* ignore */ }
+  // Fetch task counts for each lesson
+  for (const l of lessons.value) {
+    try {
+      const tasks: any[] = await http.get(`/lessons/${l.id}/tasks`)
+      lessonTaskCounts.value[l.id] = (tasks || []).length
+    } catch { lessonTaskCounts.value[l.id] = 0 }
+  }
 }
 
 // ---- Semester CRUD ----
@@ -230,6 +241,9 @@ onMounted(async () => {
       </NTabPane>
       <NTabPane name="export" tab="成绩导出">
         <ExportPanel :course-id="courseId" />
+      </NTabPane>
+      <NTabPane name="overview" tab="学生总览">
+        <StudentOverviewPanel :course-id="courseId" />
       </NTabPane>
     </NTabs>
 
