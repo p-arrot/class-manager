@@ -20,7 +20,7 @@ spring:
           min-idle: 5
 
 jwt:
-  secret: changeme-this-must-be-at-least-256-bits-long-for-hs256-use-a-strong-random-string-here
+  secret: ${JWT_SECRET:changeme-dev-only-do-not-use-in-production}
   expiration: 86400000
 
 minio:

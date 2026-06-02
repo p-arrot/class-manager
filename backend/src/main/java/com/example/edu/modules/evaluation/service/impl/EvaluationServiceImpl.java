@@ -171,6 +171,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
+    @org.springframework.cache.annotation.Cacheable("gradeScores")
     public Map<String, Integer> getGradeScores() {
         return GRADE_SCORES;
     }

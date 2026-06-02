@@ -49,6 +49,7 @@ public class SecurityConfig {
                                         ErrorCode.FORBIDDEN)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                "/api/health",
                                 "/api/auth/login",
                                 "/api-docs/**",
                                 "/swagger-ui/**",

@@ -59,8 +59,8 @@ onMounted(loadDashboard)
     <PageHeader title="工作台" subtitle="今日概览" />
     <NSpin :show="loading">
       <NGrid :cols="3" :x-gap="16" :y-gap="16" class="stat-grid">
-        <NGi><NCard size="small" class="stat-card pending"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">待评分</div></NCard></NGi>
-        <NGi><NCard size="small" class="stat-card upcoming"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">即将截止</div></NCard></NGi>
+        <NGi><NCard size="small" class="stat-card pending" hoverable @click="router.push('/teacher/courses')"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">待评分 →</div></NCard></NGi>
+        <NGi><NCard size="small" class="stat-card upcoming" hoverable @click="router.push('/teacher/courses')"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">即将截止 →</div></NCard></NGi>
         <NGi><NCard size="small" class="stat-card info"><div class="stat-num">{{ stats.recentCount }}</div><div class="stat-label">近期提交</div></NCard></NGi>
       </NGrid>
 

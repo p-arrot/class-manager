@@ -5,7 +5,7 @@ import { ArrowForwardOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import type { CourseVO } from '@/types/api'
 
-defineProps<{ course: CourseVO }>()
+defineProps<{ course: CourseVO; progress?: { done: number; total: number } }>()
 defineEmits<{ enter: [id: number] }>()
 
 const theme = useThemeStore()
@@ -26,6 +26,12 @@ const isDark = computed(() => theme.isDark)
           <span v-else class="card-desc-empty">&nbsp;</span>
         </p>
         <NTag size="tiny" :bordered="false">{{ course.classCount }} 个班级</NTag>
+        <div v-if="progress && progress.total > 0" class="card-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: Math.round(progress.done / progress.total * 100) + '%' }" />
+          </div>
+          <span class="progress-text">{{ progress.done }}/{{ progress.total }} 已完成</span>
+        </div>
       </div>
     </div>
     <div class="card-actions" @click.stop>
@@ -45,4 +51,8 @@ const isDark = computed(() => theme.isDark)
 .card-desc { font-size: 12px; color: var(--n-text-color-2); margin: 2px 0 4px; line-height: 1.5; min-height: 36px; }
 .card-desc-empty { visibility: hidden; }
 .card-actions { display: flex; justify-content: flex-end; gap: 0; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--n-border-color); }
+.card-progress { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.progress-bar { height: 5px; background: var(--n-color-embedded); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: #7C3AED; border-radius: 3px; transition: width 0.3s ease; }
+.progress-text { font-size: 11px; color: var(--n-text-color-3); }
 </style>
