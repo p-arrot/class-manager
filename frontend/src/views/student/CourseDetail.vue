@@ -3,7 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { formatDate } from '@/utils/date'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NDataTable, NTag, NTabs, NTabPane, NSpace, NIcon, NSelect, NEmpty, useMessage } from 'naive-ui'
-import { ArrowBackOutline } from '@vicons/ionicons5'
+import { ArrowBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { getCourse } from '@/api/courses'
 import { listSemesters } from '@/api/semesters'
 import { listLessons } from '@/api/lessons'
@@ -25,12 +25,8 @@ const activeSemesterId = ref<number | null>(null)
 const allClasses = ref<ClassVO[]>([])
 const classMap = computed(() => new Map(allClasses.value.map(c => [c.id, c])))
 
-const lesExpandedKeys = ref<number[]>([])
-const lesColumns: DataTableColumns<LessonVO> = [
-  { type: 'expand', key: 'expand' },
-  { title: '序号', key: 'sortOrder', width: 60 },
-  { title: '课时名称', key: 'name' },
-]
+const expandedLessonId = ref<number | null>(null)
+function toggleLesson(id: number) { expandedLessonId.value = expandedLessonId.value === id ? null : id }
 
 async function loadCourse() {
   try {
@@ -117,18 +113,18 @@ onMounted(async () => {
             style="width:220px"
           />
         </div>
-        <NDataTable
-          v-if="activeSemesterId && lessons.length"
-          :columns="lesColumns"
-          :data="lessons"
-          size="small"
-          :row-key="(r: LessonVO) => r.id"
-          :expanded-row-keys="lesExpandedKeys" @update:expanded-row-keys="(keys: any) => lesExpandedKeys = keys"
-        >
-          <template #expand="{ row }">
-            <LessonTaskPanel :lesson-id="row.id" readonly />
-          </template>
-        </NDataTable>
+        <div v-if="activeSemesterId && lessons.length" class="lesson-list">
+          <div v-for="row in lessons" :key="row.id">
+            <div class="lesson-row" @click="toggleLesson(row.id)">
+              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+              <span class="lesson-index">{{ row.sortOrder }}</span>
+              <span class="lesson-name">{{ row.name }}</span>
+            </div>
+            <div v-if="expandedLessonId === row.id" class="lesson-expand">
+              <LessonTaskPanel :lesson-id="row.id" readonly />
+            </div>
+          </div>
+        </div>
         <NEmpty v-else-if="activeSemesterId" description="该学期暂无课时" class="empty-hint" />
         <NEmpty v-else description="请先选择一个学期" class="empty-hint" />
       </NTabPane>
@@ -160,4 +156,12 @@ onMounted(async () => {
 .empty-hint { padding: 40px 0; }
 .resource-tab { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px 0; }
 .resource-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0; }
+
+.lesson-list { display: flex; flex-direction: column; gap: 0; }
+.lesson-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+.lesson-row:hover { background: var(--n-color-embedded); }
+.lesson-index { width: 24px; font-size: 13px; color: var(--n-text-color-3); text-align: center; }
+.lesson-name { font-size: 14px; font-weight: 500; flex: 1; }
+.lesson-expand { padding: 0 12px 12px 36px; animation: slideDown 0.15s ease; }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 </style>

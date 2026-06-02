@@ -3,7 +3,7 @@ import { ref, reactive, onMounted, h, watch, computed } from 'vue'
 import { formatDate } from '@/utils/date'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, NCard, NTag, NTabs, NTabPane, NSpace, NIcon, useMessage, useDialog } from 'naive-ui'
-import { AddOutline, CreateOutline, TrashOutline, ChevronUpOutline, ChevronDownOutline, ArrowBackOutline } from '@vicons/ionicons5'
+import { AddOutline, CreateOutline, TrashOutline, ChevronUpOutline, ChevronDownOutline, ChevronForwardOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { getCourse } from '@/api/courses'
 import { listSemesters, createSemester, updateSemester, deleteSemester } from '@/api/semesters'
 import { listLessons, createLesson, updateLesson, deleteLesson, reorderLesson } from '@/api/lessons'
@@ -50,26 +50,13 @@ const lesFormRef = ref<FormInst | null>(null)
 const lesForm = reactive({ name: '' })
 const lesRules: FormRules = { name: { required: true, message: '请输入课时名称', trigger: 'blur' } }
 
-// Lesson columns
-const lesExpandedKeys = ref<number[]>([])
+// Lesson expand state
+const expandedLessonId = ref<number | null>(null)
 const lessonTaskCounts = ref<Record<number, number>>({})
-const lesColumns: DataTableColumns<LessonVO> = [
-  { type: 'expand', key: 'expand' },
-  { title: '序号', key: 'sortOrder', width: 60 },
-  { title: '课时名称', key: 'name' },
-  { title: '任务', key: 'taskCount', width: 70, render(row: LessonVO) { return h('span', { style: 'font-size:12px;color:var(--n-text-color-3)' }, `${lessonTaskCounts.value[row.id] || 0}个`) } },
-  {
-    title: '操作', key: 'actions', width: 190,
-    render(row: LessonVO, index: number) {
-      return h(NSpace, { size: 2 }, () => [
-        h(NButton, { size: 'tiny', quaternary: true, disabled: index === 0, onClick: () => handleMoveUp(row) }, () => h(NIcon, { size: 14 }, () => h(ChevronUpOutline))),
-        h(NButton, { size: 'tiny', quaternary: true, disabled: index === lessons.value.length - 1, onClick: () => handleMoveDown(row) }, () => h(NIcon, { size: 14 }, () => h(ChevronDownOutline))),
-        h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEditLesson(row) }, () => h(NIcon, { size: 14 }, () => h(CreateOutline))),
-        h(NButton, { size: 'tiny', quaternary: true, onClick: () => handleDeleteLesson(row) }, () => h(NIcon, { size: 14 }, () => h(TrashOutline))),
-      ])
-    },
-  },
-]
+
+function toggleLesson(id: number) {
+  expandedLessonId.value = expandedLessonId.value === id ? null : id
+}
 
 // ---- Fetch ----
 async function loadCourse() {
@@ -222,11 +209,23 @@ onMounted(async () => {
           <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
           <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
         </div>
-        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" :expanded-row-keys="lesExpandedKeys" @update:expanded-row-keys="(keys: any) => lesExpandedKeys = keys">
-          <template #expand="{ row }">
-            <LessonTaskPanel :lesson-id="row.id" />
-          </template>
-        </NDataTable>
+        <div v-if="activeSemesterId && lessons.length" class="lesson-list">
+          <div v-for="(row, idx) in lessons" :key="row.id">
+            <div class="lesson-row" @click="toggleLesson(row.id)">
+              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+              <span class="lesson-index">{{ row.sortOrder }}</span>
+              <span class="lesson-name">{{ row.name }}</span>
+              <NTag size="tiny" :bordered="false" style="margin-left:auto">{{ lessonTaskCounts[row.id] || 0 }}个任务</NTag>
+              <NButton size="tiny" quaternary @click.stop="handleMoveUp(row)" :disabled="idx===0"><template #icon><NIcon :size="14"><ChevronUpOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary @click.stop="handleMoveDown(row)" :disabled="idx===lessons.length-1"><template #icon><NIcon :size="14"><ChevronDownOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary @click.stop="openEditLesson(row)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary @click.stop="handleDeleteLesson(row)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
+            </div>
+            <div v-if="expandedLessonId === row.id" class="lesson-expand">
+              <LessonTaskPanel :lesson-id="row.id" />
+            </div>
+          </div>
+        </div>
         <div v-else class="empty-hint">{{ semesters.length ? '该学期尚无课时' : '请先创建一个学期' }}</div>
       </NTabPane>
 
@@ -284,4 +283,12 @@ onMounted(async () => {
 .empty-hint { padding: 40px 0; text-align: center; font-size: 14px; color: var(--n-text-color-3); }
 .resource-tab { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px 0; }
 .resource-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0; }
+
+.lesson-list { display: flex; flex-direction: column; gap: 0; }
+.lesson-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+.lesson-row:hover { background: var(--n-color-embedded); }
+.lesson-index { width: 24px; font-size: 13px; color: var(--n-text-color-3); text-align: center; }
+.lesson-name { font-size: 14px; font-weight: 500; flex: 1; }
+.lesson-expand { padding: 0 12px 12px 36px; animation: slideDown 0.15s ease; }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 </style>
