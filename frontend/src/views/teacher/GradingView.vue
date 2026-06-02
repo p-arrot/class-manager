@@ -2,9 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NTag, NSelect, NRadio, NRadioGroup, NSpace, NEmpty, NSpin, NIcon, useMessage } from 'naive-ui'
-import { ArrowBackOutline, ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import { ArrowBackOutline, ChevronBackOutline, ChevronForwardOutline, PersonOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
 import PageHeader from '@/components/PageHeader.vue'
+import StudentProfileModal from '@/components/StudentProfileModal.vue'
 
 const route = useRoute(); const router = useRouter(); const message = useMessage()
 const taskId = Number(route.params.taskId)
@@ -12,6 +13,9 @@ const loading = ref(false)
 const submissions = ref<any[]>([])
 const currentIdx = ref(0)
 const grades = ref<Record<string, Record<string, string>>>({})
+const semesterId = ref<number | null>(null)
+const profileStudentId = ref<number | null>(null)
+const profileStudentName = ref('')
 
 const dims = [
   { key: 'AWARENESS', label: '信息意识' },
@@ -25,9 +29,20 @@ const current = computed(() => submissions.value[currentIdx.value] || null)
 
 async function loadSubmissions() {
   loading.value = true
-  try { submissions.value = await http.get(`/tasks/${taskId}/submissions`) || [] }
-  catch { /* ignore */ }
+  try {
+    submissions.value = await http.get(`/tasks/${taskId}/submissions`) || []
+    const task: any = await http.get(`/tasks/${taskId}`)
+    if (task?.lessonId) {
+      const lesson: any = await http.get(`/lessons/${task.lessonId}`)
+      if (lesson?.semesterId) semesterId.value = lesson.semesterId
+    }
+  } catch { /* ignore */ }
   finally { loading.value = false }
+}
+
+function openProfile(studentId: number, name: string) {
+  profileStudentId.value = studentId
+  profileStudentName.value = name
 }
 
 async function submitGrade() {
@@ -66,6 +81,7 @@ onMounted(loadSubmissions)
           <span class="student-name">{{ current.studentName || '学生' }}</span>
           <span class="student-no">{{ current.studentNo }}</span>
           <NTag size="small" :type="current.status === 'submitted' ? 'warning' : 'success'" :bordered="false">{{ current.status === 'submitted' ? '待评分' : current.status === 'graded' ? '已评分' : current.status }}</NTag>
+          <NButton size="tiny" quaternary @click="openProfile(current.studentId, current.studentName)" style="margin-left:auto"><template #icon><NIcon :size="14"><PersonOutline /></NIcon></template>查看档案</NButton>
         </div>
 
         <div class="content-preview">
@@ -96,6 +112,7 @@ onMounted(loadSubmissions)
         <template #extra><NButton size="small" @click="router.back()">返回</NButton></template>
       </NEmpty>
     </NSpin>
+    <StudentProfileModal :student-id="profileStudentId" :student-name="profileStudentName" :semester-id="semesterId" @close="profileStudentId = null" />
   </div>
 </template>
 
