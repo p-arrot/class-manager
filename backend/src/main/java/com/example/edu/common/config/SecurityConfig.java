@@ -78,16 +78,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/resources/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers("/api/resources/**").hasAnyRole("ADMIN", "TEACHER")
                         // Evaluations
-                        .requestMatchers(HttpMethod.GET, "/api/students/*/evaluations", "/api/students/*/radar", "/api/evaluations/grade-scores").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/students/*/evaluations", "/api/students/*/radar").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/evaluations/grade-scores").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers("/api/submissions/*/evaluate", "/api/tasks/*/auto-grade").hasAnyRole("ADMIN", "TEACHER")
                         // Exams
                         .requestMatchers(HttpMethod.GET, "/api/exam-papers", "/api/semesters/*/exams", "/api/exams/*/submissions").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers("/api/exam-papers/**", "/api/exams/**", "/api/exam-submissions/**").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/exams/*/start", "/api/exams/*/submit").hasRole("STUDENT")
-                        // Projects & Teams
+                        // Projects & Teams (specific student rules MUST come before broad /api/projects/**)
                         .requestMatchers(HttpMethod.GET, "/api/semesters/*/projects").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
-                        .requestMatchers("/api/projects/**").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/projects/*/teams", "/api/teams/*/join", "/api/projects/*/submit").hasRole("STUDENT")
+                        .requestMatchers("/api/projects/**").hasAnyRole("ADMIN", "TEACHER")
                         // Drive
                         .requestMatchers("/api/drive/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         // Stats

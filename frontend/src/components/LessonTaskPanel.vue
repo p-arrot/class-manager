@@ -69,7 +69,7 @@ function openCreate() {
   showModal.value = true
 }
 
-function openEdit(task: TaskVO) {
+async function openEdit(task: TaskVO) {
   editingId.value = task.id
   formValue.value = {
     title: task.title,
@@ -78,13 +78,18 @@ function openEdit(task: TaskVO) {
     formSchema: '',
     deadline: task.deadline || '',
   }
+  // Load full task detail to get formSchema
+  try {
+    const detail: any = await http.get(`/tasks/${task.id}`)
+    if (detail?.formSchema) formValue.value.formSchema = detail.formSchema
+  } catch { /* ignore */ }
   showModal.value = true
 }
 
 async function handleSubmit() {
   try {
     if (editingId.value) {
-      const dto: TaskUpdateDTO = { title: formValue.value.title, description: formValue.value.description || undefined, deadline: formValue.value.deadline || undefined }
+      const dto: TaskUpdateDTO = { title: formValue.value.title, description: formValue.value.description || undefined, deadline: formValue.value.deadline || undefined, formSchema: formValue.value.formSchema || undefined }
       await updateTask(editingId.value, dto)
       message.success('已更新')
     } else {

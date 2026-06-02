@@ -134,7 +134,7 @@ async function handleLogin() {
           </div>
 
           <div class="form-footer">
-            <span class="hint">默认管理员：admin / admin123</span>
+            <span class="hint">信息科技课堂管理系统</span>
           </div>
         </div>
       </div>
