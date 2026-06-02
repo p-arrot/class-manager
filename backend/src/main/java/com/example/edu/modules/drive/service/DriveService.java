@@ -57,12 +57,17 @@ public class DriveService {
 
     @Transactional
     public void delete(Long id) {
+        deleteRecursive(id, new java.util.HashSet<>());
+    }
+
+    private void deleteRecursive(Long id, java.util.Set<Long> visited) {
+        if (!visited.add(id)) return; // cyclic reference guard
         DriveItem item = driveMapper.selectById(id);
         if (item == null) throw new BizException(ErrorCode.NOT_FOUND);
         // Recursively delete children
         List<DriveItem> children = driveMapper.selectList(
                 new LambdaQueryWrapper<DriveItem>().eq(DriveItem::getParentId, id));
-        for (DriveItem child : children) delete(child.getId());
+        for (DriveItem child : children) deleteRecursive(child.getId(), visited);
         // Delete MinIO object if file
         if ("FILE".equals(item.getType()) && item.getObjectName() != null) {
             try { minioService.deleteObject(item.getObjectName()); } catch (Exception ignored) {}

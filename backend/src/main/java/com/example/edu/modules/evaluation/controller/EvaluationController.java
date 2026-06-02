@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "评价管理")
 @RestController
@@ -45,6 +46,13 @@ public class EvaluationController {
     public R<RadarVO> getRadar(@PathVariable Long studentId,
                                @RequestParam Long semesterId) {
         return R.ok(evaluationService.getRadar(studentId, semesterId));
+    }
+
+    @Operation(summary = "获取评分等级对照表")
+    @GetMapping("/api/evaluations/grade-scores")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<Map<String, Integer>> getGradeScores() {
+        return R.ok(evaluationService.getGradeScores());
     }
 
     @Operation(summary = "自动评分（截止后未提交 → F）")

@@ -24,4 +24,6 @@ public interface TaskService {
     SubmissionVO submit(Long taskId, SubmissionDTO dto);
 
     List<SubmissionVO> listSubmissions(Long taskId, Long classId);
+
+    SubmissionVO getSubmission(Long id);
 }

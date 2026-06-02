@@ -229,6 +229,16 @@ public class TaskServiceImpl implements TaskService {
         return subs.stream().map(s -> toSubmissionVO(s, userMap.get(s.getStudentId()))).toList();
     }
 
+    @Override
+    public SubmissionVO getSubmission(Long id) {
+        Submission sub = submissionMapper.selectById(id);
+        if (sub == null) throw new BizException(ErrorCode.SUBMISSION_NOT_FOUND);
+        Task task = taskMapper.selectById(sub.getTaskId());
+        if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
+        checkTaskAccess(task);
+        return toSubmissionVO(sub);
+    }
+
     // ========== private helpers ==========
 
     private void checkLessonOwner(Lesson lesson) {

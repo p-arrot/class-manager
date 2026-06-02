@@ -36,9 +36,25 @@ public class DriveController {
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
     public R<Void> delete(@PathVariable Long id) { driveService.delete(id); return R.ok(); }
 
+    @PostMapping("/files")
+    @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
+    public R<DriveItem> uploadFile(@RequestBody Map<String,Object> body) {
+        Long uid = body.containsKey("userId") ? Long.valueOf(body.get("userId").toString()) : SecurityUtils.getCurrentUserId();
+        Long pid = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
+        return R.ok(driveService.createFile(uid, (String) body.get("name"),
+                body.get("fileSize") != null ? Long.valueOf(body.get("fileSize").toString()) : 0L,
+                (String) body.get("contentType"), (String) body.get("objectName"), pid));
+    }
+
     @GetMapping("/{id}/download")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
     public R<Map<String,String>> download(@PathVariable Long id) {
         return R.ok(Map.of("url", driveService.getDownloadUrl(id)));
+    }
+
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
+    public R<Map<String,String>> preview(@PathVariable Long id) {
+        return R.ok(Map.of("url", driveService.getPreviewUrl(id)));
     }
 }
