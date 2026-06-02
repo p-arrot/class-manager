@@ -222,7 +222,7 @@ onMounted(async () => {
           <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
           <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
         </div>
-        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" v-model:expanded-row-keys="lesExpandedKeys">
+        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" :expanded-row-keys="lesExpandedKeys" @update:expanded-row-keys="(keys: any) => lesExpandedKeys = keys">
           <template #expand="{ row }">
             <LessonTaskPanel :lesson-id="row.id" />
           </template>

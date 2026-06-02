@@ -123,7 +123,7 @@ onMounted(async () => {
           :data="lessons"
           size="small"
           :row-key="(r: LessonVO) => r.id"
-          v-model:expanded-row-keys="lesExpandedKeys"
+          :expanded-row-keys="lesExpandedKeys" @update:expanded-row-keys="(keys: any) => lesExpandedKeys = keys"
         >
           <template #expand="{ row }">
             <LessonTaskPanel :lesson-id="row.id" readonly />
