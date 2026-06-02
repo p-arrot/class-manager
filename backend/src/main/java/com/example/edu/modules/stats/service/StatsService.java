@@ -69,12 +69,10 @@ public class StatsService {
         List<Task> tasks = taskMapper.selectList(
                 new LambdaQueryWrapper<Task>().in(Task::getLessonId, lessonIds));
 
-        // 2. Get all students via submissions
-        List<Submission> allSubs = new ArrayList<>();
-        for (Task t : tasks) {
-            allSubs.addAll(submissionMapper.selectList(
-                    new LambdaQueryWrapper<Submission>().eq(Submission::getTaskId, t.getId())));
-        }
+        // 2. Get all submissions in one batch query
+        List<Long> taskIds = tasks.stream().map(Task::getId).collect(Collectors.toList());
+        List<Submission> allSubs = taskIds.isEmpty() ? List.of() :
+                submissionMapper.selectList(new LambdaQueryWrapper<Submission>().in(Submission::getTaskId, taskIds));
         Set<Long> studentIds = allSubs.stream().map(Submission::getStudentId).collect(Collectors.toSet());
         Map<Long, User> userMap = userMapper.selectBatchIds(studentIds).stream()
                 .collect(Collectors.toMap(User::getId, u -> u));
@@ -83,7 +81,6 @@ public class StatsService {
                 .stream().collect(Collectors.toMap(SchoolClass::getId, c -> c));
 
         // 3. Get evaluations
-        Set<Long> taskIds = tasks.stream().map(Task::getId).collect(Collectors.toSet());
         List<Evaluation> evals = evaluationMapper.selectList(
                 new LambdaQueryWrapper<Evaluation>()
                         .in(Evaluation::getSourceId, allSubs.stream().map(Submission::getId).collect(Collectors.toList()))
@@ -91,27 +88,29 @@ public class StatsService {
         Map<Long, List<Evaluation>> evalsBySubmission = evals.stream()
                 .collect(Collectors.groupingBy(Evaluation::getSourceId));
 
-        // 4. Get exams
+        // 4. Get exams (batch)
         List<Exam> exams = examMapper.selectList(
                 new LambdaQueryWrapper<Exam>().eq(Exam::getSemesterId, semesterId));
+        List<Long> examIds = exams.stream().map(Exam::getId).collect(Collectors.toList());
         Map<Long, List<ExamSubmission>> examSubsByStudent = new HashMap<>();
-        for (Exam exam : exams) {
-            List<ExamSubmission> examSubs = examSubmissionMapper.selectList(
-                    new LambdaQueryWrapper<ExamSubmission>().eq(ExamSubmission::getExamId, exam.getId()));
-            for (ExamSubmission es : examSubs) {
+        if (!examIds.isEmpty()) {
+            List<ExamSubmission> allExamSubs = examSubmissionMapper.selectList(
+                    new LambdaQueryWrapper<ExamSubmission>().in(ExamSubmission::getExamId, examIds));
+            for (ExamSubmission es : allExamSubs) {
                 examSubsByStudent.computeIfAbsent(es.getStudentId(), k -> new ArrayList<>()).add(es);
             }
         }
 
-        // 5. Get projects
+        // 5. Get projects (batch)
         List<Project> projects = projectMapper.selectList(
                 new LambdaQueryWrapper<Project>().eq(Project::getSemesterId, semesterId));
+        List<Long> projectIds = projects.stream().map(Project::getId).collect(Collectors.toList());
         Map<Long, List<ProjectScore>> scoresByStudent = new HashMap<>();
-        for (Project p : projects) {
-            List<ProjectScore> scores = projectScoreMapper.selectList(
-                    new LambdaQueryWrapper<ProjectScore>().eq(ProjectScore::getProjectId, p.getId())
+        if (!projectIds.isEmpty()) {
+            List<ProjectScore> allScores = projectScoreMapper.selectList(
+                    new LambdaQueryWrapper<ProjectScore>().in(ProjectScore::getProjectId, projectIds)
                             .eq(ProjectScore::getIsSpecial, 0));
-            for (ProjectScore ps : scores) {
+            for (ProjectScore ps : allScores) {
                 scoresByStudent.computeIfAbsent(ps.getStudentId(), k -> new ArrayList<>()).add(ps);
             }
         }
@@ -134,14 +133,14 @@ public class StatsService {
                 if (t == null || "special".equals(sub.getStatus())) continue;
                 List<Evaluation> subEvals = evalsBySubmission.getOrDefault(sub.getId(), List.of());
                 if (subEvals.isEmpty()) {
-                    // Auto F for unsubmitted
-                    double score = "graded".equals(sub.getStatus()) ? 0 : 0;
+                    // Submission exists but no evaluations — likely auto-F from missed deadline
                     if ("graded".equals(sub.getStatus())) {
                         for (String d : DIMS) dimScores.get(d).add(0);
+                        double w = "artifact".equals(t.getType()) ? 1.5 : 1.0;
+                        processWeightedSum += 0;
+                        processWeightTotal += w;
                     }
-                    double w = "artifact".equals(t.getType()) ? 1.5 : 1.0;
-                    processWeightedSum += score * w;
-                    processWeightTotal += w;
+                    // If not graded and no evals, skip (teacher hasn't graded yet)
                 } else {
                     double avg = subEvals.stream().mapToInt(e -> GS.getOrDefault(e.getGrade(), 0)).average().orElse(0);
                     for (Evaluation e : subEvals) {
@@ -203,10 +202,11 @@ public class StatsService {
             else if (processScore == null) remark = "缺过程评价";
             else if (resultScore == null) remark = "缺结果评价";
 
+            String className = sc != null ? sc.getGrade() + "级" + sc.getName() : "";
             rows.add(new GradeRow(
                     sid,
-                    sc != null ? sc.getGrade() + "级" + sc.getName() : "",
-                    sc != null ? sc.getGrade() + "级" + sc.getName() : "",
+                    "", // school field reserved for future use
+                    className,
                     u.getStudentNo(), u.getName(),
                     awareness, computing, digitalLearn, responsibility,
                     processScore, examScore, projectScore,

@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NGrid, NGi, NEmpty, NIcon, NTag, NSpin, useMessage } from 'naive-ui'
 import { ArrowForwardOutline, TimeOutline, CheckmarkCircleOutline } from '@vicons/ionicons5'
+import { useAuthStore } from '@/stores/auth'
 import { listCourses } from '@/api/courses'
 import CourseCard from '@/components/CourseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -10,6 +11,7 @@ import http from '@/api/request'
 import type { CourseVO, CoursePageQuery } from '@/types/api'
 
 const router = useRouter(); const message = useMessage()
+const auth = useAuthStore()
 const loading = ref(false)
 const records = ref<CourseVO[]>([])
 const total = ref(0)
@@ -32,7 +34,7 @@ async function loadDueAndGrades(courses: CourseVO[]) {
             }
             try {
               const subs: any[] = await http.get(`/tasks/${t.id}/submissions`) || []
-              const mine = subs.find((s: any) => s.studentId === 127) // approximate
+              const mine = subs.find((s: any) => s.studentId === auth.userInfo?.userId)
               if (mine && mine.status === 'graded') {
                 graded.push({ ...mine, taskTitle: t.title, courseName: course.name })
               }
