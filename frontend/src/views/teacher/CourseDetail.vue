@@ -11,6 +11,9 @@ import { listAllClasses } from '@/api/classes'
 import { useThemeStore } from '@/stores/theme'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
 import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
+import ExamPanel from '@/components/ExamPanel.vue'
+import ProjectPanel from '@/components/ProjectPanel.vue'
+import ExportPanel from '@/components/ExportPanel.vue'
 import type { CourseDetailVO, SemesterVO, SemesterCreateDTO, LessonVO, ClassVO } from '@/types/api'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
 
@@ -218,6 +221,15 @@ onMounted(async () => {
 
       <NTabPane name="resources" tab="课程资源">
         <CourseResourcePanel :course-id="courseId" />
+      </NTabPane>
+      <NTabPane name="exams" tab="考试管理">
+        <ExamPanel :course-id="courseId" />
+      </NTabPane>
+      <NTabPane name="projects" tab="项目管理">
+        <ProjectPanel :course-id="courseId" />
+      </NTabPane>
+      <NTabPane name="export" tab="成绩导出">
+        <ExportPanel :course-id="courseId" />
       </NTabPane>
     </NTabs>
 

@@ -35,18 +35,12 @@ function renderIcon(icon: Component) { return () => h(NIcon, null, () => h(icon)
 
 const menuOptions: MenuOption[] = [
   { label: '工作台', key: '/teacher/home', icon: renderIcon(HomeOutline) },
-  { label: '课程管理', key: '/teacher/courses', icon: renderIcon(BookOutline) },
-  { label: '考试管理', key: '/teacher/exams', icon: renderIcon(DocumentTextOutline) },
-  { label: '项目管理', key: '/teacher/projects', icon: renderIcon(DocumentTextOutline) },
-  { label: '成绩导出', key: '/teacher/export', icon: renderIcon(BookOutline) },
+  { label: '我的课程', key: '/teacher/courses', icon: renderIcon(BookOutline) },
 ]
 
 const activeKey = computed(() => {
   const path = route.path
   if (path.startsWith('/teacher/courses')) return '/teacher/courses'
-  if (path.startsWith('/teacher/exams')) return '/teacher/exams'
-  if (path.startsWith('/teacher/projects')) return '/teacher/projects'
-  if (path.startsWith('/teacher/export')) return '/teacher/export'
   if (path.startsWith('/teacher/home')) return '/teacher/home'
   return path
 })
