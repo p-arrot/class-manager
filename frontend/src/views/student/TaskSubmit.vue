@@ -14,6 +14,7 @@ import http from '@/api/request'
 const route = useRoute(); const router = useRouter(); const message = useMessage()
 const taskId = Number(route.params.taskId)
 const task = ref<TaskDetailVO | null>(null)
+const submitted = ref(false)
 const loading = ref(false)
 const worksheetAnswer = ref<Record<string, any>>({})
 const artifactContent = ref('')
@@ -33,7 +34,7 @@ async function handleSubmit() {
       ? JSON.stringify(worksheetAnswer.value)
       : artifactContent.value || JSON.stringify({ uploaded: true })
     await submitTask(taskId, { content })
-    message.success('提交成功'); router.back()
+    submitted.value = true
   } catch (e: any) { message.error(e.message || '提交失败') }
   finally { loading.value = false }
 }
@@ -59,7 +60,20 @@ onMounted(loadTask)
   <div class="page">
     <NButton text @click="router.back()"><template #icon><NIcon><ArrowBackOutline /></NIcon></template>返回</NButton>
     <NSpin :show="loading">
-      <div v-if="task" class="task-detail">
+      <!-- Success state -->
+      <div v-if="submitted" class="success-state">
+        <NCard size="small" style="text-align:center;padding:40px">
+          <div style="font-size:48px;margin-bottom:16px">&#x2705;</div>
+          <h2 style="margin:0 0 8px;font-size:20px">提交成功</h2>
+          <p style="color:var(--n-text-color-2);margin:0 0 20px">{{ task?.type === 'worksheet' ? '学习单已提交，等待教师评分' : '作品已提交，等待教师评分' }}</p>
+          <NSpace justify="center">
+            <NButton @click="router.back()">返回</NButton>
+            <NButton type="primary" @click="router.push('/student/home')">回到首页</NButton>
+          </NSpace>
+        </NCard>
+      </div>
+
+      <div v-else-if="task" class="task-detail">
         <PageHeader :title="task.title" :subtitle="`${typeLabel(task.type)} · 截止 ${task.deadline ? formatDate(task.deadline, 'datetime') : '未设置'} · ${task.submissionCount} 人已提交`" />
         <p v-if="task.description" class="task-desc">{{ task.description }}</p>
 
