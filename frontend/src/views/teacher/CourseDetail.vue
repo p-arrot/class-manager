@@ -51,12 +51,11 @@ const lesForm = reactive({ name: '' })
 const lesRules: FormRules = { name: { required: true, message: '请输入课时名称', trigger: 'blur' } }
 
 // Lesson columns
-const lesExpandedKeys = ref<number[]>([])
+const selectedLessonId = ref<number | null>(null)
 const lessonTaskCounts = ref<Record<number, number>>({})
 const lesColumns: DataTableColumns<LessonVO> = [
-  { type: 'expand', key: 'expand' },
   { title: '序号', key: 'sortOrder', width: 60 },
-  { title: '课时名称', key: 'name' },
+  { title: '课时名称', key: 'name', render(row: LessonVO) { return h('span', { style: 'cursor:pointer;font-weight:' + (selectedLessonId.value === row.id ? '600' : '400'), onClick: () => { selectedLessonId.value = selectedLessonId.value === row.id ? null : row.id } }, row.name) } },
   { title: '任务', key: 'taskCount', width: 70, render(row: LessonVO) { return h('span', { style: 'font-size:12px;color:var(--n-text-color-3)' }, `${lessonTaskCounts.value[row.id] || 0}个`) } },
   {
     title: '操作', key: 'actions', width: 190,
@@ -222,11 +221,10 @@ onMounted(async () => {
           <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
           <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
         </div>
-        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" v-model:expanded-row-keys="lesExpandedKeys">
-          <template #expand="{ row }">
-            <LessonTaskPanel :lesson-id="row.id" />
-          </template>
-        </NDataTable>
+        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" />
+        <div v-if="selectedLessonId" style="margin-top:12px;padding:12px 16px;border:1px solid var(--n-border-color);border-radius:8px">
+          <LessonTaskPanel :lesson-id="selectedLessonId" />
+        </div>
         <div v-else class="empty-hint">{{ semesters.length ? '该学期尚无课时' : '请先创建一个学期' }}</div>
       </NTabPane>
 
