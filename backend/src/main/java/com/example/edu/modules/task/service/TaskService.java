@@ -8,6 +8,7 @@ import com.example.edu.modules.task.vo.TaskDetailVO;
 import com.example.edu.modules.task.vo.TaskVO;
 
 import java.util.List;
+import java.util.Map;
 
 public interface TaskService {
 
@@ -28,4 +29,6 @@ public interface TaskService {
     SubmissionVO getSubmission(Long id);
 
     List<SubmissionVO> getStudentSubmissions(Long studentId, Long semesterId);
+
+    Map<String, Object> getSubmissionStats(Long taskId);
 }

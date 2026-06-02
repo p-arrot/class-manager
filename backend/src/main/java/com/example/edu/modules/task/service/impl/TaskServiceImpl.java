@@ -6,6 +6,7 @@ import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
 import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.LessonMapper;
@@ -264,6 +265,37 @@ public class TaskServiceImpl implements TaskService {
                         .eq(Submission::getStudentId, studentId)
                         .in(Submission::getTaskId, taskIds));
         return subs.stream().map(this::toSubmissionVO).toList();
+    }
+
+    @Override
+    public java.util.Map<String, Object> getSubmissionStats(Long taskId) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
+        checkTaskOwner(task);
+
+        List<Submission> subs = submissionMapper.selectList(
+                new LambdaQueryWrapper<Submission>().eq(Submission::getTaskId, taskId));
+        long submitted = subs.stream().filter(s -> "submitted".equals(s.getStatus())).count();
+        long graded = subs.stream().filter(s -> "graded".equals(s.getStatus())).count();
+        long special = subs.stream().filter(s -> "special".equals(s.getStatus())).count();
+
+        // Get total students in course's classes
+        Lesson lesson = lessonMapper.selectById(task.getLessonId());
+        Semester semester = semesterMapper.selectById(lesson.getSemesterId());
+        Course course = courseMapper.selectById(semester.getCourseId());
+        List<CourseClass> bindings = courseClassMapper.selectList(
+                new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, course.getId()));
+        java.util.Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(java.util.stream.Collectors.toSet());
+        long total = userMapper.selectCount(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "student").in(User::getClassId, classIds));
+
+        return java.util.Map.of(
+                "total", total,
+                "submitted", submitted,
+                "graded", graded,
+                "special", special,
+                "notSubmitted", total - submitted - graded - special
+        );
     }
 
     // ========== private helpers ==========

@@ -86,6 +86,13 @@ public class TaskController {
         return R.ok(taskService.getStudentSubmissions(studentId, semesterId));
     }
 
+    @Operation(summary = "教师查看任务提交统计（含未提交人数）")
+    @GetMapping("/api/tasks/{taskId}/submission-stats")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<java.util.Map<String, Object>> getSubmissionStats(@PathVariable Long taskId) {
+        return R.ok(taskService.getSubmissionStats(taskId));
+    }
+
     @Operation(summary = "教师查看任务提交列表")
     @GetMapping("/api/tasks/{taskId}/submissions")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
