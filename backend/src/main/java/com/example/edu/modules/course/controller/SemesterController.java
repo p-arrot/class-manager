@@ -23,7 +23,7 @@ public class SemesterController {
 
     @Operation(summary = "创建学期")
     @PostMapping("/api/courses/{courseId}/semesters")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<SemesterVO> create(@PathVariable Long courseId,
                                 @Valid @RequestBody SemesterCreateDTO dto) {
         return R.ok(semesterService.create(courseId, dto));
@@ -47,14 +47,14 @@ public class SemesterController {
 
     @Operation(summary = "获取学期详情")
     @GetMapping("/api/semesters/{id}")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<SemesterVO> getById(@PathVariable Long id) {
         return R.ok(semesterService.getById(id));
     }
 
     @Operation(summary = "获取课程下的学期列表")
     @GetMapping("/api/courses/{courseId}/semesters")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<SemesterVO>> listByCourseId(@PathVariable Long courseId) {
         return R.ok(semesterService.listByCourseId(courseId));
     }

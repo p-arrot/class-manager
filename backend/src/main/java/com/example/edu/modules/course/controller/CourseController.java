@@ -25,7 +25,7 @@ public class CourseController {
 
     @Operation(summary = "创建课程")
     @PostMapping
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<CourseVO> create(@Valid @RequestBody CourseCreateDTO dto) {
         return R.ok(courseService.create(dto));
     }
@@ -40,7 +40,7 @@ public class CourseController {
 
     @Operation(summary = "更新课程")
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<CourseVO> update(@PathVariable Long id, @Valid @RequestBody CourseUpdateDTO dto) {
         return R.ok(courseService.update(id, dto));
     }

@@ -10,7 +10,7 @@ import {
 import type { MenuOption } from 'naive-ui'
 import {
   SunnyOutline, MoonOutline, LogOutOutline,
-  BookOutline, HomeOutline,
+  BookOutline, HomeOutline, DocumentTextOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -23,16 +23,19 @@ function renderIcon(icon: Component) { return () => h(NIcon, null, () => h(icon)
 
 const menuOptions: MenuOption[] = [
   { label: '我的课程', key: '/student/home', icon: renderIcon(BookOutline) },
-  // Phase F4: { label: '我的评价', key: '/student/grades', icon: renderIcon(...) },
-  // Phase F5: { label: '我的考试', key: '/student/exams', icon: renderIcon(...) },
-  // Phase F5: { label: '我的项目', key: '/student/projects', icon: renderIcon(...) },
-  // Phase F6: { label: '我的网盘', key: '/student/drive', icon: renderIcon(...) },
+  { label: '学习评价', key: '/student/evaluation', icon: renderIcon(HomeOutline) },
+  { label: '考试', key: '/student/exams', icon: renderIcon(DocumentTextOutline) },
+  { label: '项目', key: '/student/projects', icon: renderIcon(DocumentTextOutline) },
+  { label: '我的网盘', key: '/student/drive', icon: renderIcon(BookOutline) },
 ]
 
 const activeKey = computed(() => {
   const path = route.path
-  if (path.startsWith('/student/home')) return '/student/home'
-  if (path.startsWith('/student/courses')) return '/student/home'
+  if (path.startsWith('/student/evaluation')) return '/student/evaluation'
+  if (path.startsWith('/student/exams')) return '/student/exams'
+  if (path.startsWith('/student/projects')) return '/student/projects'
+  if (path.startsWith('/student/drive')) return '/student/drive'
+  if (path.startsWith('/student/home') || path.startsWith('/student/courses')) return '/student/home'
   return path
 })
 

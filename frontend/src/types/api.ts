@@ -259,6 +259,55 @@ export interface CourseResourceVO {
   createdAt: string
 }
 
+// ========== Task (Phase 4 / F3) ==========
+
+export interface TaskVO {
+  id: number
+  title: string
+  type: 'worksheet' | 'artifact'
+  lessonId: number
+  description: string | null
+  deadline: string | null
+  submissionCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TaskDetailVO extends TaskVO {
+  formSchema: string | null
+}
+
+export interface TaskCreateDTO {
+  title: string
+  type: 'worksheet' | 'artifact'
+  formSchema?: string
+  description?: string
+  deadline?: string
+}
+
+export interface TaskUpdateDTO {
+  title?: string
+  formSchema?: string
+  description?: string
+  deadline?: string
+}
+
+export interface SubmissionVO {
+  id: number
+  taskId: number
+  studentId: number
+  studentName: string | null
+  studentNo: string | null
+  status: string
+  content: string
+  submittedAt: string | null
+  createdAt: string
+}
+
+export interface SubmissionDTO {
+  content: string
+}
+
 // ========== File (Phase 3b / F2) ==========
 
 export interface FileUploadDTO {

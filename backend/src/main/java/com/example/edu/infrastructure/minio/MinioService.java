@@ -64,7 +64,6 @@ public class MinioService {
                     .bucket(properties.getBucket())
                     .object(objectName)
                     .expiry(1, TimeUnit.HOURS);
-            // Force download as attachment instead of browser rendering
             if (fileName != null && !fileName.isBlank()) {
                 String encoded = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8)
                         .replace("+", "%20");
@@ -99,13 +98,26 @@ public class MinioService {
                     io.minio.PutObjectArgs.builder()
                             .bucket(properties.getBucket())
                             .object(objectName)
-                            .stream(stream, -1, 209715200) // max 200MB part size
+                            .stream(stream, -1, 209715200)
                             .contentType(contentType)
                             .build());
             log.info("MinIO object uploaded: {}", objectName);
         } catch (Exception e) {
             log.error("Failed to upload MinIO object: objectName={}", objectName, e);
             throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "文件上传失败");
+        }
+    }
+
+    public java.io.InputStream getObject(String objectName) {
+        try {
+            return minioClient.getObject(
+                    io.minio.GetObjectArgs.builder()
+                            .bucket(properties.getBucket())
+                            .object(objectName)
+                            .build());
+        } catch (Exception e) {
+            log.error("Failed to get MinIO object: objectName={}", objectName, e);
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
         }
     }
 
@@ -118,7 +130,6 @@ public class MinioService {
                             .build());
             return true;
         } catch (io.minio.errors.ErrorResponseException e) {
-            // Only treat 404 NoSuchKey as "not found"; rethrow other MinIO errors
             if ("NoSuchKey".equals(e.errorResponse().code())) {
                 return false;
             }

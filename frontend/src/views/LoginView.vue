@@ -3,7 +3,9 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
-import { NButton, NInput } from 'naive-ui'
+import { NButton, NInput, NIcon } from 'naive-ui'
+import { EyeOutline, EyeOffOutline } from '@vicons/ionicons5'
+import LoginCharacters from '@/components/LoginCharacters.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -13,6 +15,11 @@ const account = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
+
+// Character interaction states
+const emailFocused = ref(false)
+const passwordFocused = ref(false)
+const passwordVisible = ref(false)
 
 const roleHomeMap: Record<string, string> = {
   admin: '/admin/classes',
@@ -42,24 +49,27 @@ async function handleLogin() {
 
 <template>
   <div class="page" :class="{ dark: isDark }">
-    <!-- Subtle geometric accent -->
     <div class="bg-accent" />
 
     <div class="container">
-      <!-- Left: Brand -->
+      <!-- Left: Animated Characters -->
       <div class="brand-panel">
         <div class="brand-content">
           <p class="brand-eyebrow">信息科技 · 课堂管理</p>
           <h1 class="brand-title">让每一堂课<br />都有迹可循</h1>
-          <p class="brand-desc">
-            为中小学信息科技教师打造的课堂管理系统。<br />
-            从课程规划到学期总评，一站式完成。
-          </p>
+
+          <LoginCharacters
+            :email-focused="emailFocused"
+            :password-focused="passwordFocused"
+            :password-visible="passwordVisible"
+            :password-length="password.length"
+            :error-shown="!!errorMsg"
+          />
         </div>
         <p class="brand-footer">Designed &amp; Developed by Tatakai</p>
       </div>
 
-      <!-- Right: Login form -->
+      <!-- Right: Login Form -->
       <div class="form-panel">
         <div class="form-card">
           <h2 class="form-title">登录</h2>
@@ -74,22 +84,39 @@ async function handleLogin() {
                 placeholder="管理员/教师用用户名，学生用学号"
                 :disabled="loading"
                 :input-props="{ autocomplete: 'username' }"
+                @focus="emailFocused = true"
+                @blur="emailFocused = false"
                 @keyup.enter="handleLogin"
               />
             </div>
 
             <div class="field-group">
               <label class="field-label">密码</label>
-              <NInput
-                v-model:value="password"
-                type="password"
-                size="large"
-                placeholder="请输入密码"
-                :disabled="loading"
-                show-password-on="click"
-                :input-props="{ autocomplete: 'current-password' }"
-                @keyup.enter="handleLogin"
-              />
+              <div class="password-wrapper">
+                <NInput
+                  v-model:value="password"
+                  :type="passwordVisible ? 'text' : 'password'"
+                  size="large"
+                  placeholder="请输入密码"
+                  :disabled="loading"
+                  :input-props="{ autocomplete: 'current-password' }"
+                  class="password-input"
+                  @focus="passwordFocused = true"
+                  @blur="passwordFocused = false"
+                  @keyup.enter="handleLogin"
+                />
+                <button
+                  type="button"
+                  class="pwd-toggle"
+                  @click="passwordVisible = !passwordVisible"
+                  :title="passwordVisible ? '隐藏密码' : '显示密码'"
+                >
+                  <NIcon :size="18">
+                    <EyeOffOutline v-if="passwordVisible" />
+                    <EyeOutline v-else />
+                  </NIcon>
+                </button>
+              </div>
             </div>
 
             <p v-if="errorMsg" class="form-error">{{ errorMsg }}</p>
@@ -129,7 +156,6 @@ async function handleLogin() {
   background: #141412;
 }
 
-/* Subtle geometric background accent */
 .bg-accent {
   position: absolute;
   top: -20%;
@@ -144,7 +170,6 @@ async function handleLogin() {
   background: radial-gradient(circle, rgba(255,255,255,0.02) 0%, transparent 70%);
 }
 
-/* ===== Two-column layout ===== */
 .container {
   display: flex;
   width: 100%;
@@ -169,6 +194,7 @@ async function handleLogin() {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 0;
 }
 
 .brand-eyebrow {
@@ -177,42 +203,26 @@ async function handleLogin() {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #8a8a84;
-  margin-bottom: 20px;
+  margin: 0 0 12px;
 }
-.dark .brand-eyebrow {
-  color: #6b6b65;
-}
+.dark .brand-eyebrow { color: #6b6b65; }
 
 .brand-title {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 600;
   line-height: 1.25;
   color: #1a1a18;
   letter-spacing: -0.02em;
-  margin-bottom: 20px;
+  margin: 0 0 16px;
 }
-.dark .brand-title {
-  color: #e8e6e1;
-}
-
-.brand-desc {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #6b6b65;
-  max-width: 360px;
-}
-.dark .brand-desc {
-  color: #8a8a84;
-}
+.dark .brand-title { color: #e8e6e1; }
 
 .brand-footer {
   font-size: 12px;
   color: #b0b0a8;
-  margin-top: 40px;
+  margin-top: 20px;
 }
-.dark .brand-footer {
-  color: #5a5a54;
-}
+.dark .brand-footer { color: #5a5a54; }
 
 /* ===== Right: Form Panel ===== */
 .form-panel {
@@ -240,18 +250,14 @@ async function handleLogin() {
   margin-bottom: 4px;
   letter-spacing: -0.01em;
 }
-.dark .form-title {
-  color: #e8e6e1;
-}
+.dark .form-title { color: #e8e6e1; }
 
 .form-subtitle {
   font-size: 14px;
   color: #8a8a84;
   margin-bottom: 32px;
 }
-.dark .form-subtitle {
-  color: #6b6b65;
-}
+.dark .form-subtitle { color: #6b6b65; }
 
 .form-fields {
   display: flex;
@@ -270,8 +276,43 @@ async function handleLogin() {
   font-weight: 500;
   color: #4a4a44;
 }
-.dark .field-label {
-  color: #b0b0a8;
+.dark .field-label { color: #b0b0a8; }
+
+/* Password input with toggle button */
+.password-wrapper {
+  position: relative;
+}
+.password-input {
+  width: 100%;
+}
+.password-input :deep(.n-input__input-el) {
+  padding-right: 36px !important;
+}
+.pwd-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #8a8a84;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: color 0.15s, background 0.15s;
+}
+.pwd-toggle:hover {
+  color: #1a1a18;
+  background: rgba(0,0,0,0.04);
+}
+.dark .pwd-toggle { color: #6b6b65; }
+.dark .pwd-toggle:hover {
+  color: #e8e6e1;
+  background: rgba(255,255,255,0.06);
 }
 
 .form-error {
@@ -322,11 +363,9 @@ async function handleLogin() {
   font-size: 12px;
   color: #b0b0a8;
 }
-.dark .hint {
-  color: #5a5a54;
-}
+.dark .hint { color: #5a5a54; }
 
-/* ===== Responsive: stack on narrow screens ===== */
+/* ===== Responsive ===== */
 @media (max-width: 800px) {
   .container {
     flex-direction: column;
@@ -337,19 +376,9 @@ async function handleLogin() {
     padding-right: 0;
     text-align: center;
   }
-  .brand-desc {
-    max-width: 100%;
-  }
-  .brand-title {
-    font-size: 28px;
-  }
-  .form-panel {
-    flex: none;
-    width: 100%;
-  }
-  .brand-footer {
-    display: none;
-  }
+  .brand-title { font-size: 28px; }
+  .form-panel { flex: none; width: 100%; }
+  .brand-footer { display: none; }
   .bg-accent {
     top: -40%;
     right: -40%;

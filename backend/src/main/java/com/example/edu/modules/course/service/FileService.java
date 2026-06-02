@@ -1,5 +1,6 @@
 package com.example.edu.modules.course.service;
 
+import com.example.edu.modules.course.dto.FileRawDTO;
 import com.example.edu.modules.course.dto.FileUploadDTO;
 import com.example.edu.modules.course.vo.FileUploadVO;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,4 +16,6 @@ public interface FileService {
     String getPreviewUrl(Long resourceId);
 
     String getStreamUrl(Long resourceId);
+
+    FileRawDTO getRawFile(Long resourceId);
 }

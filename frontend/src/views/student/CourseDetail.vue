@@ -9,6 +9,7 @@ import { listSemesters } from '@/api/semesters'
 import { listLessons } from '@/api/lessons'
 import { listAllClasses } from '@/api/classes'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
+import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
 import type { CourseDetailVO, SemesterVO, LessonVO, ClassVO } from '@/types/api'
 import type { DataTableColumns } from 'naive-ui'
 
@@ -24,7 +25,9 @@ const activeSemesterId = ref<number | null>(null)
 const allClasses = ref<ClassVO[]>([])
 const classMap = computed(() => new Map(allClasses.value.map(c => [c.id, c])))
 
+const lesExpandedKeys = ref<number[]>([])
 const lesColumns: DataTableColumns<LessonVO> = [
+  { type: 'expand', key: 'expand' },
   { title: '序号', key: 'sortOrder', width: 60 },
   { title: '课时名称', key: 'name' },
 ]
@@ -120,7 +123,12 @@ onMounted(async () => {
           :data="lessons"
           size="small"
           :row-key="(r: LessonVO) => r.id"
-        />
+          v-model:expanded-row-keys="lesExpandedKeys"
+        >
+          <template #expand="{ row }">
+            <LessonTaskPanel :lesson-id="row.id" readonly />
+          </template>
+        </NDataTable>
         <NEmpty v-else-if="activeSemesterId" description="该学期暂无课时" class="empty-hint" />
         <NEmpty v-else description="请先选择一个学期" class="empty-hint" />
       </NTabPane>

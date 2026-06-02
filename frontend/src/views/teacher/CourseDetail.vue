@@ -10,6 +10,7 @@ import { listLessons, createLesson, updateLesson, deleteLesson, reorderLesson } 
 import { listAllClasses } from '@/api/classes'
 import { useThemeStore } from '@/stores/theme'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
+import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
 import type { CourseDetailVO, SemesterVO, SemesterCreateDTO, LessonVO, ClassVO } from '@/types/api'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
 
@@ -45,7 +46,9 @@ const lesForm = reactive({ name: '' })
 const lesRules: FormRules = { name: { required: true, message: '请输入课时名称', trigger: 'blur' } }
 
 // Lesson columns
+const lesExpandedKeys = ref<number[]>([])
 const lesColumns: DataTableColumns<LessonVO> = [
+  { type: 'expand', key: 'expand' },
   { title: '序号', key: 'sortOrder', width: 60 },
   { title: '课时名称', key: 'name' },
   {
@@ -205,7 +208,11 @@ onMounted(async () => {
           <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
           <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
         </div>
-        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" />
+        <NDataTable v-if="activeSemesterId && lessons.length" :columns="lesColumns" :data="lessons" size="small" :row-key="(r: LessonVO) => r.id" v-model:expanded-row-keys="lesExpandedKeys">
+          <template #expand="{ row }">
+            <LessonTaskPanel :lesson-id="row.id" />
+          </template>
+        </NDataTable>
         <div v-else class="empty-hint">{{ semesters.length ? '该学期尚无课时' : '请先创建一个学期' }}</div>
       </NTabPane>
 

@@ -24,7 +24,7 @@ public class LessonController {
 
     @Operation(summary = "创建课时")
     @PostMapping("/api/semesters/{semesterId}/lessons")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<LessonVO> create(@PathVariable Long semesterId,
                               @Valid @RequestBody LessonCreateDTO dto) {
         return R.ok(lessonService.create(semesterId, dto));
@@ -57,14 +57,14 @@ public class LessonController {
 
     @Operation(summary = "获取课时详情")
     @GetMapping("/api/lessons/{id}")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<LessonVO> getById(@PathVariable Long id) {
         return R.ok(lessonService.getById(id));
     }
 
     @Operation(summary = "获取学期下的课时列表")
     @GetMapping("/api/semesters/{semesterId}/lessons")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<LessonVO>> listBySemesterId(@PathVariable Long semesterId) {
         return R.ok(lessonService.listBySemesterId(semesterId));
     }

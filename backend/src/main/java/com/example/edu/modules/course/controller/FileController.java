@@ -1,6 +1,7 @@
 package com.example.edu.modules.course.controller;
 
 import com.example.edu.common.result.R;
+import com.example.edu.modules.course.dto.FileRawDTO;
 import com.example.edu.modules.course.dto.FileUploadDTO;
 import com.example.edu.modules.course.service.FileService;
 import com.example.edu.modules.course.vo.FileUploadVO;
@@ -8,10 +9,16 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @Tag(name = "课程文件")
@@ -67,5 +74,24 @@ public class FileController {
     public R<Map<String, String>> getStreamUrl(@PathVariable Long resourceId) {
         String url = fileService.getStreamUrl(resourceId);
         return R.ok(Map.of("url", url));
+    }
+
+    @Operation(summary = "直接下载文件（通过后端代理）")
+    @GetMapping("/{resourceId}/raw")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ResponseEntity<InputStreamResource> getRawFile(@PathVariable Long resourceId) {
+        FileRawDTO raw = fileService.getRawFile(resourceId);
+        String encodedFileName = java.net.URLEncoder.encode(raw.getFileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        raw.getContentType() != null ? raw.getContentType() : "application/octet-stream"))
+                .contentLength(raw.getFileSize())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(encodedFileName)
+                                .build()
+                                .toString())
+                .body(new InputStreamResource(raw.getInputStream()));
     }
 }

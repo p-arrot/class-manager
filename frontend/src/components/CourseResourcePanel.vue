@@ -6,7 +6,7 @@ import FileTree from '@/components/FileTree.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import FilePreview from '@/components/FilePreview.vue'
 import { listCourseResources, createResourceFolder, renameResource, deleteResource } from '@/api/courses'
-import { getDownloadUrl } from '@/api/files'
+import http from '@/api/request'
 import { formatFileSize, getFileExtension } from '@/utils/validation'
 import { formatDate } from '@/utils/date'
 import type { CourseResourceVO } from '@/types/api'
@@ -119,8 +119,17 @@ async function handleDelete(resource: CourseResourceVO) {
 // Download
 async function handleDownload(resource: CourseResourceVO) {
   try {
-    const { url } = await getDownloadUrl(resource.id)
-    window.open(url, '_blank')
+    const response = await http.get(`/files/${resource.id}/raw`, {
+      responseType: 'blob',
+    }) as unknown as Blob
+    const blobUrl = URL.createObjectURL(response)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = resource.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
   } catch (e: any) { message.error(e.message || '下载失败') }
 }
 

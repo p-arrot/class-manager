@@ -7,6 +7,7 @@ import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.infrastructure.minio.MinioService;
 import com.example.edu.infrastructure.preview.PreviewService;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.dto.FileRawDTO;
 import com.example.edu.modules.course.dto.FileUploadDTO;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
@@ -39,10 +40,23 @@ public class FileServiceImpl implements FileService {
     private final AuditLogService auditLogService;
 
     private static final long MAX_FILE_SIZE = 200L * 1024 * 1024; // 200 MB
+    private static final java.util.Set<String> FORBIDDEN_EXTENSIONS =
+            java.util.Set.of("exe", "bat", "sh", "cmd", "com", "msi", "dll", "so");
+
+    private void validateFileType(String fileName) {
+        if (fileName == null) return;
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0) return;
+        String ext = fileName.substring(dot + 1).toLowerCase();
+        if (FORBIDDEN_EXTENSIONS.contains(ext)) {
+            throw new BizException(ErrorCode.FILE_TYPE_NOT_ALLOWED);
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FileUploadVO createPresignedUpload(FileUploadDTO dto) {
+        validateFileType(dto.getFileName());
         // 1. Validate course
         Course course = courseMapper.selectById(dto.getCourseId());
         if (course == null) {
@@ -105,6 +119,7 @@ public class FileServiceImpl implements FileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FileUploadVO directUpload(FileUploadDTO dto, MultipartFile file) {
+        validateFileType(dto.getFileName());
         // 1. Validate course
         Course course = courseMapper.selectById(dto.getCourseId());
         if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
@@ -125,7 +140,7 @@ public class FileServiceImpl implements FileService {
 
         // 5. Calculate sort order
         List<CourseResource> siblings = courseResourceMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CourseResource>()
+                new LambdaQueryWrapper<CourseResource>()
                         .eq(dto.getParentId() != null, CourseResource::getParentId, dto.getParentId())
                         .isNull(dto.getParentId() == null, CourseResource::getParentId)
                         .eq(CourseResource::getCourseId, dto.getCourseId())
@@ -180,6 +195,23 @@ public class FileServiceImpl implements FileService {
         CourseResource resource = loadFileResource(resourceId);
         // Stream URL: NO attachment header (for inline HTML/image rendering)
         return minioService.generatePresignedGetUrl(resource.getObjectName());
+    }
+
+    @Override
+    public FileRawDTO getRawFile(Long resourceId) {
+        CourseResource resource = loadFileResource(resourceId);
+        try {
+            java.io.InputStream stream = minioService.getObject(resource.getObjectName());
+            return FileRawDTO.builder()
+                    .inputStream(stream)
+                    .contentType(resource.getContentType())
+                    .fileName(resource.getName())
+                    .fileSize(resource.getFileSize() != null ? resource.getFileSize() : 0)
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to get file from MinIO: objectName={}", resource.getObjectName(), e);
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
+        }
     }
 
     // ========== private helpers ==========

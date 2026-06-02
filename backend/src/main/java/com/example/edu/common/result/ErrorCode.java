@@ -58,6 +58,18 @@ public enum ErrorCode {
     SEMESTER_HAS_LESSONS(40913, "学期下还有课时，无法删除"),
     RESOURCE_HAS_CHILDREN(40914, "文件夹下还有子资源，无法删除"),
 
+    // 404 - task module
+    TASK_NOT_FOUND(40420, "任务不存在"),
+    SUBMISSION_NOT_FOUND(40421, "提交不存在"),
+
+    // 403 - task module
+    TASK_DEADLINE_PASSED(40320, "已过截止时间，无法提交"),
+    SUBMISSION_ALREADY_GRADED(40321, "已评分，无法修改提交"),
+    TASK_SUBMIT_STUDENT_ONLY(40322, "仅学生可提交任务"),
+
+    // 404 - evaluation module
+    EVALUATION_NOT_FOUND(40430, "评价不存在"),
+
     // 500
     INTERNAL_ERROR(500, "服务器内部错误"),
     MINIO_ERROR(50001, "文件服务异常"),

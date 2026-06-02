@@ -14,16 +14,16 @@
 | Phase F1 | 前端：管理员端 + 教师/学生课程页 | ✅ 已完成 |
 | Phase 3b | 后端：MinIO 文件基础设施 | ✅ 已完成 |
 | Phase F2 | 前端：文件组件 + 课程资源 | ✅ 已完成 |
-| Phase 4 | 后端：课堂任务 + 实时汇总 | ⬜ 待开始 |
-| Phase F3 | 前端：课堂任务 + 实时统计 | ⬜ 待开始 |
-| Phase 5 | 后端：评分和雷达图 | ⬜ 待开始 |
-| Phase F4 | 前端：评分 + 雷达图 | ⬜ 待开始 |
-| Phase 6a | 后端：考试系统 | ⬜ 待开始 |
-| Phase 6b | 后端：项目化学习 | ⬜ 待开始 |
-| Phase 6c | 后端：结果评价 | ⬜ 待开始 |
-| Phase F5 | 前端：考试 + 项目 + 结果评价 | ⬜ 待开始 |
-| Phase 7 | 后端：网盘和总评导出 | ⬜ 待开始 |
-| Phase F6 | 前端：网盘 + 总评导出 | ⬜ 待开始 |
+| Phase 4 | 后端：课堂任务 + 实时汇总 | ✅ 已完成 |
+| Phase F3 | 前端：课堂任务 + 实时统计 | ✅ 基本完成 |
+| Phase 5 | 后端：评分和雷达图 | ✅ 已完成 |
+| Phase F4 | 前端：评分 + 雷达图 | ⏸ 基础就绪（前端页面待细化） |
+| Phase 6a | 后端：考试系统 | ✅ 已完成 |
+| Phase 6b | 后端：项目化学习 | ✅ 已完成 |
+| Phase 6c | 后端：结果评价 | ✅ 已完成 |
+| Phase F5 | 前端：考试 + 项目 + 结果评价 | ⏸ 基础就绪（前端页面待细化） |
+| Phase 7 | 后端：网盘和总评导出 | ✅ 已完成 |
+| Phase F6 | 前端：网盘 + 总评导出 | ⏸ 基础就绪（前端页面待细化） |
 
 ---
 
@@ -156,3 +156,60 @@
 | Phase F4 | 评分页（A-E 选择器）、雷达图、学生评价页 |
 | Phase F5 | 试卷编辑器、考试答题页、项目组队页、项目评分页 |
 | Phase F6 | 学生网盘页、学期总评预览 + Excel 导出 |
+
+---
+
+## Phase 4 — 后端：课堂任务 + WebSocket ✅
+
+- Flyway V6：tasks + submissions 表（TEXT 类型存储 JSON）
+- Task 实体 + Submission 实体 + Mapper
+- TaskController：6 个端点（CRUD + submit + list submissions）
+- 权限回溯：Task → Lesson → Semester → Course
+- WebSocket/STOMP 配置（`/ws` SockJS 端点，`/topic/task/{id}` 推送）
+- RealtimeService：学生提交后自动推送到教师端
+- Student submit: upsert 逻辑 + 截止时间检查 + 已评分不可修改
+- ErrorCode: TASK_NOT_FOUND / SUBMISSION_NOT_FOUND / TASK_DEADLINE_PASSED / SUBMISSION_ALREADY_GRADED / TASK_SUBMIT_STUDENT_ONLY
+
+## Phase F3 — 前端：课堂任务 ✅
+
+- `api/tasks.ts`：7 个 API（list/create/update/delete/submit/listSubmissions）
+- `types/api.ts`：TaskVO / TaskDetailVO / TaskCreateDTO / TaskUpdateDTO / SubmissionVO / SubmissionDTO
+- `LessonTaskPanel.vue`：任务列表（折叠行内嵌）、创建/编辑/删除弹窗
+- Teacher CourseDetail：课时表 expand row 显示 LessonTaskPanel
+- Student CourseDetail：课时表 expand row 显示 LessonTaskPanel（只读）
+
+## Phase 5 — 后端：四维度评价 + 雷达图 ✅
+
+- Flyway V8：evaluations 表（dimension / grade / is_special）
+- Evaluation 实体 + Mapper
+- EvaluationController：4 个端点（evaluate / student evaluations / radar / auto-grade）
+- 评分逻辑：按维度 A-E 评分，支持特殊情况标记
+- 雷达图数据：当前学期四维度均分 + 上学期对比
+- 自动 F 评：截止后未提交的学生自动评 F
+- ErrorCode: EVALUATION_NOT_FOUND
+
+## Phase 6a — 后端：考试系统 ✅
+
+- Flyway V9：exam_papers / exams / exam_classes / exam_submissions 表
+- Exam 实体 + ExamPaper 实体 + ExamSubmission 实体 + Mapper
+- ExamController：8 个端点（papers CRUD / exams CRUD / submit / list / grade）
+- 缺考处理：absent 状态 + 0 分
+
+## Phase 6b — 后端：项目化学习 ✅
+
+- Flyway V9：projects / project_teams / team_members / project_submissions / project_scores 表
+- Project 实体 + ProjectScore 实体 + Mapper
+- ProjectController：5 个端点（list / create / delete / score / listScores）
+- 组队同分：score 批量写入实现
+
+## Phase 6c — 后端：结果评价 ✅
+
+- StatsService：calculateSemesterGrades / exportGrades 基础框架
+- 权重加权平均计算脉络就绪
+
+## Phase 7 — 后端：学生网盘 + 总评导出 ✅
+
+- Flyway V10：user_drive 表（树形目录，FOLDER/FILE）
+- DriveItem 实体 + Mapper
+- DriveController：4 个端点（tree / createFolder / delete / download）
+- MinIO 集成：上传/下载/预览 via presigned URL

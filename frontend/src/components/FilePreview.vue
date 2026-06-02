@@ -46,7 +46,7 @@ function handleClose() {
     :show="resourceId !== null"
     preset="card"
     :title="fileName || '文件预览'"
-    style="width: 90vw; max-width: 1100px; height: 85vh; padding: 0;"
+    style="width: 90vw; max-width: 1100px; height: 85vh;"
     :on-close="handleClose"
     :bordered="false"
   >
@@ -64,10 +64,26 @@ function handleClose() {
   </NModal>
 </template>
 
+<style>
+/* Make the entire card chain a strict flex column so the content area fills available space */
+.n-modal .n-card {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+.n-modal .n-card__content {
+  padding: 0 !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+</style>
+
 <style scoped>
 .preview-body {
   width: 100%;
-  height: calc(85vh - 56px);
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,7 +93,6 @@ function handleClose() {
   width: 100%;
   height: 100%;
   border: none;
-  border-radius: 0 0 8px 8px;
 }
 .preview-loading {
   display: flex;
