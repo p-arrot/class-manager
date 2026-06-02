@@ -33,12 +33,23 @@ const typeOptions = [
   { label: '课堂作品', value: 'artifact' },
 ]
 
+const taskStats = ref<Record<number, { submitted: number; total: number }>>({})
+
 async function loadTasks() {
   loading.value = true
   try { tasks.value = await listTasks(props.lessonId) }
   catch { /* ignore */ }
   finally { loading.value = false }
-  // Check student submission status for each task
+  // Teacher: load submission stats
+  if (!props.readonly) {
+    for (const t of tasks.value) {
+      try {
+        const stats: any = await http.get(`/tasks/${t.id}/submission-stats`)
+        if (stats) taskStats.value[t.id] = { submitted: stats.submitted + stats.graded, total: stats.total }
+      } catch { /* ignore */ }
+    }
+  }
+  // Student: check own submission status
   if (props.readonly && auth.userInfo?.userId) {
     const subs: Record<number, any> = {}
     for (const t of tasks.value) {
@@ -116,7 +127,7 @@ onMounted(loadTasks)
             {{ typeLabel(t.type) }}
           </NTag>
           <span class="task-title">{{ t.title }}</span>
-          <span v-if="!readonly" class="task-meta">{{ t.submissionCount }} 人提交</span>
+          <span v-if="!readonly && taskStats[t.id]" class="task-meta">{{ taskStats[t.id].submitted }}/{{ taskStats[t.id].total }} 已提交</span>
           <span v-if="t.deadline" class="task-deadline">截止 {{ formatDate(t.deadline, 'date') }}</span>
           <NTag v-if="readonly && mySubmissions[t.id]?.status === 'submitted'" size="tiny" type="warning" :bordered="false">已提交 · 待评分</NTag>
           <NTag v-if="readonly && mySubmissions[t.id]?.status === 'graded'" size="tiny" type="success" :bordered="false">已评分</NTag>

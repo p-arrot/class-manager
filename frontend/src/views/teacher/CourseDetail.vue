@@ -183,7 +183,7 @@ onMounted(async () => {
     </div>
 
     <NTabs type="line" animated>
-      <NTabPane name="semesters" tab="学期管理">
+      <NTabPane name="semesters" tab="学期课时">
         <div class="tab-head">
           <span class="tab-subtitle">{{ semesters.length }} 个学期</span>
           <NButton size="small" @click="openCreateSemester"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建学期</NButton>
@@ -202,47 +202,46 @@ onMounted(async () => {
           </NCard>
         </div>
         <div v-else class="empty-hint">尚无学期，请先创建一个学期</div>
-      </NTabPane>
-
-      <NTabPane name="lessons" tab="课时管理">
-        <div class="tab-head">
-          <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
-          <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
-        </div>
-        <div v-if="activeSemesterId && lessons.length" class="lesson-list">
-          <div v-for="(row, idx) in lessons" :key="row.id">
-            <div class="lesson-row" @click="toggleLesson(row.id)">
-              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
-              <span class="lesson-index">{{ row.sortOrder }}</span>
-              <span class="lesson-name">{{ row.name }}</span>
-              <NTag size="tiny" :bordered="false" style="margin-left:auto">{{ lessonTaskCounts[row.id] || 0 }}个任务</NTag>
-              <NButton size="tiny" quaternary @click.stop="handleMoveUp(row)" :disabled="idx===0"><template #icon><NIcon :size="14"><ChevronUpOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="handleMoveDown(row)" :disabled="idx===lessons.length-1"><template #icon><NIcon :size="14"><ChevronDownOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="openEditLesson(row)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="handleDeleteLesson(row)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
-            </div>
-            <div v-if="expandedLessonId === row.id" class="lesson-expand">
-              <LessonTaskPanel :lesson-id="row.id" />
+        <div v-if="semesters.length" style="margin-top:20px">
+          <div class="tab-head">
+            <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
+            <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
+          </div>
+          <div v-if="activeSemesterId && lessons.length" class="lesson-list">
+            <div v-for="(row, idx) in lessons" :key="row.id">
+              <div class="lesson-row" @click="toggleLesson(row.id)">
+                <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+                <span class="lesson-index">{{ row.sortOrder }}</span>
+                <span class="lesson-name">{{ row.name }}</span>
+                <NTag size="tiny" :bordered="false" style="margin-left:auto">{{ lessonTaskCounts[row.id] || 0 }}个任务</NTag>
+                <NButton size="tiny" quaternary @click.stop="handleMoveUp(row)" :disabled="idx===0"><template #icon><NIcon :size="14"><ChevronUpOutline /></NIcon></template></NButton>
+                <NButton size="tiny" quaternary @click.stop="handleMoveDown(row)" :disabled="idx===lessons.length-1"><template #icon><NIcon :size="14"><ChevronDownOutline /></NIcon></template></NButton>
+                <NButton size="tiny" quaternary @click.stop="openEditLesson(row)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
+                <NButton size="tiny" quaternary @click.stop="handleDeleteLesson(row)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
+              </div>
+              <div v-if="expandedLessonId === row.id" class="lesson-expand">
+                <LessonTaskPanel :lesson-id="row.id" />
+              </div>
             </div>
           </div>
+          <div v-else-if="activeSemesterId" class="empty-hint">该学期尚无课时</div>
         </div>
-        <div v-else class="empty-hint">{{ semesters.length ? '该学期尚无课时' : '请先创建一个学期' }}</div>
       </NTabPane>
 
       <NTabPane name="resources" tab="课程资源">
         <CourseResourcePanel :course-id="courseId" />
       </NTabPane>
-      <NTabPane name="exams" tab="考试管理">
+      <NTabPane name="exams" tab="考核管理">
         <ExamPanel :course-id="courseId" />
-      </NTabPane>
-      <NTabPane name="projects" tab="项目管理">
-        <ProjectPanel :course-id="courseId" />
-      </NTabPane>
-      <NTabPane name="export" tab="成绩导出">
-        <ExportPanel :course-id="courseId" />
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--n-border-color)">
+          <ProjectPanel :course-id="courseId" />
+        </div>
       </NTabPane>
       <NTabPane name="overview" tab="学生总览">
         <StudentOverviewPanel :course-id="courseId" />
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--n-border-color)">
+          <ExportPanel :course-id="courseId" />
+        </div>
       </NTabPane>
     </NTabs>
 

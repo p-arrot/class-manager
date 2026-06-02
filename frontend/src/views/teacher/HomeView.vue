@@ -49,7 +49,7 @@ async function loadDashboard() {
   finally { loading.value = false }
 }
 
-function goGrading(taskId: number) { router.push(`/teacher/courses`); /* TODO: navigate to grading */ }
+function goGrading(taskId: number) { router.push(`/teacher/grading/${taskId}`) }
 
 onMounted(loadDashboard)
 </script>
