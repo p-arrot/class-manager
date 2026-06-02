@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NButton, NIcon, NModal, NForm, NFormItem, NInput, NSpace, NTag, NPopconfirm, NPopover, useMessage } from 'naive-ui'
-import { AddOutline, DownloadOutline, EyeOutline, TrashOutline, CreateOutline, CloudUploadOutline, FolderAddOutline, ArrowForwardOutline } from '@vicons/ionicons5'
+import { AddOutline, DownloadOutline, EyeOutline, TrashOutline, CreateOutline, CloudUploadOutline, ArrowForwardOutline } from '@vicons/ionicons5'
 import FileTree from '@/components/FileTree.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import FilePreview from '@/components/FilePreview.vue'

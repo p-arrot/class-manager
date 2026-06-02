@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NTag, NSpace, NIcon, NModal, NForm, NFormItem, NInput, NSelect, NPopconfirm, NEmpty, useMessage } from 'naive-ui'
-import { AddOutline, CreateOutline, TrashOutline, EditOutline } from '@vicons/ionicons5'
+import { AddOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
 import { listTasks, createTask, updateTask, deleteTask } from '@/api/tasks'
 import { formatDate } from '@/utils/date'
 import WorksheetEditor from '@/components/WorksheetEditor.vue'
@@ -104,7 +104,7 @@ onMounted(loadTasks)
           <span v-if="t.deadline" class="task-deadline">截止 {{ formatDate(t.deadline, 'date') }}</span>
         </div>
         <NButton v-if="readonly" size="tiny" @click="router.push(`/student/tasks/${t.id}`)">
-          <template #icon><NIcon :size="14"><EditOutline /></NIcon></template>作答
+          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>作答
         </NButton>
         <NSpace v-if="!readonly" :size="2">
           <NButton size="tiny" quaternary @click="openEdit(t)">
