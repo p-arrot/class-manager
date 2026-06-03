@@ -38,11 +38,11 @@ async function loadDueAndGrades(courses: CourseVO[]) {
               if (mine && mine.status === 'graded') {
                 graded.push({ ...mine, taskTitle: t.title, courseName: course.name })
               }
-            } catch { /* */ }
+            } catch (e) { console.error("HomeView.vue failed", e) }
           }
         }
       }
-    } catch { /* */ }
+    } catch (e) { console.error("HomeView.vue failed", e) }
   }
   dueTasks.value = due.slice(0, 4)
   recentGrades.value = graded.slice(0, 3)

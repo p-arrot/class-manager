@@ -9,7 +9,7 @@ const semesters = ref<any[]>([])
 const activeSemesterId = ref<number | null>(null)
 const preview = ref<any[]>([])
 
-watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch { /* ignore */ } }, { immediate: true })
+watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("ExportPanel.vue failed", e) } }, { immediate: true })
 watch(activeSemesterId, async () => {
   if (!activeSemesterId.value) return
   try { preview.value = await http.get(`/stats/semester/${activeSemesterId.value}/preview`) || [] } catch { preview.value = [] }

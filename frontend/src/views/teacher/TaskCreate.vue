@@ -63,7 +63,7 @@ async function handleSubmit() {
 }
 
 onMounted(async () => {
-  try { const l: any = await http.get(`/lessons/${lessonId}`); lessonName.value = l.name } catch { /* */ }
+  try { const l: any = await http.get(`/lessons/${lessonId}`); lessonName.value = l.name } catch (e) { console.error("TaskCreate.vue failed", e) }
 })
 </script>
 

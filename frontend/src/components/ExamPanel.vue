@@ -15,17 +15,17 @@ const showModal = ref(false); const editingId = ref<number | null>(null)
 const form = ref({ name: '', paperId: null as number | null, startTime: '', endTime: '', weight: '1.0' })
 
 async function loadSemesters() {
-  try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch { /* ignore */ }
+  try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("ExamPanel.vue failed", e) }
 }
 watch(() => props.courseId, () => { loadSemesters() }, { immediate: true })
 
 async function loadExams() {
   if (!activeSemesterId.value) { exams.value = []; return }
-  try { exams.value = await http.get(`/semesters/${activeSemesterId.value}/exams`) || [] } catch { /* ignore */ }
+  try { exams.value = await http.get(`/semesters/${activeSemesterId.value}/exams`) || [] } catch (e) { console.error("ExamPanel.vue failed", e) }
 }
 watch(activeSemesterId, loadExams)
 
-async function loadPapers() { try { papers.value = await http.get('/exam-papers') || [] } catch { /* ignore */ } }
+async function loadPapers() { try { papers.value = await http.get('/exam-papers') || [] } catch (e) { console.error("ExamPanel.vue failed", e) } }
 watch(() => props.courseId, loadPapers, { immediate: true })
 
 function openCreate() { editingId.value = null; form.value = { name: '', paperId: null, startTime: '', endTime: '', weight: '1.0' }; showModal.value = true }

@@ -65,12 +65,12 @@ async function loadCourse() {
 }
 
 async function loadSemesters() {
-  try { semesters.value = await listSemesters(courseId) } catch { /* ignore */ }
+  try { semesters.value = await listSemesters(courseId) } catch (e) { console.error("CourseDetail.vue failed", e) }
 }
 
 async function loadLessons() {
   if (!activeSemesterId.value) { lessons.value = []; return }
-  try { lessons.value = await listLessons(activeSemesterId.value) } catch { /* ignore */ }
+  try { lessons.value = await listLessons(activeSemesterId.value) } catch (e) { console.error("CourseDetail.vue failed", e) }
   // Fetch task counts for each lesson
   for (const l of lessons.value) {
     try {
@@ -164,7 +164,7 @@ watch(activeSemesterId, () => { if (activeSemesterId.value) loadLessons() })
 onMounted(async () => {
   await loadCourse()
   await loadSemesters()
-  try { allClasses.value = await listAllClasses() } catch { /* ignore */ }
+  try { allClasses.value = await listAllClasses() } catch (e) { console.error("CourseDetail.vue failed", e) }
 })
 </script>
 

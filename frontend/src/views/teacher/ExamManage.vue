@@ -21,15 +21,15 @@ const form = ref({ name: '', paperId: null as number | null, startTime: '', endT
 
 async function loadSemesters() {
   try { const cs: any[] = await http.get('/courses?page=1&size=50'); if (cs.length) semesters.value = await http.get(`/courses/${cs[0].id}/semesters`) }
-  catch { /* ignore */ }
+  catch (e) { console.error("ExamManage.vue failed", e) }
 }
 async function loadExams() {
   if (!activeSemesterId.value) return
   loading.value = true
-  try { exams.value = await http.get(`/semesters/${activeSemesterId.value}/exams`) } catch { /* ignore */ }
+  try { exams.value = await http.get(`/semesters/${activeSemesterId.value}/exams`) } catch (e) { console.error("ExamManage.vue failed", e) }
   finally { loading.value = false }
 }
-async function loadPapers() { try { papers.value = await http.get('/exam-papers') } catch { /* ignore */ } }
+async function loadPapers() { try { papers.value = await http.get('/exam-papers') } catch (e) { console.error("ExamManage.vue failed", e) } }
 
 function openCreate() {
   editingId.value = null; form.value = { name: '', paperId: null, startTime: '', endTime: '', weight: 1.0 }; showModal.value = true

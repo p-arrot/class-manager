@@ -31,7 +31,7 @@ async function loadCourse() {
 }
 
 async function loadTree() {
-  try { tree.value = await listCourseResources(courseId) } catch { /* ignore */ }
+  try { tree.value = await listCourseResources(courseId) } catch (e) { console.error("CourseResources.vue failed", e) }
 }
 
 async function loadContents() {
@@ -42,7 +42,7 @@ async function loadContents() {
     } else {
       folderContents.value = await listCourseResources(courseId, selectedFolderId.value)
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.error("CourseResources.vue failed", e) }
   finally { loading.value = false }
 }
 

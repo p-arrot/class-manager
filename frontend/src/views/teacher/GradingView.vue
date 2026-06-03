@@ -36,7 +36,7 @@ async function loadSubmissions() {
       const lesson: any = await http.get(`/lessons/${task.lessonId}`)
       if (lesson?.semesterId) semesterId.value = lesson.semesterId
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.error("GradingView.vue failed", e) }
   finally { loading.value = false }
 }
 

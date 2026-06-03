@@ -13,7 +13,7 @@ const loading = ref(false)
 const profileStudentId = ref<number | null>(null)
 const profileStudentName = ref('')
 
-watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch { /* */ } }, { immediate: true })
+watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("StudentOverviewPanel.vue failed", e) } }, { immediate: true })
 watch(activeSemesterId, async (sid) => {
   if (!sid) return
   loading.value = true

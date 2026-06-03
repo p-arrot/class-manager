@@ -38,7 +38,7 @@ const taskStats = ref<Record<number, { submitted: number; total: number }>>({})
 async function loadTasks() {
   loading.value = true
   try { tasks.value = await listTasks(props.lessonId) }
-  catch { /* ignore */ }
+  catch (e) { console.error("LessonTaskPanel.vue failed", e) }
   finally { loading.value = false }
   // Teacher: load submission stats
   if (!props.readonly) {
@@ -46,7 +46,7 @@ async function loadTasks() {
       try {
         const stats: any = await http.get(`/tasks/${t.id}/submission-stats`)
         if (stats) taskStats.value[t.id] = { submitted: stats.submitted + stats.graded, total: stats.total }
-      } catch { /* ignore */ }
+      } catch (e) { console.error("LessonTaskPanel.vue failed", e) }
     }
   }
   // Student: check own submission status
@@ -56,7 +56,7 @@ async function loadTasks() {
       try {
         const mine: any = await http.get(`/tasks/${t.id}/my-submission`)
         if (mine) subs[t.id] = { status: mine.status, id: mine.id }
-      } catch { /* no access */ }
+      } catch (e) { console.error("LessonTaskPanel.vue no access", e) }
     }
     mySubmissions.value = subs
   }
@@ -81,7 +81,7 @@ async function openEdit(task: TaskVO) {
   try {
     const detail: any = await http.get(`/tasks/${task.id}`)
     if (detail?.formSchema) formValue.value.formSchema = detail.formSchema
-  } catch { /* ignore */ }
+  } catch (e) { console.error("LessonTaskPanel.vue failed", e) }
   showModal.value = true
 }
 

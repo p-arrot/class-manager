@@ -12,11 +12,11 @@ const activeSemesterId = ref<number | null>(null)
 const projects = ref<any[]>([])
 const showModal = ref(false)
 
-watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch { /* ignore */ } }, { immediate: true })
+watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("ProjectPanel.vue failed", e) } }, { immediate: true })
 
 async function loadProjects() {
   if (!activeSemesterId.value) { projects.value = []; return }
-  try { projects.value = await http.get(`/semesters/${activeSemesterId.value}/projects`) || [] } catch { /* ignore */ }
+  try { projects.value = await http.get(`/semesters/${activeSemesterId.value}/projects`) || [] } catch (e) { console.error("ProjectPanel.vue failed", e) }
 }
 watch(activeSemesterId, loadProjects)
 

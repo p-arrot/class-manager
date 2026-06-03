@@ -40,14 +40,14 @@ async function loadCourse() {
 }
 
 async function loadSemesters() {
-  try { semesters.value = await listSemesters(courseId) } catch { /* ignore */ }
+  try { semesters.value = await listSemesters(courseId) } catch (e) { console.error("CourseDetail.vue failed", e) }
 }
 
 const lessonTaskCounts = ref<Record<number, number>>({})
 
 async function loadLessons() {
   if (!activeSemesterId.value) { lessons.value = []; return }
-  try { lessons.value = await listLessons(activeSemesterId.value) } catch { /* ignore */ }
+  try { lessons.value = await listLessons(activeSemesterId.value) } catch (e) { console.error("CourseDetail.vue failed", e) }
   for (const l of lessons.value) {
     try { const tasks: any[] = await http.get(`/lessons/${l.id}/tasks`); lessonTaskCounts.value[l.id] = (tasks||[]).length }
     catch { lessonTaskCounts.value[l.id] = 0 }
@@ -69,7 +69,7 @@ watch(activeSemesterId, () => { if (activeSemesterId.value) loadLessons() })
 onMounted(async () => {
   await loadCourse()
   await loadSemesters()
-  try { allClasses.value = await listAllClasses() } catch { /* ignore */ }
+  try { allClasses.value = await listAllClasses() } catch (e) { console.error("CourseDetail.vue failed", e) }
 })
 </script>
 

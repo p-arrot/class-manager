@@ -76,7 +76,7 @@ function goDetail(id: number) { router.push(`/teacher/courses/${id}`) }
 onMounted(async () => {
   if (classFilter.selectedClassId) query.classId = classFilter.selectedClassId ?? undefined
   fetchData()
-  try { allClasses.value = await listAllClasses() } catch { /* ignore */ }
+  try { allClasses.value = await listAllClasses() } catch (e) { console.error("CourseList.vue failed", e) }
 })
 
 watch(() => classFilter.selectedClassId, (v) => {

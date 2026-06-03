@@ -55,7 +55,7 @@ async function loadCourse() {
 async function loadTree() {
   try {
     tree.value = await listCourseResources(courseId)
-  } catch { /* ignore */ }
+  } catch (e) { console.error("CourseResources.vue failed", e) }
 }
 
 async function loadContents() {
@@ -65,7 +65,7 @@ async function loadContents() {
       ? tree.value.filter(n => (n as any).parentId == null)
       : await listCourseResources(courseId, selectedFolderId.value)
     folderContents.value = children
-  } catch { /* ignore */ }
+  } catch (e) { console.error("CourseResources.vue failed", e) }
   finally { loading.value = false }
 }
 

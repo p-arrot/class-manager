@@ -16,7 +16,7 @@ const radar = ref<any>(null)
 
 async function loadCourses() {
   try { const r: any = await http.get('/courses?page=1&size=50'); courses.value = r.records || [] }
-  catch { /* ignore */ }
+  catch (e) { console.error("EvaluationView.vue failed", e) }
 }
 
 watch(activeCourseId, async (cid) => {
@@ -24,7 +24,7 @@ watch(activeCourseId, async (cid) => {
   activeSemesterId.value = null
   if (!cid) return
   try { semesters.value = await http.get(`/courses/${cid}/semesters`) || [] }
-  catch { /* ignore */ }
+  catch (e) { console.error("EvaluationView.vue failed", e) }
 })
 
 async function loadRadar() {

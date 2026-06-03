@@ -54,7 +54,7 @@ function isPreviewable(resource: CourseResourceVO): boolean {
 }
 
 async function loadTree() {
-  try { tree.value = await listCourseResources(props.courseId) } catch { /* ignore */ }
+  try { tree.value = await listCourseResources(props.courseId) } catch (e) { console.error("CourseResourcePanel.vue failed", e) }
 }
 
 async function loadContents() {
@@ -65,7 +65,7 @@ async function loadContents() {
     } else {
       folderContents.value = await listCourseResources(props.courseId, selectedFolderId.value)
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.error("CourseResourcePanel.vue failed", e) }
   finally { loading.value = false }
 }
 

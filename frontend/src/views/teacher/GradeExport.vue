@@ -12,7 +12,7 @@ const preview = ref<any[]>([])
 const loading = ref(false)
 
 async function loadSemesters() {
-  try { const cs: any[] = await http.get('/courses?page=1&size=50'); if(cs.length) semesters.value = await http.get(`/courses/${cs[0].id}/semesters`) } catch { /* ignore */ }
+  try { const cs: any[] = await http.get('/courses?page=1&size=50'); if(cs.length) semesters.value = await http.get(`/courses/${cs[0].id}/semesters`) } catch (e) { console.error("GradeExport.vue failed", e) }
 }
 
 async function loadPreview() {

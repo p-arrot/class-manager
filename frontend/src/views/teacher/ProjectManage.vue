@@ -17,11 +17,11 @@ const editingId = ref<number | null>(null)
 const form = ref({ name: '', description: '', maxTeamSize: 1, deadline: '', weight: 1.0 })
 
 async function loadSemesters() {
-  try { const cs: any[] = await http.get('/courses?page=1&size=50'); if (cs.length) semesters.value = await http.get(`/courses/${cs[0].id}/semesters`) } catch { /* ignore */ }
+  try { const cs: any[] = await http.get('/courses?page=1&size=50'); if (cs.length) semesters.value = await http.get(`/courses/${cs[0].id}/semesters`) } catch (e) { console.error("ProjectManage.vue failed", e) }
 }
 async function loadProjects() {
   if (!activeSemesterId.value) return
-  try { projects.value = await http.get(`/semesters/${activeSemesterId.value}/projects`) } catch { /* ignore */ }
+  try { projects.value = await http.get(`/semesters/${activeSemesterId.value}/projects`) } catch (e) { console.error("ProjectManage.vue failed", e) }
 }
 function openCreate() { editingId.value = null; form.value = { name: '', description: '', maxTeamSize: 1, deadline: '', weight: 1.0 }; showModal.value = true }
 async function handleSubmit() {

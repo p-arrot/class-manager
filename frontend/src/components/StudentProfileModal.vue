@@ -18,7 +18,7 @@ const selectedCourseId = ref<number | null>(null)
 const selectedSemesterId = ref<number | null>(props.semesterId)
 
 async function loadCourses() {
-  try { const r: any = await http.get('/courses?page=1&size=50'); courses.value = r.records || [] } catch { /* */ }
+  try { const r: any = await http.get('/courses?page=1&size=50'); courses.value = r.records || [] } catch (e) { console.error("StudentProfileModal.vue failed", e) }
 }
 
 async function loadData() {
@@ -39,7 +39,7 @@ async function loadData() {
 watch(selectedCourseId, async (cid) => {
   semesters.value = []; selectedSemesterId.value = null
   if (!cid) return
-  try { semesters.value = await http.get(`/courses/${cid}/semesters`) || [] } catch { /* */ }
+  try { semesters.value = await http.get(`/courses/${cid}/semesters`) || [] } catch (e) { console.error("StudentProfileModal.vue failed", e) }
 })
 
 watch([() => props.studentId, () => props.semesterId, selectedSemesterId], () => { loadData() })
