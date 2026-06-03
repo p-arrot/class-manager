@@ -35,15 +35,16 @@ function render() {
   chart.setOption({
     radar: {
       indicator,
-      center: ['50%', '52%'],
-      radius: '65%',
-      axisName: { color: textColor, fontSize: 12, borderRadius: 3, padding: [3, 5] },
+      center: ['50%', '54%'],
+      radius: '55%',
+      nameGap: 8,
+      axisName: { color: textColor, fontSize: 13, overflow: 'truncate', width: 70 },
       splitArea: { areaStyle: { color: [isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)', 'transparent'] } },
       axisLine: { lineStyle: { color: axisColor } },
       splitLine: { lineStyle: { color: axisColor } },
     },
     series,
-    legend: { data: legendData, bottom: 0, textStyle: { color: textColor, fontSize: 12 } },
+    legend: { data: legendData, bottom: 0, textStyle: { color: textColor, fontSize: 13 } },
   }, true)
 }
 

@@ -50,7 +50,8 @@ async function handleUpload(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return
   try {
     const fd = new FormData(); fd.append('file', file)
-    await http.post('/files/upload', fd)
+    if (parentId.value) fd.append('parentId', String(parentId.value))
+    await http.post('/drive/upload', fd)
     message.success('上传成功'); await loadItems()
   } catch (e: any) { message.error(e.message || '上传失败') }
 }

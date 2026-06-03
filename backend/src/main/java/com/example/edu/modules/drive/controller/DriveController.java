@@ -2,20 +2,39 @@ package com.example.edu.modules.drive.controller;
 
 import com.example.edu.common.result.R;
 import com.example.edu.common.security.SecurityUtils;
+import com.example.edu.infrastructure.minio.MinioService;
 import com.example.edu.modules.drive.entity.DriveItem;
 import com.example.edu.modules.drive.service.DriveService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Tag(name = "学生网盘")
 @RestController @RequestMapping("/api/drive") @RequiredArgsConstructor
 public class DriveController {
     private final DriveService driveService;
+    private final MinioService minioService;
+
+    @PostMapping("/upload")
+    @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
+    public R<DriveItem> uploadFile(@RequestParam("file") MultipartFile file,
+                                   @RequestParam(value = "parentId", required = false) Long parentId) {
+        Long uid = SecurityUtils.getCurrentUserId();
+        String objectName = "drive/" + uid + "/" + UUID.randomUUID().toString().substring(0, 8) + "_" + file.getOriginalFilename();
+        try {
+            minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
+        } catch (Exception e) {
+            return R.fail(50002, "文件上传失败");
+        }
+        return R.ok(driveService.createFile(uid, file.getOriginalFilename(), file.getSize(),
+                file.getContentType(), objectName, parentId));
+    }
 
     @GetMapping("/tree")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")

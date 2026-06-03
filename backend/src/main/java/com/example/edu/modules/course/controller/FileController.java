@@ -31,14 +31,14 @@ public class FileController {
 
     @Operation(summary = "获取预签名上传 URL")
     @PostMapping("/upload/presigned")
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<FileUploadVO> getPresignedUploadUrl(@Valid @RequestBody FileUploadDTO dto) {
         return R.ok(fileService.createPresignedUpload(dto));
     }
 
     @Operation(summary = "直接上传文件（通过后端中转）")
     @PostMapping("/upload")
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<FileUploadVO> directUpload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("courseId") Long courseId,
