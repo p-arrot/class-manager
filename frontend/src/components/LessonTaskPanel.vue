@@ -119,7 +119,7 @@ onMounted(loadTasks)
   <div class="task-panel">
     <div class="task-head">
       <span class="task-label">课堂任务</span>
-      <NButton v-if="!readonly" size="tiny" quaternary @click="openCreate">
+      <NButton v-if="!readonly" size="tiny" quaternary @click="router.push(`/teacher/tasks/create/${props.lessonId}`)">
         <template #icon><NIcon :size="14"><AddOutline /></NIcon></template>
         创建任务
       </NButton>

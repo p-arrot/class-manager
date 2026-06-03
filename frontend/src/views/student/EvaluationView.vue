@@ -68,7 +68,7 @@ onMounted(loadCourses)
 </template>
 
 <style scoped>
-.page { max-width: 800px; margin: 0 auto; }
+.page { max-width: 900px; margin: 0 auto; }
 .toolbar { display: flex; gap: 12px; margin-bottom: 20px; }
 .radar-section { display: flex; flex-direction: column; align-items: center; }
 .dim-legend { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
