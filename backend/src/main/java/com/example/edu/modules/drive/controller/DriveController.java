@@ -3,7 +3,9 @@ package com.example.edu.modules.drive.controller;
 import com.example.edu.common.result.R;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.infrastructure.minio.MinioService;
+import com.example.edu.infrastructure.preview.PreviewService;
 import com.example.edu.modules.drive.entity.DriveItem;
+import com.example.edu.modules.drive.mapper.DriveMapper;
 import com.example.edu.modules.drive.service.DriveService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,9 @@ import java.util.UUID;
 @RestController @RequestMapping("/api/drive") @RequiredArgsConstructor
 public class DriveController {
     private final DriveService driveService;
+    private final DriveMapper driveMapper;
     private final MinioService minioService;
+    private final PreviewService previewService;
 
     @PostMapping("/upload")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
@@ -74,8 +78,7 @@ public class DriveController {
     @GetMapping("/{id}/raw")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
     public ResponseEntity<InputStreamResource> raw(@PathVariable Long id) {
-        DriveItem item = driveService.list(SecurityUtils.getCurrentUserId(), null).stream()
-                .filter(i -> i.getId().equals(id)).findFirst().orElse(null);
+        DriveItem item = driveMapper.selectById(id);
         if (item == null || !"FILE".equals(item.getType())) return ResponseEntity.notFound().build();
         try {
             java.io.InputStream stream = minioService.getObject(item.getObjectName());
@@ -97,6 +100,9 @@ public class DriveController {
     @GetMapping("/{id}/preview")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
     public R<Map<String,String>> preview(@PathVariable Long id) {
-        return R.ok(Map.of("url", driveService.getPreviewUrl(id)));
+        // Generate kkFileView preview URL (same flow as course resources)
+        String minioUrl = driveService.getPreviewUrl(id);
+        String kkViewUrl = previewService.generatePreviewUrl(minioUrl);
+        return R.ok(Map.of("url", kkViewUrl));
     }
 }

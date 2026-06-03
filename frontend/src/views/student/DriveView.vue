@@ -133,7 +133,7 @@ async function handlePreview(item: any) {
   try {
     const r: any = await http.get(`/drive/${item.id}/preview`)
     if (r?.url) {
-      previewUrl.value = r.url.replace('minio:9000', 'localhost:9000')
+      previewUrl.value = r.url
       previewName.value = item.name
       showPreview.value = true
     }

@@ -45,12 +45,17 @@ async function handleDriveDelete(itemId: number) {
   catch (e: any) { message.error('删除失败') }
 }
 
-function handleDriveDownload(item: any) {
-  window.open(`/api/drive/${item.id}/raw`, '_blank')
+async function handleDriveDownload(item: any) {
+  try {
+    const blob = await http.get(`/drive/${item.id}/raw`, { responseType: 'blob' }) as unknown as Blob
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = item.name; a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) { message.error('下载失败') }
 }
 function handleDrivePreview(item: any) {
   http.get(`/drive/${item.id}/preview`).then((r: any) => {
-    if (r?.url) window.open(r.url.replace('minio:9000', 'localhost:9000'), '_blank')
+    if (r?.url) window.open(r.url, '_blank')
   })
 }
 
