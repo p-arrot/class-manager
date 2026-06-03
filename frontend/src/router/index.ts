@@ -18,6 +18,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'courses', name: 'TeacherCourses', component: () => import('@/views/teacher/CourseList.vue') },
       { path: 'courses/:courseId', name: 'TeacherCourseDetail', component: () => import('@/views/teacher/CourseDetail.vue') },
       { path: 'courses/:courseId/resources', name: 'TeacherCourseResources', component: () => import('@/views/teacher/CourseResources.vue') },
+      { path: 'students', name: 'TeacherStudents', component: () => import('@/views/teacher/StudentOverview.vue') },
       { path: 'grading/:taskId', name: 'TeacherGrading', component: () => import('@/views/teacher/GradingView.vue') },
       { path: '', redirect: '/teacher/courses' },
     ],

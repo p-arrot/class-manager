@@ -12,6 +12,10 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Remove default JSON Content-Type for FormData (browser sets multipart boundary)
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type']
+  }
   return config
 })
 

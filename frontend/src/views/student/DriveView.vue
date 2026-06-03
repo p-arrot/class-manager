@@ -16,6 +16,7 @@ const breadcrumb = ref<DriveItem[]>([])
 const showNewFolder = ref(false)
 const folderName = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const folderInput = ref<HTMLInputElement | null>(null)
 
 async function loadItems() {
   try { items.value = await http.get('/drive/tree', { params: { parentId: parentId.value } }) } catch { /* ignore */ }
@@ -46,17 +47,65 @@ async function handleDelete(id: number) {
   catch (e: any) { message.error(e.message || '删除失败') }
 }
 
+const uploading = ref(false)
+const uploadQueue = ref(0)
+
+async function uploadFile(file: File) {
+  const fd = new FormData(); fd.append('file', file)
+  if (parentId.value) fd.append('parentId', String(parentId.value))
+  await http.post('/drive/upload', fd)
+}
+
+async function processFiles(files: FileList | File[]) {
+  uploading.value = true
+  uploadQueue.value = files.length
+  let success = 0; let fail = 0
+  for (const file of Array.from(files)) {
+    try { await uploadFile(file); success++ }
+    catch { fail++ }
+    uploadQueue.value--
+  }
+  if (fail) message.warning(`${success} 个成功, ${fail} 个失败`)
+  else message.success(`${success} 个文件上传成功`)
+  uploading.value = false
+  await loadItems()
+}
+
 async function handleUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return
-  try {
-    const fd = new FormData(); fd.append('file', file)
-    if (parentId.value) fd.append('parentId', String(parentId.value))
-    await http.post('/drive/upload', fd)
-    message.success('上传成功'); await loadItems()
-  } catch (e: any) { message.error(e.message || '上传失败') }
+  const files = (e.target as HTMLInputElement).files
+  if (!files?.length) return
+  await processFiles(files)
+}
+
+async function handleDrop(e: DragEvent) {
+  e.preventDefault()
+  const items = e.dataTransfer?.items; if (!items) return
+  const files: File[] = []
+  async function scanEntries(entries: FileSystemEntry[]) {
+    for (const entry of entries) {
+      if (entry.isFile) {
+        files.push(await new Promise(resolve => (entry as FileSystemFileEntry).file(resolve)))
+      } else if (entry.isDirectory) {
+        // Create folder for this directory
+        const folderName = entry.name
+        try {
+          await http.post('/drive/folders', { name: folderName, parentId: parentId.value })
+          message.info(`已创建文件夹: ${folderName}`)
+        } catch { /* folder may exist */ }
+      }
+    }
+  }
+  const entries: FileSystemEntry[] = []
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry()
+    if (entry) entries.push(entry)
+  }
+  await scanEntries(entries)
+  if (files.length) await processFiles(files)
 }
 
 function triggerUpload() { fileInput.value?.click() }
+function triggerFolder() { folderInput.value?.click() }
 
 onMounted(loadItems)
 </script>
@@ -71,7 +120,11 @@ onMounted(loadItems)
         <NButton size="small" @click="triggerUpload" style="margin-left:8px">
           <template #icon><NIcon :size="14"><DocumentOutline /></NIcon></template>上传文件
         </NButton>
-        <input ref="fileInput" type="file" style="display:none" @change="handleUpload" />
+        <NButton size="small" @click="triggerFolder" style="margin-left:8px">
+          <template #icon><NIcon :size="14"><FolderOutline /></NIcon></template>上传文件夹
+        </NButton>
+        <input ref="fileInput" type="file" multiple style="display:none" @change="handleUpload" />
+        <input ref="folderInput" type="file" webkitdirectory multiple style="display:none" @change="handleUpload" />
       </template>
     </PageHeader>
 

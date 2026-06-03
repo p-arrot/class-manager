@@ -13,7 +13,7 @@ import { listAllClasses } from '@/api/classes'
 import type { ClassVO } from '@/types/api'
 import {
   SunnyOutline, MoonOutline, LogOutOutline,
-  HomeOutline, BookOutline, DocumentTextOutline,
+  HomeOutline, BookOutline, DocumentTextOutline, PeopleOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -36,11 +36,13 @@ function renderIcon(icon: Component) { return () => h(NIcon, null, () => h(icon)
 const menuOptions: MenuOption[] = [
   { label: '工作台', key: '/teacher/home', icon: renderIcon(HomeOutline) },
   { label: '我的课程', key: '/teacher/courses', icon: renderIcon(BookOutline) },
+  { label: '学生管理', key: '/teacher/students', icon: renderIcon(PeopleOutline) },
 ]
 
 const activeKey = computed(() => {
   const path = route.path
   if (path.startsWith('/teacher/courses')) return '/teacher/courses'
+  if (path.startsWith('/teacher/students')) return '/teacher/students'
   if (path.startsWith('/teacher/home')) return '/teacher/home'
   return path
 })
