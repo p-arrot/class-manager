@@ -23,10 +23,10 @@ async function loadDashboard() {
     const semesters: any[] = await http.get(`/courses/${cid}/semesters`) || []
     let pending = 0; let upcoming = 0
     const allTasks: any[] = []; const allSubs: any[] = []
-    for (const sem of (semesters || []).slice(0, 2)) {
+    for (const sem of (semesters || [])) {
       try {
         const lessons: any[] = await http.get(`/semesters/${sem.id}/lessons`) || []
-        for (const les of (lessons || []).slice(0, 5)) {
+        for (const les of (lessons || [])) {
           try {
             const tasks: any[] = await http.get(`/lessons/${les.id}/tasks`) || []
             for (const t of (tasks || [])) {
@@ -38,16 +38,17 @@ async function loadDashboard() {
                   if (s.status === 'submitted') pending++
                   allSubs.push({ ...s, taskTitle: t.title, taskId: t.id, semesterName: sem.name })
                 }
-              } catch { /* no subs */ }
+              } catch (e) { console.error('加载提交记录失败', e) }
             }
-          } catch { /* no tasks */ }
+          } catch (e) { console.error('加载任务列表失败', e) }
         }
-      } catch { /* no lessons */ }
+      } catch (e) { console.error('加载课时列表失败', e) }
     }
     stats.value = { pendingGrading: pending, upcomingDeadlines: upcoming, recentCount: allSubs.length }
-    recentSubmissions.value = allSubs.slice(-5).reverse()
-    upcomingTasks.value = allTasks.filter(t => t.deadline && new Date(t.deadline) > new Date()).slice(0, 3)
-  } catch { /* ignore */ }
+    // Keep all pending submissions and upcoming tasks (not just recent slices)
+    recentSubmissions.value = allSubs.slice().reverse()
+    upcomingTasks.value = allTasks.filter(t => t.deadline && new Date(t.deadline) > new Date())
+  } catch (e) { console.error('加载工作台数据失败', e) }
   finally { loading.value = false }
 }
 

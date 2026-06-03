@@ -9,11 +9,13 @@ import com.example.edu.modules.audit.service.AuditLogService;
 import com.example.edu.modules.drive.entity.DriveItem;
 import com.example.edu.modules.drive.mapper.DriveMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DriveService {
@@ -70,7 +72,7 @@ public class DriveService {
         for (DriveItem child : children) deleteRecursive(child.getId(), visited);
         // Delete MinIO object if file
         if ("FILE".equals(item.getType()) && item.getObjectName() != null) {
-            try { minioService.deleteObject(item.getObjectName()); } catch (Exception ignored) {}
+            try { minioService.deleteObject(item.getObjectName()); } catch (Exception ex) { log.warn("Failed to delete MinIO object during drive cleanup: objectName={}", item.getObjectName(), ex); }
         }
         driveMapper.deleteById(id);
         auditLogService.record("删除网盘文件", "user_drive", id, item.getName());

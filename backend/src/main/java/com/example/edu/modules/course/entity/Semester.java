@@ -14,6 +14,8 @@ public class Semester {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private Long courseId;
+    @TableField(exist = false)
+    private Integer lessonCount;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

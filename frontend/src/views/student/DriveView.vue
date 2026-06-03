@@ -31,7 +31,7 @@ const filteredItems = computed(() => {
 
 async function loadItems() {
   loading.value = true
-  try { items.value = await http.get('/drive/tree', { params: { parentId: parentId.value } }) } catch { /* ignore */ }
+  try { items.value = await http.get('/drive/tree', { params: { parentId: parentId.value } }) } catch (e) { console.error('加载网盘列表失败', e) }
   finally { loading.value = false }
 }
 
@@ -75,7 +75,7 @@ async function processFiles(files: FileList | File[]) {
   let success = 0; let fail = 0
   for (const file of Array.from(files)) {
     try { await uploadFile(file); success++ }
-    catch { fail++ }
+    catch (e) { console.error('上传文件失败', file.name, e); fail++ }
     uploadQueue.value--
   }
   if (fail) message.warning(`${success} 个成功, ${fail} 个失败`)
@@ -104,7 +104,7 @@ async function handleDrop(e: DragEvent) {
         try {
           await http.post('/drive/folders', { name: folderName, parentId: parentId.value })
           message.info(`已创建文件夹: ${folderName}`)
-        } catch { /* folder may exist */ }
+        } catch (e) { console.error('拖拽创建文件夹失败', e) }
       }
     }
   }

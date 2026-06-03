@@ -7,6 +7,7 @@ import com.example.edu.infrastructure.preview.PreviewService;
 import com.example.edu.modules.drive.entity.DriveItem;
 import com.example.edu.modules.drive.mapper.DriveMapper;
 import com.example.edu.modules.drive.service.DriveService;
+import com.example.edu.modules.drive.vo.DriveItemVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
@@ -33,7 +34,7 @@ public class DriveController {
 
     @PostMapping("/upload")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
-    public R<DriveItem> uploadFile(@RequestParam("file") MultipartFile file,
+    public R<DriveItemVO> uploadFile(@RequestParam("file") MultipartFile file,
                                    @RequestParam(value = "parentId", required = false) Long parentId) {
         Long uid = SecurityUtils.getCurrentUserId();
         String objectName = "drive/" + uid + "/" + UUID.randomUUID().toString().substring(0, 8) + "_" + file.getOriginalFilename();
@@ -42,23 +43,24 @@ public class DriveController {
         } catch (Exception e) {
             return R.fail(50002, "文件上传失败");
         }
-        return R.ok(driveService.createFile(uid, file.getOriginalFilename(), file.getSize(),
-                file.getContentType(), objectName, parentId));
+        return R.ok(toVO(driveService.createFile(uid, file.getOriginalFilename(), file.getSize(),
+                file.getContentType(), objectName, parentId)));
     }
 
     @GetMapping("/tree")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
-    public R<List<DriveItem>> tree(@RequestParam(required = false) Long parentId, @RequestParam(required = false) Long userId) {
+    public R<List<DriveItemVO>> tree(@RequestParam(required = false) Long parentId, @RequestParam(required = false) Long userId) {
         Long uid = userId != null ? userId : SecurityUtils.getCurrentUserId();
-        return R.ok(driveService.list(uid, parentId));
+        List<DriveItem> items = driveService.list(uid, parentId);
+        return R.ok(items.stream().map(this::toVO).toList());
     }
 
     @PostMapping("/folders")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
-    public R<DriveItem> createFolder(@RequestBody Map<String,Object> body) {
+    public R<DriveItemVO> createFolder(@RequestBody Map<String,Object> body) {
         Long uid = body.containsKey("userId") ? Long.valueOf(body.get("userId").toString()) : SecurityUtils.getCurrentUserId();
         Long pid = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
-        return R.ok(driveService.createFolder(uid, (String) body.get("name"), pid));
+        return R.ok(toVO(driveService.createFolder(uid, (String) body.get("name"), pid)));
     }
 
     @DeleteMapping("/{id}")
@@ -67,12 +69,12 @@ public class DriveController {
 
     @PostMapping("/files")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
-    public R<DriveItem> uploadFile(@RequestBody Map<String,Object> body) {
+    public R<DriveItemVO> uploadFile(@RequestBody Map<String,Object> body) {
         Long uid = body.containsKey("userId") ? Long.valueOf(body.get("userId").toString()) : SecurityUtils.getCurrentUserId();
         Long pid = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
-        return R.ok(driveService.createFile(uid, (String) body.get("name"),
+        return R.ok(toVO(driveService.createFile(uid, (String) body.get("name"),
                 body.get("fileSize") != null ? Long.valueOf(body.get("fileSize").toString()) : 0L,
-                (String) body.get("contentType"), (String) body.get("objectName"), pid));
+                (String) body.get("contentType"), (String) body.get("objectName"), pid)));
     }
 
     @GetMapping("/{id}/raw")
@@ -104,5 +106,20 @@ public class DriveController {
         String minioUrl = driveService.getPreviewUrl(id);
         String kkViewUrl = previewService.generatePreviewUrl(minioUrl);
         return R.ok(Map.of("url", kkViewUrl));
+    }
+
+    // ========== helpers ==========
+
+    private DriveItemVO toVO(DriveItem item) {
+        if (item == null) return null;
+        return DriveItemVO.builder()
+                .id(item.getId())
+                .name(item.getName())
+                .type(item.getType())
+                .fileSize(item.getFileSize())
+                .contentType(item.getContentType())
+                .parentId(item.getParentId())
+                .createdAt(item.getCreatedAt())
+                .build();
     }
 }

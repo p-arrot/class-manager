@@ -12,9 +12,11 @@ import com.example.edu.modules.course.dto.CoursePageDTO;
 import com.example.edu.modules.course.dto.CourseUpdateDTO;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
+import com.example.edu.modules.course.entity.Lesson;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
+import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.course.service.CourseService;
@@ -43,6 +45,7 @@ public class CourseServiceImpl implements CourseService {
     private final CourseMapper courseMapper;
     private final CourseClassMapper courseClassMapper;
     private final SemesterMapper semesterMapper;
+    private final LessonMapper lessonMapper;
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
 
@@ -164,11 +167,20 @@ public class CourseServiceImpl implements CourseService {
                 new LambdaQueryWrapper<Semester>()
                         .eq(Semester::getCourseId, id)
                         .orderByDesc(Semester::getStartTime));
+        // Populate lesson count per semester
+        if (!semesters.isEmpty()) {
+            List<Long> semesterIds = semesters.stream().map(Semester::getId).toList();
+            List<Lesson> allLessons = lessonMapper.selectList(
+                    new LambdaQueryWrapper<Lesson>().in(Lesson::getSemesterId, semesterIds));
+            Map<Long, Long> countMap = allLessons.stream()
+                    .collect(Collectors.groupingBy(Lesson::getSemesterId, Collectors.counting()));
+            semesters.forEach(s -> s.setLessonCount(countMap.getOrDefault(s.getId(), 0L).intValue()));
+        }
         List<com.example.edu.modules.course.vo.SemesterVO> semesterVOs = semesters.stream()
                 .map(s -> com.example.edu.modules.course.vo.SemesterVO.builder()
                         .id(s.getId()).name(s.getName())
                         .startTime(s.getStartTime()).endTime(s.getEndTime())
-                        .courseId(s.getCourseId()).lessonCount(0)
+                        .courseId(s.getCourseId()).lessonCount(s.getLessonCount())
                         .createdAt(s.getCreatedAt()).updatedAt(s.getUpdatedAt()).build())
                 .collect(Collectors.toList());
 

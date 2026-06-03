@@ -51,6 +51,7 @@ public class ExamService {
                 .orderByDesc(Exam::getCreatedAt));
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void deleteExam(Long id) {
         Exam exam = examMapper.selectById(id);
         if (exam == null) throw new BizException(ErrorCode.NOT_FOUND);
@@ -89,6 +90,7 @@ public class ExamService {
                 .eq(ExamSubmission::getExamId, examId));
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void gradeSubmission(Long submissionId, Integer score, boolean absent) {
         ExamSubmission sub = submissionMapper.selectById(submissionId);
         if (sub == null) throw new BizException(ErrorCode.SUBMISSION_NOT_FOUND);

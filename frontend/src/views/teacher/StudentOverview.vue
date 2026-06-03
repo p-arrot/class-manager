@@ -21,6 +21,9 @@ const showDrive = ref(false)
 const driveStudentId = ref<number | null>(null)
 const driveItems = ref<any[]>([])
 const driveLoading = ref(false)
+const showDrivePreview = ref(false)
+const drivePreviewUrl = ref('')
+const drivePreviewName = ref('')
 
 async function loadStudents() {
   loading.value = true
@@ -28,17 +31,27 @@ async function loadStudents() {
     const r: any = await http.get('/students', { params: { page: page.value, size: pageSize.value, keyword: searchKeyword.value || undefined } })
     students.value = r.records || []
     total.value = r.total || 0
-  } catch { /* ignore */ }
+  } catch (e) { console.error('加载学生列表失败', e) }
   finally { loading.value = false }
 }
 
+const driveParentId = ref<number | null>(null)
+const driveBreadcrumb = ref<any[]>([])
+
 async function openDrive(studentId: number) {
   driveStudentId.value = studentId; showDrive.value = true
+  driveParentId.value = null; driveBreadcrumb.value = []
+  await loadDriveItems()
+}
+async function loadDriveItems() {
+  if (!driveStudentId.value) return
   driveLoading.value = true
-  try { driveItems.value = await http.get('/drive/tree', { params: { userId: studentId } }) }
-  catch { driveItems.value = [] }
+  try { driveItems.value = await http.get('/drive/tree', { params: { userId: driveStudentId.value, parentId: driveParentId.value || undefined } }) }
+  catch (e) { console.error('加载学生网盘失败', e); driveItems.value = [] }
   finally { driveLoading.value = false }
 }
+function enterDriveFolder(item: any) { driveBreadcrumb.value.push(item); driveParentId.value = item.id; loadDriveItems() }
+function goDriveBack(idx: number) { driveBreadcrumb.value = driveBreadcrumb.value.slice(0, idx); driveParentId.value = idx > 0 ? driveBreadcrumb.value[idx-1].id : null; loadDriveItems() }
 
 async function handleDriveDelete(itemId: number) {
   try { await http.delete(`/drive/${itemId}`); message.success('已删除'); await openDrive(driveStudentId.value!) }
@@ -53,10 +66,15 @@ async function handleDriveDownload(item: any) {
     URL.revokeObjectURL(url)
   } catch (e: any) { message.error('下载失败') }
 }
-function handleDrivePreview(item: any) {
-  http.get(`/drive/${item.id}/preview`).then((r: any) => {
-    if (r?.url) window.open(r.url, '_blank')
-  })
+async function handleDrivePreview(item: any) {
+  try {
+    const r: any = await http.get(`/drive/${item.id}/preview`)
+    if (r?.url) {
+      drivePreviewUrl.value = r.url
+      drivePreviewName.value = item.name
+      showDrivePreview.value = true
+    }
+  } catch (e: any) { message.error('预览失败') }
 }
 
 function getTotalDriveSize(): string {
@@ -94,21 +112,33 @@ onMounted(loadStudents)
     <StudentProfileModal :student-id="profileStudentId" :student-name="profileStudentName" :semester-id="null" @close="profileStudentId = null" />
 
     <!-- Drive Manager Modal -->
-    <NModal v-model:show="showDrive" preset="card" title="学生网盘管理" style="width:600px;max-height:80vh">
+    <NModal v-model:show="showDrive" preset="card" title="学生网盘管理" style="width:640px;max-height:80vh">
       <NSpin :show="driveLoading">
+        <div v-if="driveBreadcrumb.length" style="margin-bottom:8px;display:flex;align-items:center;gap:2px;font-size:12px">
+          <NButton text size="tiny" @click="goDriveBack(0)">根目录</NButton>
+          <template v-for="(b,i) in driveBreadcrumb" :key="b.id">
+            <span style="color:var(--n-text-color-3)">/</span>
+            <NButton text size="tiny" @click="goDriveBack(i+1)">{{ b.name }}</NButton>
+          </template>
+        </div>
         <div style="font-size:13px;color:var(--n-text-color-3);margin-bottom:12px">总占用: {{ getTotalDriveSize() }}</div>
         <div v-if="driveItems.length" style="display:flex;flex-direction:column;gap:4px">
-          <div v-for="item in driveItems" :key="item.id" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:4px;border:1px solid var(--n-border-color)">
+          <div v-for="item in driveItems" :key="item.id" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:4px;border:1px solid var(--n-border-color)" :style="{cursor:item.type==='FOLDER'?'pointer':'default'}" @click="item.type==='FOLDER'?enterDriveFolder(item):undefined">
             <NIcon :size="16" :color="item.type==='FOLDER'?'#F97316':'#6b6b65'"><FolderOutline v-if="item.type==='FOLDER'" /><DocumentOutline v-else /></NIcon>
-            <span style="flex:1;font-size:13px;font-weight:500">{{ item.name }}</span>
+            <span style="flex:1;font-size:13px;font-weight:500;margin-left:8px">{{ item.name }}</span>
             <span style="font-size:11px;color:var(--n-text-color-3)">{{ item.fileSize ? (item.fileSize > 1024 ? (item.fileSize/1024).toFixed(0)+'KB' : item.fileSize+'B') : '' }}</span>
-            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click="handleDriveDownload(item)" title="下载"><template #icon><NIcon :size="14"><CloudDownloadOutline /></NIcon></template></NButton>
-            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click="handleDrivePreview(item)" title="预览"><template #icon><NIcon :size="14"><EyeOutline /></NIcon></template></NButton>
-            <NPopconfirm @positive-click="()=>handleDriveDelete(item.id)"><template #trigger><NButton size="tiny" quaternary type="error"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton></template>确认删除？</NPopconfirm>
+            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click.stop="handleDriveDownload(item)" title="下载"><template #icon><NIcon :size="14"><CloudDownloadOutline /></NIcon></template></NButton>
+            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click.stop="handleDrivePreview(item)" title="预览"><template #icon><NIcon :size="14"><EyeOutline /></NIcon></template></NButton>
+            <NPopconfirm @positive-click="()=>handleDriveDelete(item.id)"><template #trigger><NButton size="tiny" quaternary type="error" @click.stop><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton></template>确认删除？</NPopconfirm>
           </div>
         </div>
         <NEmpty v-else description="网盘为空" />
       </NSpin>
+    </NModal>
+
+    <!-- Drive Preview Modal (kkFileView iframe) -->
+    <NModal v-model:show="showDrivePreview" :title="drivePreviewName" preset="card" style="width:90vw;max-width:900px;height:80vh">
+      <iframe v-if="drivePreviewUrl" :src="drivePreviewUrl" style="width:100%;height:calc(80vh - 60px);border:none;border-radius:0 0 8px 8px" />
     </NModal>
   </div>
 </template>
