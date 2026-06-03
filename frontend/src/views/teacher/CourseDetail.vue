@@ -190,18 +190,21 @@ onMounted(async () => {
           <NButton size="small" @click="openCreateSemester"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建学期</NButton>
         </div>
         <div v-if="semesters.length" class="sem-list">
-          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card">
-            <div class="sem-info">
-              <h4 class="sem-name">{{ s.name }}</h4>
-              <p class="sem-time">{{ formatDate(s.startTime, 'date') }} — {{ formatDate(s.endTime, 'date') }}</p>
-              <NTag size="tiny" :bordered="false">{{ s.lessonCount }} 课时</NTag>
+          <div v-for="s in semesters" :key="s.id" class="sem-card">
+            <div class="sem-left">
+              <div class="sem-year">{{ s.startTime?.split('-')[0] || '' }}</div>
+              <div class="sem-range">{{ formatDate(s.startTime,'date')?.slice(5) }} - {{ formatDate(s.endTime,'date')?.slice(5) }}</div>
+            </div>
+            <div class="sem-body">
+              <span class="sem-title">{{ s.name }}</span>
+              <span class="sem-count">{{ s.lessonCount }} 课时</span>
             </div>
             <NSpace :size="2">
               <NButton size="tiny" @click="activeSemesterId = s.id; activeTab = 'lessons'">查看课时</NButton>
               <NButton size="tiny" quaternary @click="openEditSemester(s)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
               <NButton size="tiny" quaternary @click="handleDeleteSemester(s)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
             </NSpace>
-          </NCard>
+          </div>
         </div>
         <div v-else class="empty-hint">尚无学期，请先创建一个学期</div>
       </NTabPane>
@@ -278,11 +281,14 @@ onMounted(async () => {
 .tab-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .tab-subtitle { font-size: 13px; color: var(--n-text-color-3); }
 .sem-list { display: flex; flex-direction: column; gap: 10px; }
-.sem-card { display: flex; flex-direction: row; justify-content: space-between; align-items: center; transition: border-color 150ms ease; }
+.sem-card { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border: 1px solid var(--n-border-color); border-radius: 10px; transition: border-color 0.15s; }
 .sem-card:hover { border-color: var(--n-primary-color-hover); }
-.sem-info { display: flex; flex-direction: column; gap: 2px; }
-.sem-name { font-size: 15px; font-weight: 600; margin: 0; }
-.sem-time { font-size: 12px; color: var(--n-text-color-3); margin: 0; }
+.sem-left { width: 48px; height: 48px; border-radius: 10px; background: var(--n-color-embedded); display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+.sem-year { font-size: 13px; font-weight: 700; color: var(--n-text-color); line-height: 1.2; }
+.sem-range { font-size: 10px; color: var(--n-text-color-3); line-height: 1.2; }
+.sem-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.sem-title { font-size: 15px; font-weight: 600; }
+.sem-count { font-size: 12px; color: var(--n-text-color-3); }
 .empty-hint { padding: 40px 0; text-align: center; font-size: 14px; color: var(--n-text-color-3); }
 .resource-tab { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px 0; }
 .resource-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0; }

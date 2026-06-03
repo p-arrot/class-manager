@@ -93,14 +93,17 @@ onMounted(async () => {
     <NTabs type="line" animated v-model:value="activeTab">
       <NTabPane name="semesters" tab="学期">
         <div v-if="semesters.length" class="sem-list">
-          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card">
-            <div class="sem-info">
-              <h4 class="sem-name">{{ s.name }}</h4>
-              <p class="sem-time">{{ formatDate(s.startTime, 'date') }} — {{ formatDate(s.endTime, 'date') }}</p>
-              <NTag size="tiny" :bordered="false">{{ s.lessonCount }} 课时</NTag>
+          <div v-for="s in semesters" :key="s.id" class="sem-card" @click="activeSemesterId = s.id; activeTab = 'lessons'">
+            <div class="sem-left">
+              <div class="sem-year">{{ s.startTime?.split('-')[0] || '' }}</div>
+              <div class="sem-range">{{ formatDate(s.startTime,'date')?.slice(5) }} - {{ formatDate(s.endTime,'date')?.slice(5) }}</div>
             </div>
-            <NButton size="tiny" @click="activeSemesterId = s.id; activeTab = 'lessons'">查看课时</NButton>
-          </NCard>
+            <div class="sem-body">
+              <span class="sem-title">{{ s.name }}</span>
+              <span class="sem-count">{{ s.lessonCount }} 课时</span>
+            </div>
+            <NIcon :size="16" color="var(--n-text-color-3)"><ChevronForwardOutline /></NIcon>
+          </div>
         </div>
         <NEmpty v-else description="暂无学期" class="empty-hint" />
       </NTabPane>
@@ -145,13 +148,15 @@ onMounted(async () => {
 .tab-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .tab-subtitle { font-size: 13px; color: var(--n-text-color-3); }
 .sem-list { display: flex; flex-direction: column; gap: 10px; }
-.sem-card { transition: border-color 0.15s; }
-.sem-card.active { border-color: #7C3AED; }
-.sem-info { display: flex; flex-direction: column; gap: 4px; }
-.sem-header { display: flex; justify-content: space-between; align-items: center; }
-.sem-name { font-size: 16px; font-weight: 600; margin: 0; }
-.sem-time { font-size: 13px; color: var(--n-text-color-3); margin: 0; }
-.sem-lessons { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--n-border-color); }
+.sem-list { display: flex; flex-direction: column; gap: 8px; }
+.sem-card { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border: 1px solid var(--n-border-color); border-radius: 10px; cursor: pointer; transition: border-color 0.15s; }
+.sem-card:hover { border-color: var(--n-primary-color-hover); }
+.sem-left { width: 48px; height: 48px; border-radius: 10px; background: var(--n-color-embedded); display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+.sem-year { font-size: 13px; font-weight: 700; color: var(--n-text-color); line-height: 1.2; }
+.sem-range { font-size: 10px; color: var(--n-text-color-3); line-height: 1.2; }
+.sem-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.sem-title { font-size: 15px; font-weight: 600; }
+.sem-count { font-size: 12px; color: var(--n-text-color-3); }
 .empty-hint { padding: 40px 0; }
 .resource-tab { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px 0; }
 .resource-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0; }
