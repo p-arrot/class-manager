@@ -4,13 +4,18 @@ services:
     container_name: edu-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: edu
-      POSTGRES_PASSWORD: edu123
-      POSTGRES_DB: edu
+      POSTGRES_USER: ${DB_USERNAME:-edu}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-edu123}
+      POSTGRES_DB: ${DB_NAME:-edu}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-edu}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -20,41 +25,72 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     container_name: edu-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   kkfileview:
-    image: keking/kkfileview:latest
+    image: keking/kkfileview:4.6.0
     container_name: edu-kkfileview
     restart: unless-stopped
     ports:
       - "8012:8012"
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: edu-backend
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT:-8080}:8080"
     depends_on:
-      - postgres
-      - redis
-      - minio
-      - kkfileview
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - backend_data:/app/data
+
+  # 前端 (生产模式 — Nginx 静态文件 + API 反向代理)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: edu-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    # 共享 Nginx 配置和构建产物
+    # nginx.conf 由 frontend/Dockerfile 内置
 
 volumes:
   postgres_data:
