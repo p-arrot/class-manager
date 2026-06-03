@@ -49,8 +49,11 @@ async function loadLessons() {
 function goBack() { router.push('/student/home') }
 
 watch(semesters, (val) => {
-  if (val.length && !activeSemesterId.value) activeSemesterId.value = val[0].id
-  if (!val.length) activeSemesterId.value = null
+  if (!val.length) { activeSemesterId.value = null; return }
+  // Auto-select semester containing current date, otherwise first
+  const now = new Date()
+  const current = val.find((s: any) => new Date(s.startTime) <= now && new Date(s.endTime) >= now)
+  activeSemesterId.value = current ? current.id : val[0].id
 })
 
 watch(activeSemesterId, () => { if (activeSemesterId.value) loadLessons() })
@@ -87,46 +90,34 @@ onMounted(async () => {
     </div>
 
     <NTabs type="line" animated>
-      <NTabPane name="semesters" tab="学期">
-        <div class="tab-head">
-          <span class="tab-subtitle">{{ semesters.length }} 个学期</span>
-        </div>
-        <div v-if="semesters.length" class="sem-list">
-          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card">
+      <NTabPane name="semesters" tab="课程内容">
+        <div v-if="semesters.length" style="display:flex;flex-direction:column;gap:16px">
+          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card" :class="{ active: activeSemesterId === s.id }" hoverable @click="activeSemesterId = s.id">
             <div class="sem-info">
-              <h4 class="sem-name">{{ s.name }}</h4>
+              <div class="sem-header">
+                <h4 class="sem-name">{{ s.name }}</h4>
+                <NTag size="tiny" :bordered="false" :type="activeSemesterId === s.id ? 'primary' : 'default'">{{ s.lessonCount }} 课时</NTag>
+              </div>
               <p class="sem-time">{{ formatDate(s.startTime, 'date') }} — {{ formatDate(s.endTime, 'date') }}</p>
-              <NTag size="tiny" :bordered="false">{{ s.lessonCount }} 课时</NTag>
+            </div>
+            <div v-if="activeSemesterId === s.id" class="sem-lessons" @click.stop>
+              <div v-if="lessons.length" class="lesson-list">
+                <div v-for="row in lessons" :key="row.id">
+                  <div class="lesson-row" @click="toggleLesson(row.id)">
+                    <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+                    <span class="lesson-index">{{ row.sortOrder }}</span>
+                    <span class="lesson-name">{{ row.name }}</span>
+                  </div>
+                  <div v-if="expandedLessonId === row.id" class="lesson-expand">
+                    <LessonTaskPanel :lesson-id="row.id" readonly />
+                  </div>
+                </div>
+              </div>
+              <NEmpty v-else description="该学期暂无课时" />
             </div>
           </NCard>
         </div>
         <NEmpty v-else description="暂无学期" class="empty-hint" />
-      </NTabPane>
-
-      <NTabPane name="lessons" tab="课时">
-        <div class="tab-head">
-          <NSelect
-            v-if="semesters.length"
-            v-model:value="activeSemesterId"
-            :options="semesters.map(s => ({ label: s.name, value: s.id }))"
-            size="small"
-            style="width:220px"
-          />
-        </div>
-        <div v-if="activeSemesterId && lessons.length" class="lesson-list">
-          <div v-for="row in lessons" :key="row.id">
-            <div class="lesson-row" @click="toggleLesson(row.id)">
-              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
-              <span class="lesson-index">{{ row.sortOrder }}</span>
-              <span class="lesson-name">{{ row.name }}</span>
-            </div>
-            <div v-if="expandedLessonId === row.id" class="lesson-expand">
-              <LessonTaskPanel :lesson-id="row.id" readonly />
-            </div>
-          </div>
-        </div>
-        <NEmpty v-else-if="activeSemesterId" description="该学期暂无课时" class="empty-hint" />
-        <NEmpty v-else description="请先选择一个学期" class="empty-hint" />
       </NTabPane>
 
       <NTabPane name="resources" tab="课程资源">
@@ -149,10 +140,13 @@ onMounted(async () => {
 .tab-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .tab-subtitle { font-size: 13px; color: var(--n-text-color-3); }
 .sem-list { display: flex; flex-direction: column; gap: 10px; }
-.sem-card { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
-.sem-info { display: flex; flex-direction: column; gap: 2px; }
-.sem-name { font-size: 15px; font-weight: 600; margin: 0; }
-.sem-time { font-size: 12px; color: var(--n-text-color-3); margin: 0; }
+.sem-card { transition: border-color 0.15s; }
+.sem-card.active { border-color: #7C3AED; }
+.sem-info { display: flex; flex-direction: column; gap: 4px; }
+.sem-header { display: flex; justify-content: space-between; align-items: center; }
+.sem-name { font-size: 16px; font-weight: 600; margin: 0; }
+.sem-time { font-size: 13px; color: var(--n-text-color-3); margin: 0; }
+.sem-lessons { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--n-border-color); }
 .empty-hint { padding: 40px 0; }
 .resource-tab { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 40px 0; }
 .resource-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0; }
