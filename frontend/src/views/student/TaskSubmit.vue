@@ -99,7 +99,7 @@ onMounted(loadTask)
 </template>
 
 <style scoped>
-.page { max-width: 700px; margin: 0 auto; padding: 24px 0; }
+.page { max-width: 760px; margin: 0 auto; padding: 24px 0; }
 .task-desc { font-size: 14px; color: var(--n-text-color-2); margin: 12px 0 20px; line-height: 1.6; }
 .submit-bar { margin-top: 24px; text-align: center; }
 </style>
