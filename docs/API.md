@@ -984,3 +984,106 @@ PUT /api/teachers/{id}/password
 | 404 | 资源不存在（需认证） |
 | 415 | Content-Type 不支持 |
 | 500 | 服务器内部错误 |
+
+---
+
+## 12. 文件管理 (Phase 3b)
+
+```
+POST   /api/files/upload/presigned      预签名 PUT URL
+POST   /api/files/upload                直接上传 (multipart)
+GET    /api/files/{id}/download         获取下载 URL
+GET    /api/files/{id}/preview          kkFileView 预览 URL
+GET    /api/files/{id}/stream           直链 URL
+GET    /api/files/{id}/raw              直接下载文件流
+```
+
+## 13. 课堂任务 (Phase 4)
+
+```
+GET    /api/lessons/{lessonId}/tasks    任务列表
+POST   /api/lessons/{lessonId}/tasks    创建任务
+GET    /api/tasks/{id}                  任务详情
+PUT    /api/tasks/{id}                  编辑任务
+DELETE /api/tasks/{id}                  删除任务
+```
+
+## 14. 学生提交 (Phase 4)
+
+```
+POST   /api/tasks/{taskId}/submit       提交任务
+GET    /api/tasks/{taskId}/submissions  教师查看提交列表
+GET    /api/tasks/{taskId}/my-submission 学生查看自己提交
+GET    /api/submissions/{id}            提交详情
+GET    /api/students/{id}/submissions   学生提交历史
+GET    /api/tasks/{taskId}/submission-stats 提交统计
+```
+
+## 15. WebSocket (Phase 4)
+
+```
+STOMP /ws                              实时推送
+订阅 /topic/task/{taskId}              任务提交通知
+```
+
+## 16. 评价与雷达图 (Phase 5)
+
+```
+POST   /api/submissions/{id}/evaluate   教师评分
+GET    /api/students/{id}/evaluations   学生评价汇总
+GET    /api/students/{id}/radar         雷达图数据
+POST   /api/tasks/{id}/auto-grade       自动评F
+GET    /api/evaluations/grade-scores    评分对照表
+```
+
+## 17. 考试 (Phase 6a)
+
+```
+GET    /api/exam-papers                 试卷列表
+POST   /api/exam-papers                 创建试卷
+GET    /api/semesters/{id}/exams        考试列表
+POST   /api/semesters/{id}/exams        创建考试
+DELETE /api/exams/{id}                  删除考试
+POST   /api/exams/{id}/start            开始考试
+POST   /api/exams/{id}/submit           提交考试
+GET    /api/exams/{id}/submissions      查看提交
+PUT    /api/exam-submissions/{id}/grade 考试评分
+```
+
+## 18. 项目化学习 (Phase 6b)
+
+```
+GET    /api/semesters/{id}/projects     项目列表
+POST   /api/semesters/{id}/projects     创建项目
+DELETE /api/projects/{id}               删除项目
+POST   /api/projects/{id}/teams         创建队伍
+POST   /api/teams/{id}/join             加入队伍
+POST   /api/projects/{id}/submit        提交项目
+POST   /api/projects/{id}/scores        教师评分
+GET    /api/projects/{id}/scores        查看评分
+```
+
+## 19. 学生网盘 (Phase 7)
+
+```
+GET    /api/drive/tree                  网盘文件树
+POST   /api/drive/upload                上传文件 (multipart)
+POST   /api/drive/folders               创建文件夹
+DELETE /api/drive/{id}                  删除文件
+GET    /api/drive/{id}/download         下载 URL
+GET    /api/drive/{id}/preview          kkFileView 预览
+GET    /api/drive/{id}/raw              直接下载
+```
+
+## 20. 统计导出 (Phase 7)
+
+```
+GET    /api/stats/semester/{id}/preview 总评预览
+GET    /api/stats/semester/{id}/export  Excel 导出
+```
+
+## 21. 健康检查
+
+```
+GET    /api/health                      服务状态 (公开)
+```
