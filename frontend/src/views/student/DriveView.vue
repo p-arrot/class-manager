@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { NEmpty, NButton, NIcon, NTag, NSpace, NModal, NInput, useMessage, NPopconfirm } from 'naive-ui'
-import { AddOutline, TrashOutline, FolderOutline, DocumentOutline, CloudDownloadOutline, EyeOutline } from '@vicons/ionicons5'
+import { ref, onMounted, computed } from 'vue'
+import { NEmpty, NButton, NIcon, NTag, NSpace, NModal, NInput, useMessage, NPopconfirm, NSpin } from 'naive-ui'
+import { AddOutline, TrashOutline, FolderOutline, DocumentOutline, CloudDownloadOutline, EyeOutline, SearchOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
 import PageHeader from '@/components/PageHeader.vue'
 import { formatDate } from '@/utils/date'
@@ -15,11 +15,24 @@ const parentId = ref<number | null>(null)
 const breadcrumb = ref<DriveItem[]>([])
 const showNewFolder = ref(false)
 const folderName = ref('')
+const searchQuery = ref('')
+const loading = ref(false)
+const previewUrl = ref('')
+const previewName = ref('')
+const showPreview = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
 
+const filteredItems = computed(() => {
+  if (!searchQuery.value.trim()) return items.value
+  const q = searchQuery.value.toLowerCase()
+  return items.value.filter(i => i.name.toLowerCase().includes(q))
+})
+
 async function loadItems() {
+  loading.value = true
   try { items.value = await http.get('/drive/tree', { params: { parentId: parentId.value } }) } catch { /* ignore */ }
+  finally { loading.value = false }
 }
 
 async function enterFolder(item: DriveItem) {
@@ -107,13 +120,23 @@ async function handleDrop(e: DragEvent) {
 function triggerUpload() { fileInput.value?.click() }
 function triggerFolder() { folderInput.value?.click() }
 
-function handleDownload(item: any) {
-  window.open(`/api/drive/${item.id}/raw`, '_blank')
+async function handleDownload(item: any) {
+  try {
+    const blob = await http.get(`/drive/${item.id}/raw`, { responseType: 'blob' }) as unknown as Blob
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = item.name; a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) { message.error('下载失败') }
 }
+
 async function handlePreview(item: any) {
   try {
     const r: any = await http.get(`/drive/${item.id}/preview`)
-    if (r?.url) window.open(r.url.replace('minio:9000', 'localhost:9000'), '_blank')
+    if (r?.url) {
+      previewUrl.value = r.url.replace('minio:9000', 'localhost:9000')
+      previewName.value = item.name
+      showPreview.value = true
+    }
   } catch (e: any) { message.error('预览失败') }
 }
 
@@ -146,11 +169,19 @@ onMounted(loadItems)
       </span>
     </div>
 
+    <div class="drive-toolbar">
+      <NInput v-model:value="searchQuery" placeholder="搜索文件..." clearable style="width:240px">
+        <template #prefix><NIcon :size="14"><SearchOutline /></NIcon></template>
+      </NInput>
+    </div>
+
     <div v-if="uploading" class="upload-status">
       <span>{{ uploadQueue }} 个文件待上传...</span>
     </div>
-    <div v-if="items.length" class="file-grid">
-      <div v-for="item in items" :key="item.id" class="file-card" :class="{ clickable: item.type === 'FOLDER' }" @click="item.type === 'FOLDER' ? enterFolder(item) : undefined">
+
+    <NSpin :show="loading">
+    <div v-if="filteredItems.length" class="file-grid">
+      <div v-for="item in filteredItems" :key="item.id" class="file-card" :class="{ clickable: item.type === 'FOLDER' }" @click="item.type === 'FOLDER' ? enterFolder(item) : undefined">
         <div class="file-icon" :style="{ background: item.type === 'FOLDER' ? 'rgba(249,115,22,0.1)' : 'var(--n-color-embedded)' }">
           <NIcon :size="22" :color="item.type === 'FOLDER' ? '#F97316' : '#6b6b65'">
             <FolderOutline v-if="item.type === 'FOLDER'" /><DocumentOutline v-else />
@@ -168,18 +199,24 @@ onMounted(loadItems)
       </div>
     </div>
     <NEmpty v-else-if="!uploading" description="此文件夹为空。拖拽文件到此处或点击上传按钮" />
+    </NSpin>
 
     <NModal v-model:show="showNewFolder" title="新建文件夹" preset="card" style="width:360px">
       <NInput v-model:value="folderName" placeholder="文件夹名称" />
       <template #footer><NSpace justify="end"><NButton @click="showNewFolder = false">取消</NButton><NButton type="primary" @click="createFolder">确定</NButton></NSpace></template>
     </NModal>
+
+    <NModal v-model:show="showPreview" :title="previewName" preset="card" style="width:90vw;max-width:900px;height:80vh">
+      <iframe v-if="previewUrl" :src="previewUrl" style="width:100%;height:calc(80vh - 60px);border:none;border-radius:0 0 8px 8px" />
+    </NModal>
   </div>
 </template>
 
 <style scoped>
-.page { max-width: 800px; margin: 0 auto; }
+.page { max-width: 960px; margin: 0 auto; }
 .breadcrumb { font-size: 13px; margin: 16px 0; display: flex; align-items: center; gap: 2px; }
 .crumb-sep { color: var(--n-text-color-3); margin: 0 2px; }
+.drive-toolbar { margin-bottom: 12px; }
 .upload-status { padding: 8px 12px; font-size: 13px; color: var(--n-text-color-2); background: var(--n-color-embedded); border-radius: 6px; margin-bottom: 12px; }
 .file-grid { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
 .file-card { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; transition: background 0.15s; }

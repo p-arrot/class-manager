@@ -244,9 +244,30 @@ function getPupilStyle(id: string, ei: number) {
   const rect = el.getBoundingClientRect()
   const cx = rect.left + rect.width / 2
   const cy = rect.top + rect.height / 2
-  const maxD = characters.find(c => c.id === id)?.pupilMaxDist ?? 4
-  const angle = Math.atan2(mouseY.value - cy, mouseX.value - cx)
-  const dist = Math.min(Math.sqrt((mouseX.value - cx) ** 2 + (mouseY.value - cy) ** 2), maxD)
+  const c = characters.find(c => c.id === id)
+  const maxD = c?.pupilMaxDist ?? 4
+
+  // Typing hidden password → look AWAY from form (eyes shift left)
+  const typingHidden = props.passwordFocused && props.passwordLength > 0 && !props.passwordVisible
+  // Password visible → peek toward form
+  const pwdVisible = props.passwordVisible && props.passwordLength > 0
+
+  let angle, dist
+  if (typingHidden) {
+    // Force pupils to look LEFT (away from password field, toward other characters)
+    angle = Math.PI  // looking directly left
+    dist = maxD * 0.9
+  } else if (pwdVisible && peekBlend.value > 0.3) {
+    // Peeking: smoothly blend between mouse and looking RIGHT toward form
+    const mouseAngle = Math.atan2(mouseY.value - cy, mouseX.value - cx)
+    const mouseDist = Math.min(Math.sqrt((mouseX.value - cx) ** 2 + (mouseY.value - cy) ** 2), maxD)
+    angle = mouseAngle - peekBlend.value * 0.8  // rotate toward form (right)
+    dist = mouseDist * (1 - peekBlend.value * 0.3) + maxD * peekBlend.value * 0.7
+  } else {
+    // Normal mouse tracking
+    angle = Math.atan2(mouseY.value - cy, mouseX.value - cx)
+    dist = Math.min(Math.sqrt((mouseX.value - cx) ** 2 + (mouseY.value - cy) ** 2), maxD)
+  }
   return { transform: `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)` }
 }
 </script>
