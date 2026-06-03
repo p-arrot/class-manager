@@ -107,17 +107,13 @@ async function handleDrop(e: DragEvent) {
 function triggerUpload() { fileInput.value?.click() }
 function triggerFolder() { folderInput.value?.click() }
 
-async function handleDownload(item: any) {
-  try {
-    const r: any = await http.get(`/drive/${item.id}/download`)
-    window.open(r.url, '_blank')
-  } catch (e: any) { message.error('下载失败') }
+function handleDownload(item: any) {
+  window.open(`/api/drive/${item.id}/raw`, '_blank')
 }
-
 async function handlePreview(item: any) {
   try {
     const r: any = await http.get(`/drive/${item.id}/preview`)
-    window.open(r.url, '_blank')
+    if (r?.url) window.open(r.url.replace('minio:9000', 'localhost:9000'), '_blank')
   } catch (e: any) { message.error('预览失败') }
 }
 

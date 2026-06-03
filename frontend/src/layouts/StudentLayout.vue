@@ -60,6 +60,10 @@ function handleLogout() {
         :options="menuOptions"
         @update:value="handleMenuChange"
       />
+      <div class="sider-footer" :style="{ borderColor: isDark ? '#272725' : '#eae8e4', color: isDark ? '#8a8a84' : '#4a4a44' }">
+        <div class="user-avatar" :style="{ background: isDark ? '#272725' : '#e8e6e1' }">{{ auth.userInfo?.name?.charAt(0) }}</div>
+        <span class="user-name">{{ auth.userInfo?.name }}</span>
+      </div>
     </NLayoutSider>
 
     <div class="layout-right">
@@ -109,4 +113,7 @@ function handleLogout() {
 .main-content { padding: 28px 32px; flex: 1; overflow: auto; display: flex; flex-direction: column; width: 100%; }
 .main-content > :deep(*) { flex: 1; min-height: 100%; }
 .main-content :deep(.page) { max-width: none; }
+.sider-footer { padding: 12px 18px; border-top: 1px solid; display: flex; align-items: center; gap: 10px; margin-top: auto; }
+.user-avatar { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.user-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

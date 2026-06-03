@@ -8,6 +8,7 @@ import { getCourse } from '@/api/courses'
 import { listSemesters } from '@/api/semesters'
 import { listLessons } from '@/api/lessons'
 import { listAllClasses } from '@/api/classes'
+import http from '@/api/request'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
 import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
 import type { CourseDetailVO, SemesterVO, LessonVO, ClassVO } from '@/types/api'
@@ -42,9 +43,15 @@ async function loadSemesters() {
   try { semesters.value = await listSemesters(courseId) } catch { /* ignore */ }
 }
 
+const lessonTaskCounts = ref<Record<number, number>>({})
+
 async function loadLessons() {
   if (!activeSemesterId.value) { lessons.value = []; return }
   try { lessons.value = await listLessons(activeSemesterId.value) } catch { /* ignore */ }
+  for (const l of lessons.value) {
+    try { const tasks: any[] = await http.get(`/lessons/${l.id}/tasks`); lessonTaskCounts.value[l.id] = (tasks||[]).length }
+    catch { lessonTaskCounts.value[l.id] = 0 }
+  }
 }
 
 function goBack() { router.push('/student/home') }
@@ -118,6 +125,7 @@ onMounted(async () => {
               <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
               <span class="lesson-index">{{ row.sortOrder }}</span>
               <span class="lesson-name">{{ row.name }}</span>
+              <span v-if="lessonTaskCounts[row.id]" class="lesson-task-count">{{ lessonTaskCounts[row.id] }}个任务</span>
             </div>
             <div v-if="expandedLessonId === row.id" class="lesson-expand">
               <LessonTaskPanel :lesson-id="row.id" readonly />
@@ -163,9 +171,10 @@ onMounted(async () => {
 
 .lesson-list { display: flex; flex-direction: column; gap: 0; }
 .lesson-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
-.lesson-row:hover { background: var(--n-color-embedded); }
+.lesson-row:hover { background: var(--n-color-embedded); transform: translateX(2px); }
 .lesson-index { width: 24px; font-size: 13px; color: var(--n-text-color-3); text-align: center; }
 .lesson-name { font-size: 14px; font-weight: 500; flex: 1; }
+.lesson-task-count { font-size: 11px; color: #7C3AED; background: rgba(124,58,237,0.08); padding: 1px 8px; border-radius: 10px; }
 .lesson-expand { padding: 0 12px 12px 36px; animation: slideDown 0.15s ease; }
 @keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 </style>

@@ -7,10 +7,16 @@ import com.example.edu.modules.drive.entity.DriveItem;
 import com.example.edu.modules.drive.service.DriveService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,6 +69,23 @@ public class DriveController {
         return R.ok(driveService.createFile(uid, (String) body.get("name"),
                 body.get("fileSize") != null ? Long.valueOf(body.get("fileSize").toString()) : 0L,
                 (String) body.get("contentType"), (String) body.get("objectName"), pid));
+    }
+
+    @GetMapping("/{id}/raw")
+    @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
+    public ResponseEntity<InputStreamResource> raw(@PathVariable Long id) {
+        DriveItem item = driveService.list(SecurityUtils.getCurrentUserId(), null).stream()
+                .filter(i -> i.getId().equals(id)).findFirst().orElse(null);
+        if (item == null || !"FILE".equals(item.getType())) return ResponseEntity.notFound().build();
+        try {
+            java.io.InputStream stream = minioService.getObject(item.getObjectName());
+            String encoded = java.net.URLEncoder.encode(item.getName(), StandardCharsets.UTF_8).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(item.getContentType() != null ? item.getContentType() : "application/octet-stream"))
+                    .contentLength(item.getFileSize() != null ? item.getFileSize() : 0)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(encoded).build().toString())
+                    .body(new InputStreamResource(stream));
+        } catch (Exception e) { return ResponseEntity.internalServerError().build(); }
     }
 
     @GetMapping("/{id}/download")
