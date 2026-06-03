@@ -21,6 +21,7 @@ const courseId = Number(route.params.courseId)
 const course = ref<CourseDetailVO | null>(null)
 const semesters = ref<SemesterVO[]>([])
 const lessons = ref<LessonVO[]>([])
+const activeTab = ref('semesters')
 const activeSemesterId = ref<number | null>(null)
 const allClasses = ref<ClassVO[]>([])
 const classMap = computed(() => new Map(allClasses.value.map(c => [c.id, c])))
@@ -89,35 +90,39 @@ onMounted(async () => {
       </div>
     </div>
 
-    <NTabs type="line" animated>
-      <NTabPane name="semesters" tab="课程内容">
-        <div v-if="semesters.length" style="display:flex;flex-direction:column;gap:16px">
-          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card" :class="{ active: activeSemesterId === s.id }" hoverable @click="activeSemesterId = s.id">
+    <NTabs type="line" animated v-model:value="activeTab">
+      <NTabPane name="semesters" tab="学期">
+        <div v-if="semesters.length" class="sem-list">
+          <NCard v-for="s in semesters" :key="s.id" size="small" class="sem-card">
             <div class="sem-info">
-              <div class="sem-header">
-                <h4 class="sem-name">{{ s.name }}</h4>
-                <NTag size="tiny" :bordered="false" :type="activeSemesterId === s.id ? 'primary' : 'default'">{{ s.lessonCount }} 课时</NTag>
-              </div>
+              <h4 class="sem-name">{{ s.name }}</h4>
               <p class="sem-time">{{ formatDate(s.startTime, 'date') }} — {{ formatDate(s.endTime, 'date') }}</p>
+              <NTag size="tiny" :bordered="false">{{ s.lessonCount }} 课时</NTag>
             </div>
-            <div v-if="activeSemesterId === s.id" class="sem-lessons" @click.stop>
-              <div v-if="lessons.length" class="lesson-list">
-                <div v-for="row in lessons" :key="row.id">
-                  <div class="lesson-row" @click="toggleLesson(row.id)">
-                    <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
-                    <span class="lesson-index">{{ row.sortOrder }}</span>
-                    <span class="lesson-name">{{ row.name }}</span>
-                  </div>
-                  <div v-if="expandedLessonId === row.id" class="lesson-expand">
-                    <LessonTaskPanel :lesson-id="row.id" readonly />
-                  </div>
-                </div>
-              </div>
-              <NEmpty v-else description="该学期暂无课时" />
-            </div>
+            <NButton size="tiny" @click="activeSemesterId = s.id; activeTab = 'lessons'">查看课时</NButton>
           </NCard>
         </div>
         <NEmpty v-else description="暂无学期" class="empty-hint" />
+      </NTabPane>
+
+      <NTabPane name="lessons" tab="课时">
+        <div class="tab-head">
+          <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
+        </div>
+        <div v-if="activeSemesterId && lessons.length" class="lesson-list">
+          <div v-for="row in lessons" :key="row.id">
+            <div class="lesson-row" @click="toggleLesson(row.id)">
+              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+              <span class="lesson-index">{{ row.sortOrder }}</span>
+              <span class="lesson-name">{{ row.name }}</span>
+            </div>
+            <div v-if="expandedLessonId === row.id" class="lesson-expand">
+              <LessonTaskPanel :lesson-id="row.id" readonly />
+            </div>
+          </div>
+        </div>
+        <NEmpty v-else-if="activeSemesterId" description="该学期暂无课时" />
+        <NEmpty v-else description="请在学期管理中选择一个学期" />
       </NTabPane>
 
       <NTabPane name="resources" tab="课程资源">

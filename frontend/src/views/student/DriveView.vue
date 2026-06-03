@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NEmpty, NButton, NIcon, NTag, NSpace, NModal, NInput, useMessage, NPopconfirm } from 'naive-ui'
-import { AddOutline, TrashOutline, FolderOutline, DocumentOutline } from '@vicons/ionicons5'
+import { AddOutline, TrashOutline, FolderOutline, DocumentOutline, CloudDownloadOutline, EyeOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
 import PageHeader from '@/components/PageHeader.vue'
 import { formatDate } from '@/utils/date'
@@ -107,6 +107,20 @@ async function handleDrop(e: DragEvent) {
 function triggerUpload() { fileInput.value?.click() }
 function triggerFolder() { folderInput.value?.click() }
 
+async function handleDownload(item: any) {
+  try {
+    const r: any = await http.get(`/drive/${item.id}/download`)
+    window.open(r.url, '_blank')
+  } catch (e: any) { message.error('下载失败') }
+}
+
+async function handlePreview(item: any) {
+  try {
+    const r: any = await http.get(`/drive/${item.id}/preview`)
+    window.open(r.url, '_blank')
+  } catch (e: any) { message.error('预览失败') }
+}
+
 onMounted(loadItems)
 </script>
 
@@ -146,6 +160,10 @@ onMounted(loadItems)
           <span v-if="item.fileSize" class="file-meta">{{ formatFileSize(item.fileSize) }}</span>
           <span class="file-time">{{ formatDate(item.createdAt, 'date') }}</span>
         </div>
+        <NSpace v-if="item.type === 'FILE'" :size="2">
+          <NButton size="tiny" quaternary @click="handleDownload(item)"><template #icon><NIcon :size="14"><CloudDownloadOutline /></NIcon></template></NButton>
+          <NButton size="tiny" quaternary @click="handlePreview(item)"><template #icon><NIcon :size="14"><EyeOutline /></NIcon></template></NButton>
+        </NSpace>
         <NPopconfirm @positive-click="() => handleDelete(item.id)">
           <template #trigger>
             <NButton size="tiny" quaternary><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
