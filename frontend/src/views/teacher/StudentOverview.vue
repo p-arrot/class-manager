@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
 import { NDataTable, NButton, NIcon, NInput, NTag, NModal, NCard, NSpin, NEmpty, NSpace, NPopconfirm, useMessage } from 'naive-ui'
-import { SearchOutline, EyeOutline, TrashOutline, FolderOutline } from '@vicons/ionicons5'
+import { SearchOutline, EyeOutline, TrashOutline, FolderOutline, DocumentOutline, CloudDownloadOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
 import PageHeader from '@/components/PageHeader.vue'
 import StudentProfileModal from '@/components/StudentProfileModal.vue'
@@ -45,6 +45,15 @@ async function handleDriveDelete(itemId: number) {
   catch (e: any) { message.error('删除失败') }
 }
 
+function handleDriveDownload(item: any) {
+  window.open(`/api/drive/${item.id}/raw`, '_blank')
+}
+function handleDrivePreview(item: any) {
+  http.get(`/drive/${item.id}/preview`).then((r: any) => {
+    if (r?.url) window.open(r.url.replace('minio:9000', 'localhost:9000'), '_blank')
+  })
+}
+
 function getTotalDriveSize(): string {
   const bytes = driveItems.value.reduce((sum: number, i: any) => sum + (i.fileSize || 0), 0)
   if (bytes > 1024*1024*1024) return (bytes/(1024*1024*1024)).toFixed(1) + ' GB'
@@ -85,9 +94,12 @@ onMounted(loadStudents)
         <div style="font-size:13px;color:var(--n-text-color-3);margin-bottom:12px">总占用: {{ getTotalDriveSize() }}</div>
         <div v-if="driveItems.length" style="display:flex;flex-direction:column;gap:4px">
           <div v-for="item in driveItems" :key="item.id" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:4px;border:1px solid var(--n-border-color)">
-            <span>{{ item.type === 'FOLDER' ? '📁' : '📄' }} {{ item.name }}</span>
-            <span style="font-size:12px;color:var(--n-text-color-3)">{{ item.fileSize ? (item.fileSize > 1024 ? (item.fileSize/1024).toFixed(0)+'KB' : item.fileSize+'B') : '' }}</span>
-            <NPopconfirm @positive-click="()=>handleDriveDelete(item.id)"><template #trigger><NButton size="tiny" quaternary type="error">删除</NButton></template>确认删除？</NPopconfirm>
+            <NIcon :size="16" :color="item.type==='FOLDER'?'#F97316':'#6b6b65'"><FolderOutline v-if="item.type==='FOLDER'" /><DocumentOutline v-else /></NIcon>
+            <span style="flex:1;font-size:13px;font-weight:500">{{ item.name }}</span>
+            <span style="font-size:11px;color:var(--n-text-color-3)">{{ item.fileSize ? (item.fileSize > 1024 ? (item.fileSize/1024).toFixed(0)+'KB' : item.fileSize+'B') : '' }}</span>
+            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click="handleDriveDownload(item)" title="下载"><template #icon><NIcon :size="14"><CloudDownloadOutline /></NIcon></template></NButton>
+            <NButton v-if="item.type==='FILE'" size="tiny" quaternary @click="handleDrivePreview(item)" title="预览"><template #icon><NIcon :size="14"><EyeOutline /></NIcon></template></NButton>
+            <NPopconfirm @positive-click="()=>handleDriveDelete(item.id)"><template #trigger><NButton size="tiny" quaternary type="error"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton></template>确认删除？</NPopconfirm>
           </div>
         </div>
         <NEmpty v-else description="网盘为空" />

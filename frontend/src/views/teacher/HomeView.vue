@@ -11,6 +11,8 @@ const loading = ref(false)
 const stats = ref({ pendingGrading: 0, upcomingDeadlines: 0, recentCount: 0 })
 const recentSubmissions = ref<any[]>([])
 const upcomingTasks = ref<any[]>([])
+const showPending = ref(false)
+const showUpcoming = ref(false)
 
 async function loadDashboard() {
   loading.value = true
@@ -59,12 +61,23 @@ onMounted(loadDashboard)
     <PageHeader title="工作台" subtitle="今日概览" />
     <NSpin :show="loading">
       <NGrid :cols="3" :x-gap="16" :y-gap="16" class="stat-grid">
-        <NGi><NCard size="small" class="stat-card pending" hoverable @click="router.push('/teacher/courses')"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">待评分 →</div></NCard></NGi>
-        <NGi><NCard size="small" class="stat-card upcoming" hoverable @click="router.push('/teacher/courses')"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">即将截止 →</div></NCard></NGi>
+        <NGi><NCard size="small" class="stat-card pending" hoverable @click="showPending = !showPending"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">{{ showPending ? '待评分 ↑' : '待评分 ↓' }}</div></NCard></NGi>
+        <NGi><NCard size="small" class="stat-card upcoming" hoverable @click="showUpcoming = !showUpcoming"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">{{ showUpcoming ? '即将截止 ↑' : '即将截止 ↓' }}</div></NCard></NGi>
         <NGi><NCard size="small" class="stat-card info"><div class="stat-num">{{ stats.recentCount }}</div><div class="stat-label">近期提交</div></NCard></NGi>
       </NGrid>
 
-      <div class="section" v-if="upcomingTasks.length">
+      <!-- Expandable: 待评分 -->
+      <div v-if="showPending && recentSubmissions.filter(s=>s.status==='submitted').length" class="section">
+        <h3 class="section-title">待评分</h3>
+        <div v-for="s in recentSubmissions.filter(s=>s.status==='submitted')" :key="'p'+s.id" class="row">
+          <span class="row-title">{{ s.studentName || '学生' }}</span>
+          <span class="row-sub">提交了 {{ s.taskTitle }}</span>
+          <NButton size="tiny" type="primary" @click="goGrading(s.taskId)" style="margin-left:auto">去评分</NButton>
+        </div>
+      </div>
+
+      <!-- Expandable: 即将截止 -->
+      <div v-if="showUpcoming && upcomingTasks.length" class="section">
         <h3 class="section-title"><NIcon :size="16"><TimeOutline /></NIcon> 即将截止</h3>
         <div v-for="t in upcomingTasks" :key="'u'+t.id" class="row">
           <span class="row-title">{{ t.title }}</span>
