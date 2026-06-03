@@ -150,29 +150,28 @@ onMounted(loadItems)
       </span>
     </div>
 
-    <div v-if="items.length" class="file-list">
-      <div v-for="item in items" :key="item.id" class="file-row">
-        <div class="file-info" @click="item.type === 'FOLDER' ? enterFolder(item) : undefined" :style="{ cursor: item.type === 'FOLDER' ? 'pointer' : 'default' }">
-          <NIcon :size="16" :color="item.type === 'FOLDER' ? '#F97316' : '#6b6b65'">
+    <div v-if="uploading" class="upload-status">
+      <span>{{ uploadQueue }} 个文件待上传...</span>
+    </div>
+    <div v-if="items.length" class="file-grid">
+      <div v-for="item in items" :key="item.id" class="file-card" :class="{ clickable: item.type === 'FOLDER' }" @click="item.type === 'FOLDER' ? enterFolder(item) : undefined">
+        <div class="file-icon" :style="{ background: item.type === 'FOLDER' ? 'rgba(249,115,22,0.1)' : 'var(--n-color-embedded)' }">
+          <NIcon :size="22" :color="item.type === 'FOLDER' ? '#F97316' : '#6b6b65'">
             <FolderOutline v-if="item.type === 'FOLDER'" /><DocumentOutline v-else />
           </NIcon>
-          <span class="file-name">{{ item.name }}</span>
-          <span v-if="item.fileSize" class="file-meta">{{ formatFileSize(item.fileSize) }}</span>
-          <span class="file-time">{{ formatDate(item.createdAt, 'date') }}</span>
         </div>
-        <NSpace v-if="item.type === 'FILE'" :size="2">
-          <NButton size="tiny" quaternary @click="handleDownload(item)"><template #icon><NIcon :size="14"><CloudDownloadOutline /></NIcon></template></NButton>
-          <NButton size="tiny" quaternary @click="handlePreview(item)"><template #icon><NIcon :size="14"><EyeOutline /></NIcon></template></NButton>
-        </NSpace>
-        <NPopconfirm @positive-click="() => handleDelete(item.id)">
-          <template #trigger>
-            <NButton size="tiny" quaternary><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
-          </template>
-          确定删除？
-        </NPopconfirm>
+        <div class="file-body">
+          <span class="file-name">{{ item.name }}</span>
+          <span class="file-meta">{{ item.fileSize ? formatFileSize(item.fileSize) : '--' }} · {{ formatDate(item.createdAt, 'date') }}</span>
+        </div>
+        <div class="file-actions" @click.stop>
+          <NButton v-if="item.type === 'FILE'" size="tiny" quaternary @click="handleDownload(item)" title="下载"><template #icon><NIcon :size="15"><CloudDownloadOutline /></NIcon></template></NButton>
+          <NButton v-if="item.type === 'FILE'" size="tiny" quaternary @click="handlePreview(item)" title="预览"><template #icon><NIcon :size="15"><EyeOutline /></NIcon></template></NButton>
+          <NPopconfirm @positive-click="() => handleDelete(item.id)"><template #trigger><NButton size="tiny" quaternary><template #icon><NIcon :size="15"><TrashOutline /></NIcon></template></NButton></template>确定删除？</NPopconfirm>
+        </div>
       </div>
     </div>
-    <NEmpty v-else description="此文件夹为空" />
+    <NEmpty v-else-if="!uploading" description="此文件夹为空。拖拽文件到此处或点击上传按钮" />
 
     <NModal v-model:show="showNewFolder" title="新建文件夹" preset="card" style="width:360px">
       <NInput v-model:value="folderName" placeholder="文件夹名称" />
@@ -185,11 +184,14 @@ onMounted(loadItems)
 .page { max-width: 800px; margin: 0 auto; }
 .breadcrumb { font-size: 13px; margin: 16px 0; display: flex; align-items: center; gap: 2px; }
 .crumb-sep { color: var(--n-text-color-3); margin: 0 2px; }
-.file-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
-.file-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 6px; }
-.file-row:hover { background: var(--n-color-embedded); }
-.file-info { display: flex; align-items: center; gap: 8px; flex: 1; }
-.file-name { font-size: 14px; font-weight: 500; }
+.upload-status { padding: 8px 12px; font-size: 13px; color: var(--n-text-color-2); background: var(--n-color-embedded); border-radius: 6px; margin-bottom: 12px; }
+.file-grid { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.file-card { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; transition: background 0.15s; }
+.file-card:hover { background: var(--n-color-embedded); }
+.file-card.clickable { cursor: pointer; }
+.file-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-body { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.file-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-meta { font-size: 11px; color: var(--n-text-color-3); }
-.file-time { font-size: 11px; color: var(--n-text-color-3); margin-left: auto; }
+.file-actions { display: flex; gap: 0; flex-shrink: 0; }
 </style>
