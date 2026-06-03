@@ -31,4 +31,6 @@ public interface TaskService {
     List<SubmissionVO> getStudentSubmissions(Long studentId, Long semesterId);
 
     Map<String, Object> getSubmissionStats(Long taskId);
+
+    SubmissionVO getMySubmission(Long taskId, Long studentId);
 }

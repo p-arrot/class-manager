@@ -70,6 +70,14 @@ public class TaskController {
         return R.ok(taskService.submit(taskId, dto));
     }
 
+    @Operation(summary = "学生查看自己在该任务的提交")
+    @GetMapping("/api/tasks/{taskId}/my-submission")
+    @PreAuthorize("hasRole('STUDENT')")
+    public R<SubmissionVO> getMySubmission(@PathVariable Long taskId) {
+        Long studentId = com.example.edu.common.security.SecurityUtils.getCurrentUserId();
+        return R.ok(taskService.getMySubmission(taskId, studentId));
+    }
+
     @Operation(summary = "查看单个提交详情")
     @GetMapping("/api/submissions/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")

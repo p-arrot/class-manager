@@ -54,8 +54,7 @@ async function loadTasks() {
     const subs: Record<number, any> = {}
     for (const t of tasks.value) {
       try {
-        const r: any = await http.get(`/tasks/${t.id}/submissions`)
-        const mine = (r || []).find((s: any) => s.studentId === auth.userInfo?.userId)
+        const mine: any = await http.get(`/tasks/${t.id}/my-submission`)
         if (mine) subs[t.id] = { status: mine.status, id: mine.id }
       } catch { /* no access */ }
     }

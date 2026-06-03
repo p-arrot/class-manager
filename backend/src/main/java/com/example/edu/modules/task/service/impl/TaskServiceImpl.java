@@ -298,6 +298,14 @@ public class TaskServiceImpl implements TaskService {
         );
     }
 
+    @Override
+    public SubmissionVO getMySubmission(Long taskId, Long studentId) {
+        Submission sub = submissionMapper.selectOne(new LambdaQueryWrapper<Submission>()
+                .eq(Submission::getTaskId, taskId)
+                .eq(Submission::getStudentId, studentId));
+        return sub != null ? toSubmissionVO(sub) : null;
+    }
+
     // ========== private helpers ==========
 
     private void checkLessonOwner(Lesson lesson) {
