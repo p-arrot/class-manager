@@ -100,20 +100,31 @@ watch(() => props.passwordLength, () => characters.forEach(c => applyReaction(c.
 onUnmounted(() => reactionTimers.forEach(t => clearTimeout(t)))
 
 // ── Password-peek cycle ──
-const peeking = ref(false)
+const peekBlend = ref(0)  // 0=pretending not to look, 1=fully peeking
 let peekTimer: ReturnType<typeof setTimeout> | null = null
+let peekAnimFrame: number | null = null
+function animatePeekIn() {
+  if (peekBlend.value >= 1) return
+  peekBlend.value = Math.min(1, peekBlend.value + 0.04)
+  peekAnimFrame = requestAnimationFrame(animatePeekIn)
+}
+function animatePeekOut() {
+  if (peekBlend.value <= 0) { peekBlend.value = 0; schedulePeek(); return }
+  peekBlend.value = Math.max(0, peekBlend.value - 0.03)
+  peekAnimFrame = requestAnimationFrame(animatePeekOut)
+}
 watch(() => props.passwordVisible && props.passwordLength > 0, (active) => {
   if (active) schedulePeek()
-  else { if (peekTimer) clearTimeout(peekTimer); peeking.value = false }
+  else { if (peekTimer) clearTimeout(peekTimer); if (peekAnimFrame) cancelAnimationFrame(peekAnimFrame); peekBlend.value = 0 }
 })
 function schedulePeek() {
   if (!props.passwordVisible || props.passwordLength === 0) return
   peekTimer = setTimeout(() => {
-    peeking.value = true
-    setTimeout(() => { peeking.value = false; schedulePeek() }, 600 + Math.random() * 400)
+    animatePeekIn()
+    setTimeout(() => animatePeekOut(), 600 + Math.random() * 400)
   }, Math.random() * 3000 + 2000)
 }
-onUnmounted(() => { if (peekTimer) clearTimeout(peekTimer) })
+onUnmounted(() => { if (peekTimer) clearTimeout(peekTimer); if (peekAnimFrame) cancelAnimationFrame(peekAnimFrame) })
 
 // ── Error shock ──
 const shocked = ref(false)
@@ -175,19 +186,22 @@ function getCharStyle(c: Persona) {
   let heightScale = 1
 
   if (pwdVisible) {
-    if (peeking.value) {
-      skew = -c.peekCuriosity
-      translateX = c.peekCuriosity * 1.5
-    } else {
-      skew = baseSkew(c) * 0.3
-    }
+    // 计算偷瞄的渐进程度 (peekAmount: 0=假装没看, 1=忍不住偷看)
+    const peekAmount = peekBlend.value
+    // 站直假装没看 → 身体微前倾靠近 → 忍不住偷看(更前倾)
+    const baseLean = -2 - peekAmount * c.peekCuriosity * 0.6
+    const baseApproach = 6 + peekAmount * c.peekCuriosity * 1.4
+    skew = baseSkew(c) * 0.2 + baseLean
+    translateX = baseApproach
+    heightScale = 1.01 + peekAmount * 0.02
   } else if (typingEmail) {
     skew = baseSkew(c) - c.leanAmount
     translateX = c.leanAmount * 2.2
     heightScale = c.tiptoeAmount
   } else if (typingPassword) {
-    skew = baseSkew(c) + c.privacyLean
-    translateX = -c.privacyLean * 1.5
+    // 输入密码(隐藏)：头果断扭开，身体往远处躲
+    skew = baseSkew(c) + c.privacyLean + 3
+    translateX = -c.privacyLean * 2.0
     heightScale = c.tiptoeAmount
   }
 
