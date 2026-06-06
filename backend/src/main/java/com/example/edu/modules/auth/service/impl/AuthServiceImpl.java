@@ -55,7 +55,8 @@ public class AuthServiceImpl implements AuthService {
                 user.getId(),
                 user.getUsername() != null ? user.getUsername() : user.getStudentNo(),
                 user.getRole(),
-                user.getClassId()
+                user.getClassId(),
+                Boolean.TRUE.equals(user.getEnabled())
         );
 
         String token = jwtUtils.generateToken(loginUser);

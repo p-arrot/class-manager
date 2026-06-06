@@ -1,5 +1,6 @@
 package com.example.edu.modules.drive.controller;
 
+import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.result.R;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.infrastructure.minio.MinioService;
@@ -41,7 +42,7 @@ public class DriveController {
         try {
             minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
         } catch (Exception e) {
-            return R.fail(50002, "文件上传失败");
+            return R.fail(ErrorCode.FILE_UPLOAD_ERROR);
         }
         return R.ok(toVO(driveService.createFile(uid, file.getOriginalFilename(), file.getSize(),
                 file.getContentType(), objectName, parentId)));

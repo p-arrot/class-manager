@@ -17,6 +17,11 @@ public class LoginUser implements UserDetails {
     private String username;
     private String role;
     private Long classId;
+    private boolean enabled;
+
+    public LoginUser(Long userId, String username, String role, Long classId) {
+        this(userId, username, role, classId, true);
+    }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -45,6 +50,6 @@ public class LoginUser implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return enabled;
     }
 }

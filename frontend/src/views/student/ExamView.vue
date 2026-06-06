@@ -25,8 +25,15 @@ function startExam(exam: Exam) { activeExam.value = exam; answers.value = ''; sh
 
 async function submitExam() {
   if (!activeExam.value) return
-  try { await http.post(`/exams/${activeExam.value.id}/submit`, { answers: answers.value }); message.success('提交成功'); showExam.value = false; activeSemesterId.value && (await watch(activeSemesterId)) }
-  catch (e: any) { message.error(e.message || '提交失败') }
+  try {
+    await http.post(`/exams/${activeExam.value.id}/submit`, { answers: answers.value })
+    message.success('提交成功')
+    showExam.value = false
+    if (activeSemesterId.value) {
+      loading.value = true
+      try { exams.value = await http.get(`/semesters/${activeSemesterId.value}/exams`) } catch { exams.value = [] } finally { loading.value = false }
+    }
+  } catch (e: any) { message.error(e.message || '提交失败') }
 }
 </script>
 

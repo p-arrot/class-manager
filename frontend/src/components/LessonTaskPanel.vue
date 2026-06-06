@@ -38,7 +38,7 @@ const taskStats = ref<Record<number, { submitted: number; total: number }>>({})
 async function loadTasks() {
   loading.value = true
   try { tasks.value = await listTasks(props.lessonId) }
-  catch (e) { console.error("LessonTaskPanel.vue failed", e) }
+  catch (e) { message.error('加载任务列表失败'); console.error("LessonTaskPanel.vue failed", e) }
   finally { loading.value = false }
   // Teacher: load submission stats
   if (!props.readonly) {

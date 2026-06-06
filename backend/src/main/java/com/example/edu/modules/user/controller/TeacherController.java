@@ -75,7 +75,7 @@ public class TeacherController {
 
     @Operation(summary = "重置教师密码")
     @PutMapping("/{id}/password")
-    public R<Void> resetPassword(@PathVariable Long id, @RequestBody PasswordResetDTO dto) {
+    public R<Void> resetPassword(@PathVariable Long id, @Valid @RequestBody PasswordResetDTO dto) {
         teacherService.resetPassword(id, dto);
         return R.ok();
     }

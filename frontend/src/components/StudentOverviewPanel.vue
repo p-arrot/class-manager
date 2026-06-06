@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NSelect, NDataTable, NTag, NEmpty, NSpin, NButton, NIcon } from 'naive-ui'
+import { NSelect, NDataTable, NTag, NEmpty, NSpin, NButton, NIcon, useMessage } from 'naive-ui'
 import { PersonOutline } from '@vicons/ionicons5'
 import http from '@/api/request'
 import StudentProfileModal from '@/components/StudentProfileModal.vue'
@@ -13,7 +13,9 @@ const loading = ref(false)
 const profileStudentId = ref<number | null>(null)
 const profileStudentName = ref('')
 
-watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("StudentOverviewPanel.vue failed", e) } }, { immediate: true })
+const message = useMessage()
+
+watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { message.error('加载学期列表失败'); console.error("StudentOverviewPanel.vue failed", e) } }, { immediate: true })
 watch(activeSemesterId, async (sid) => {
   if (!sid) return
   loading.value = true

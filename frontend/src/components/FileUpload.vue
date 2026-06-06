@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { NButton, NIcon, NProgress, NSpace } from 'naive-ui'
+import { NButton, NIcon, NProgress, NSpace, useDialog } from 'naive-ui'
 import { CloudUploadOutline, DocumentOutline, FolderOpenOutline } from '@vicons/ionicons5'
 import { useFileUpload } from '@/composables/useFileUpload'
 import { createResourceFolder } from '@/api/courses'
+
+const dialog = useDialog()
 
 const props = defineProps<{
   courseId: number
@@ -144,8 +146,18 @@ async function handleInputChange(e: Event) {
       const file = files[i]
       // Check name conflict
       if (props.existingNames?.includes(file.name)) {
-        const ok = window.confirm(`文件「${file.name}」已存在，是否覆盖？`)
-        if (!ok) continue
+        const confirmed = await new Promise<boolean>((resolve) => {
+          dialog.warning({
+            title: '文件已存在',
+            content: `文件「${file.name}」已存在，是否覆盖？`,
+            positiveText: '覆盖',
+            negativeText: '取消',
+            onPositiveClick: () => { resolve(true) },
+            onNegativeClick: () => { resolve(false) },
+            onClose: () => { resolve(false) },
+          })
+        })
+        if (!confirmed) continue
       }
       const rid = await uploadFile(file, props.courseId, props.parentId)
       if (rid) emit('uploaded', rid)

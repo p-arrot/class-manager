@@ -37,6 +37,7 @@ public class JwtUtils {
                 .claim("username", loginUser.getUsername())
                 .claim("role", loginUser.getRole())
                 .claim("classId", loginUser.getClassId())
+                .claim("enabled", loginUser.isEnabled())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(secretKey)
@@ -50,11 +51,13 @@ public class JwtUtils {
                 .parseSignedClaims(token)
                 .getPayload();
 
+        Boolean enabled = claims.get("enabled", Boolean.class);
         return new LoginUser(
                 Long.parseLong(claims.getSubject()),
                 claims.get("username", String.class),
                 claims.get("role", String.class),
-                claims.get("classId", Long.class)
+                claims.get("classId", Long.class),
+                enabled != null ? enabled : true
         );
     }
 

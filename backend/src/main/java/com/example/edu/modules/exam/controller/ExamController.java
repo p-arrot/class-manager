@@ -100,7 +100,9 @@ public class ExamController {
     @PutMapping("/api/exam-submissions/{id}/grade")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<Void> grade(@PathVariable Long id, @RequestBody Map<String,Object> body) {
-        examService.gradeSubmission(id, (Integer) body.get("score"), Boolean.TRUE.equals(body.get("absent")));
+        Object scoreObj = body.get("score");
+        Integer score = scoreObj instanceof Number n ? n.intValue() : null;
+        examService.gradeSubmission(id, score, Boolean.TRUE.equals(body.get("absent")));
         return R.ok();
     }
 }
