@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Tag(name = "考试管理")
@@ -43,10 +44,11 @@ public class ExamController {
     @GetMapping("/api/semesters/{semesterId}/exams")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<ExamVO>> listExams(@PathVariable Long semesterId) {
-        return R.ok(examService.listExams(semesterId).stream().map(e -> ExamVO.builder()
-                .id(e.getId()).name(e.getName()).semesterId(e.getSemesterId()).paperId(e.getPaperId())
-                .startTime(e.getStartTime()).endTime(e.getEndTime()).weight(e.getWeight())
-                .createdAt(e.getCreatedAt()).build()).toList());
+        List<Exam> exams = examService.listExams(semesterId);
+        Set<Long> paperIds = exams.stream().map(Exam::getPaperId).collect(Collectors.toSet());
+        Map<Long, ExamPaper> papers = paperIds.isEmpty() ? Map.of() : examService.listPaperByIds(paperIds).stream()
+                .collect(Collectors.toMap(ExamPaper::getId, p -> p));
+        return R.ok(exams.stream().map(e -> toExamVO(e, papers.get(e.getPaperId()))).toList());
     }
 
     @PostMapping("/api/semesters/{semesterId}/exams")
@@ -54,9 +56,14 @@ public class ExamController {
     public R<ExamVO> createExam(@PathVariable Long semesterId, @RequestBody Exam exam) {
         exam.setSemesterId(semesterId);
         Exam e = examService.createExam(exam);
-        return R.ok(ExamVO.builder().id(e.getId()).name(e.getName()).semesterId(e.getSemesterId())
-                .paperId(e.getPaperId()).startTime(e.getStartTime()).endTime(e.getEndTime())
-                .weight(e.getWeight()).createdAt(e.getCreatedAt()).build());
+        return R.ok(toExamVO(e, null));
+    }
+
+    @PutMapping("/api/exams/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<ExamVO> updateExam(@PathVariable Long id, @RequestBody Exam exam) {
+        Exam e = examService.updateExam(id, exam);
+        return R.ok(toExamVO(e, null));
     }
 
     @DeleteMapping("/api/exams/{id}")
@@ -104,5 +111,19 @@ public class ExamController {
         Integer score = scoreObj instanceof Number n ? n.intValue() : null;
         examService.gradeSubmission(id, score, Boolean.TRUE.equals(body.get("absent")));
         return R.ok();
+    }
+
+    private ExamVO toExamVO(Exam exam, ExamPaper paper) {
+        return ExamVO.builder()
+                .id(exam.getId())
+                .name(exam.getName())
+                .semesterId(exam.getSemesterId())
+                .paperId(exam.getPaperId())
+                .paperContent(paper != null ? paper.getContent() : null)
+                .startTime(exam.getStartTime())
+                .endTime(exam.getEndTime())
+                .weight(exam.getWeight())
+                .createdAt(exam.getCreatedAt())
+                .build();
     }
 }

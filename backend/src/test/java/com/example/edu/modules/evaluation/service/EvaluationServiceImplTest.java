@@ -13,6 +13,7 @@ import com.example.edu.modules.course.mapper.*;
 import com.example.edu.modules.evaluation.dto.EvaluateDTO;
 import com.example.edu.modules.evaluation.entity.Evaluation;
 import com.example.edu.modules.evaluation.mapper.EvaluationMapper;
+import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.impl.EvaluationServiceImpl;
 import com.example.edu.modules.task.entity.Submission;
 import com.example.edu.modules.task.entity.Task;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.*;
 class EvaluationServiceImplTest {
 
     @Mock private EvaluationMapper evaluationMapper;
+    @Mock private DimensionScoreService dimensionScoreService;
     @Mock private SubmissionMapper submissionMapper;
     @Mock private TaskMapper taskMapper;
     @Mock private LessonMapper lessonMapper;

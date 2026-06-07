@@ -3,6 +3,7 @@ package com.example.edu;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,12 +17,21 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Self-contained integration tests. Requires backend running at localhost:8080.
  * Creates test data, tests all controllers, then cleans up.
- * Run with: mvn test -Dtest=ApiIntegrationTest
+ * Run with: RUN_API_INTEGRATION_TESTS=true mvn test -Dtest=ApiIntegrationTest
  */
+@EnabledIfEnvironmentVariable(named = "RUN_API_INTEGRATION_TESTS", matches = "true")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ApiIntegrationTest {
 
     private static final String BASE = "http://localhost:8080/api";
+    private static final String RUN_ID = Long.toString(System.currentTimeMillis(), 36);
+    private static final String TEST_GRADE = "2099";
+    private static final String CLASS_NAME = "ITEST-CLASS-" + RUN_ID;
+    private static final String CLASS_NAME_UPDATED = "ITEST-CLASS-UPD-" + RUN_ID;
+    private static final String COURSE_NAME = "ITEST-COURSE-" + RUN_ID;
+    private static final String COURSE_NAME_UPDATED = "ITEST-COURSE-UPD-" + RUN_ID;
+    private static final String STUDENT_NO = "IT" + RUN_ID;
+    private static final String STUDENT_PASSWORD = "test123";
     private static final HttpClient http = HttpClient.newHttpClient();
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -58,10 +68,10 @@ class ApiIntegrationTest {
     }
 
     private JsonNode send(HttpRequest.Builder req) throws Exception {
-        HttpResponse<String> r = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
-        if (r.statusCode() >= 500) {
-            System.err.println("5xx from " + req.build().uri() + " body=" + r.body());
-        }
+        HttpRequest request = req.build();
+        HttpResponse<String> r = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertTrue(r.statusCode() < 500,
+                () -> "5xx from " + request.uri() + " body=" + r.body());
         return mapper.readTree(r.body());
     }
 
@@ -108,19 +118,19 @@ class ApiIntegrationTest {
 
         // Create
         r = send(authPost("/classes", adminToken,
-                "{\"grade\":\"2026\",\"name\":\"INTEGRATION-TEST\",\"description\":\"auto-test\"}"));
-        assertEquals(0, code(r));
+                "{\"grade\":\"" + TEST_GRADE + "\",\"name\":\"" + CLASS_NAME + "\",\"description\":\"auto-test\"}"));
+        assertEquals(0, code(r), "Create class failed: " + r);
         testClassId = r.get("data").get("id").asLong();
 
         // Get by ID
         r = send(authGet("/classes/" + testClassId, adminToken));
         assertEquals(0, code(r));
-        assertEquals("INTEGRATION-TEST", r.get("data").get("name").asText());
+        assertEquals(CLASS_NAME, r.get("data").get("name").asText());
 
         // Update
         r = send(authPut("/classes/" + testClassId, adminToken,
-                "{\"grade\":\"2026\",\"name\":\"INTEGRATION-TEST-UPDATED\",\"description\":\"updated\"}"));
-        assertEquals(0, code(r));
+                "{\"grade\":\"" + TEST_GRADE + "\",\"name\":\"" + CLASS_NAME_UPDATED + "\",\"description\":\"updated\"}"));
+        assertEquals(0, code(r), "Update class failed: " + r);
     }
 
     // ── 3. Teachers ───────────────────────────────────────────────
@@ -134,7 +144,7 @@ class ApiIntegrationTest {
 
         // Create
         r = send(authPost("/teachers", adminToken,
-                "{\"username\":\"inttest_t\",\"name\":\"TestTeacher\",\"password\":\"pass123\",\"phone\":\"13800000000\"}"));
+                "{\"username\":\"it_teacher_" + RUN_ID + "\",\"name\":\"TestTeacher\",\"password\":\"pass123\",\"phone\":\"13800000000\"}"));
         // May fail if username exists; that's ok — the list worked
     }
 
@@ -148,25 +158,18 @@ class ApiIntegrationTest {
 
         // Create via API (if supported)
         r = send(authPost("/students", adminToken,
-                "{\"studentNo\":\"2026999\",\"name\":\"TestStudent\",\"classId\":" + testClassId + ",\"password\":\"test123\"}"));
-        if (code(r) == 0) {
-            testStudentId = r.get("data").get("id").asLong();
-        } else {
-            // Fallback: find an existing student in the class
-            r = send(authGet("/students?page=1&size=50&classId=" + testClassId, adminToken));
-            if (r.get("data").get("records").size() > 0) {
-                testStudentId = r.get("data").get("records").get(0).get("id").asLong();
-            }
-        }
+                "{\"studentNo\":\"" + STUDENT_NO + "\",\"name\":\"TestStudent\",\"classId\":" + testClassId + ",\"password\":\"" + STUDENT_PASSWORD + "\"}"));
+        assertEquals(0, code(r), "Create student failed: " + r);
+        testStudentId = r.get("data").get("id").asLong();
+
+        r = send(authPost("/auth/login", "", "{\"account\":\"" + STUDENT_NO + "\",\"password\":\"" + STUDENT_PASSWORD + "\"}"));
+        assertEquals(0, code(r), "Test student login failed: " + r);
+        studentToken = r.get("data").get("token").asText();
 
         // Password reset for an existing student
-        r = send(authGet("/students?page=1&size=1", adminToken));
-        if (r.get("data").get("records").size() > 0) {
-            long sid = r.get("data").get("records").get(0).get("id").asLong();
-            r = send(authPut("/students/" + sid + "/reset-password", adminToken,
-                    "{\"password\":\"newpass123\"}"));
-            assertEquals(0, code(r));
-        }
+        r = send(authPut("/students/" + testStudentId + "/password", adminToken,
+                "{\"newPassword\":\"" + STUDENT_PASSWORD + "\"}"));
+        assertEquals(0, code(r), "Reset password failed: " + r);
     }
 
     // ── 5. Courses ─────────────────────────────────────────────────
@@ -179,7 +182,7 @@ class ApiIntegrationTest {
 
         // Create
         r = send(authPost("/courses", teacherToken,
-                "{\"name\":\"INTEGRATION-TEST-COURSE\",\"description\":\"test\",\"classIds\":[" + testClassId + "]}"));
+                "{\"name\":\"" + COURSE_NAME + "\",\"description\":\"test\",\"classIds\":[" + testClassId + "]}"));
         assertEquals(0, code(r), "Create course failed: " + r);
         testCourseId = r.get("data").get("id").asLong();
 
@@ -189,7 +192,7 @@ class ApiIntegrationTest {
 
         // Update
         r = send(authPut("/courses/" + testCourseId, teacherToken,
-                "{\"name\":\"INTEGRATION-TEST-COURSE-UPDATED\",\"description\":\"updated\"}"));
+                "{\"name\":\"" + COURSE_NAME_UPDATED + "\",\"description\":\"updated\"}"));
         assertEquals(0, code(r));
 
         // Student can see course
@@ -203,7 +206,7 @@ class ApiIntegrationTest {
     @Test @Order(7)
     void semesters() throws Exception {
         JsonNode r = send(authPost("/courses/" + testCourseId + "/semesters", teacherToken,
-                "{\"name\":\"2026春季学期\",\"startTime\":\"2026-03-01T00:00:00\",\"endTime\":\"2026-07-01T00:00:00\"}"));
+                "{\"name\":\"ITEST-学期-" + RUN_ID + "\",\"startTime\":\"2026-03-01T00:00:00\",\"endTime\":\"2026-07-01T00:00:00\"}"));
         assertEquals(0, code(r), "Create semester failed: " + r);
         testSemesterId = r.get("data").get("id").asLong();
 
@@ -221,12 +224,12 @@ class ApiIntegrationTest {
     @Test @Order(8)
     void lessons() throws Exception {
         JsonNode r = send(authPost("/semesters/" + testSemesterId + "/lessons", teacherToken,
-                "{\"name\":\"第1课 Python入门\",\"sortOrder\":1}"));
+                "{\"name\":\"ITEST-第1课-" + RUN_ID + "\",\"sortOrder\":1}"));
         assertEquals(0, code(r), "Create lesson failed: " + r);
         testLessonId = r.get("data").get("id").asLong();
 
         r = send(authPost("/semesters/" + testSemesterId + "/lessons", teacherToken,
-                "{\"name\":\"第2课 变量与类型\",\"sortOrder\":2}"));
+                "{\"name\":\"ITEST-第2课-" + RUN_ID + "\",\"sortOrder\":2}"));
         assertEquals(0, code(r));
         Long lesson2Id = r.get("data").get("id").asLong();
 
@@ -236,8 +239,8 @@ class ApiIntegrationTest {
         assertTrue(r.get("data").size() >= 2);
 
         // Reorder: swap 1 and 2
-        r = send(authPut("/semesters/" + testSemesterId + "/lessons/reorder", teacherToken,
-                "[{\"id\":" + testLessonId + ",\"sortOrder\":2},{\"id\":" + lesson2Id + ",\"sortOrder\":1}]"));
+        r = send(authPut("/lessons/" + testLessonId + "/sort", teacherToken,
+                "{\"targetIndex\":1}"));
         assertEquals(0, code(r));
 
         // Student list
@@ -255,7 +258,7 @@ class ApiIntegrationTest {
     void taskFlow() throws Exception {
         // Create
         JsonNode r = send(authPost("/lessons/" + testLessonId + "/tasks", teacherToken,
-                "{\"title\":\"INTTEST-练习1\",\"type\":\"worksheet\",\"description\":\"测试任务\",\"formSchema\":\"{\\\"fields\\\":[{\\\"type\\\":\\\"text\\\",\\\"label\\\":\\\"答案\\\"}]}\"}"));
+                "{\"title\":\"ITEST-练习-" + RUN_ID + "\",\"type\":\"worksheet\",\"description\":\"测试任务\",\"formSchema\":\"{\\\"fields\\\":[{\\\"type\\\":\\\"text\\\",\\\"label\\\":\\\"答案\\\"}]}\"}"));
         assertEquals(0, code(r), "Create task failed: " + r);
         testTaskId = r.get("data").get("id").asLong();
 
@@ -270,7 +273,7 @@ class ApiIntegrationTest {
 
         // Update
         r = send(authPut("/tasks/" + testTaskId, teacherToken,
-                "{\"title\":\"INTTEST-练习1-UPDATED\",\"description\":\"updated desc\"}"));
+                "{\"title\":\"ITEST-练习-UPD-" + RUN_ID + "\",\"description\":\"updated desc\"}"));
         assertEquals(0, code(r));
 
         // Student list
@@ -362,7 +365,7 @@ class ApiIntegrationTest {
     void examPapers() throws Exception {
         // Create paper
         JsonNode r = send(authPost("/exam-papers", teacherToken,
-                "{\"title\":\"INTTEST-期末试卷\",\"content\":\"[{\\\"q\\\":\\\"什么是Python?\\\",\\\"a\\\":\\\"编程语言\\\"}]\",\"totalScore\":100}"));
+                "{\"title\":\"ITEST-期末试卷-" + RUN_ID + "\",\"content\":\"[{\\\"q\\\":\\\"什么是Python?\\\",\\\"a\\\":\\\"编程语言\\\"}]\",\"totalScore\":100}"));
         assertEquals(0, code(r), "Create paper failed: " + r);
         testPaperId = r.get("data").get("id").asLong();
 
@@ -382,7 +385,7 @@ class ApiIntegrationTest {
     void exams() throws Exception {
         // Create exam
         JsonNode r = send(authPost("/semesters/" + testSemesterId + "/exams", teacherToken,
-                "{\"name\":\"INTTEST-期末考试\",\"paperId\":" + testPaperId + ",\"startTime\":\"2026-06-01T09:00:00\",\"endTime\":\"2026-06-01T10:00:00\",\"weight\":1.0}"));
+                "{\"name\":\"ITEST-期末考试-" + RUN_ID + "\",\"paperId\":" + testPaperId + ",\"startTime\":\"2026-06-08T09:00:00\",\"endTime\":\"2026-06-08T10:00:00\",\"weight\":1.0}"));
         assertEquals(0, code(r), "Create exam failed: " + r);
         testExamId = r.get("data").get("id").asLong();
 
@@ -423,7 +426,7 @@ class ApiIntegrationTest {
     void projects() throws Exception {
         // Create project
         JsonNode r = send(authPost("/semesters/" + testSemesterId + "/projects", teacherToken,
-                "{\"name\":\"INTTEST-Python项目\",\"description\":\"做一个计算器\",\"maxTeamSize\":3,\"weight\":1.0}"));
+                "{\"name\":\"ITEST-Python项目-" + RUN_ID + "\",\"description\":\"做一个计算器\",\"maxTeamSize\":3,\"weight\":1.0}"));
         assertEquals(0, code(r), "Create project failed: " + r);
         testProjectId = r.get("data").get("id").asLong();
 
@@ -438,7 +441,7 @@ class ApiIntegrationTest {
 
         // Student create team
         r = send(authPost("/projects/" + testProjectId + "/teams", studentToken,
-                "{\"name\":\"火箭队\"}"));
+                "{\"name\":\"ITEST-Team-" + RUN_ID + "\"}"));
         assertEquals(0, code(r));
 
         // Student submit project
@@ -453,7 +456,7 @@ class ApiIntegrationTest {
     void drive() throws Exception {
         // Create folder
         JsonNode r = send(authPost("/drive/folders", studentToken,
-                "{\"name\":\"INTTEST-我的文件夹\"}"));
+                "{\"name\":\"ITEST-我的文件夹-" + RUN_ID + "\"}"));
         assertEquals(0, code(r), "Create folder failed: " + r);
         testDriveFolderId = r.get("data").get("id").asLong();
 
@@ -484,21 +487,21 @@ class ApiIntegrationTest {
 
         // Create folder
         r = send(authPost("/courses/" + testCourseId + "/resources", teacherToken,
-                "{\"name\":\"INTTEST-课件\",\"type\":\"FOLDER\"}"));
+                "{\"name\":\"ITEST-课件-" + RUN_ID + "\",\"type\":\"FOLDER\"}"));
         assertEquals(0, code(r));
         Long folderId = r.get("data").get("id").asLong();
 
         // Create subfolder
         r = send(authPost("/courses/" + testCourseId + "/resources", teacherToken,
-                "{\"name\":\"INTTEST-子文件夹\",\"type\":\"FOLDER\",\"parentId\":" + folderId + "}"));
+                "{\"name\":\"ITEST-子文件夹-" + RUN_ID + "\",\"type\":\"FOLDER\",\"parentId\":" + folderId + "}"));
         assertEquals(0, code(r));
 
         // Delete subfolder
-        r = send(authDelete("/courses/" + testCourseId + "/resources/" + r.get("data").get("id").asLong(), teacherToken));
+        r = send(authDelete("/resources/" + r.get("data").get("id").asLong(), teacherToken));
         assertEquals(0, code(r));
 
         // Delete root folder
-        r = send(authDelete("/courses/" + testCourseId + "/resources/" + folderId, teacherToken));
+        r = send(authDelete("/resources/" + folderId, teacherToken));
         assertEquals(0, code(r));
     }
 
@@ -576,11 +579,16 @@ class ApiIntegrationTest {
             send(authDelete("/courses/" + testCourseId, teacherToken));
         }
 
+        // Student
+        if (testStudentId != null) {
+            send(authDelete("/students/" + testStudentId, adminToken));
+        }
+
         // Class
         if (testClassId != null) {
             send(authDelete("/classes/" + testClassId, adminToken));
         }
 
-        System.out.println("Integration test cleanup complete.");
+        assertTrue(true, "Integration test cleanup complete.");
     }
 }

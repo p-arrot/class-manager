@@ -12,7 +12,9 @@ import com.example.edu.modules.course.mapper.*;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.dto.EvaluateDTO;
 import com.example.edu.modules.evaluation.entity.Evaluation;
+import com.example.edu.modules.evaluation.enums.Grade;
 import com.example.edu.modules.evaluation.mapper.EvaluationMapper;
+import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.EvaluationService;
 import com.example.edu.modules.evaluation.vo.EvaluationVO;
 import com.example.edu.modules.evaluation.vo.RadarVO;
@@ -35,9 +37,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EvaluationServiceImpl implements EvaluationService {
 
-    private static final Map<String, Integer> GRADE_SCORES = Map.of(
-            "A", 100, "B", 80, "C", 60, "D", 40, "E", 20, "F", 0
-    );
+    private static final Map<String, Integer> GRADE_SCORES = Arrays.stream(Grade.values())
+            .collect(Collectors.toUnmodifiableMap(Grade::name, Grade::getScore));
     private static final Map<String, String> DIMENSION_LABELS = Map.of(
             "AWARENESS", "信息意识",
             "COMPUTING", "计算思维",
@@ -54,6 +55,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final CourseClassMapper courseClassMapper;
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
+    private final DimensionScoreService dimensionScoreService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -67,9 +69,10 @@ public class EvaluationServiceImpl implements EvaluationService {
 
         boolean isSpecial = dto.getIsSpecial() != null && dto.getIsSpecial();
         boolean hasDimensions = dto.getDimensions() != null && !dto.getDimensions().isEmpty();
+        boolean hasQuestionScores = dto.getQuestionScores() != null && !dto.getQuestionScores().isEmpty();
 
         if (isSpecial) sub.setStatus("special");
-        else if (hasDimensions) sub.setStatus("graded");
+        else if (hasDimensions || hasQuestionScores) sub.setStatus("graded");
         else sub.setStatus("submitted"); // unmark: reset to submitted
         submissionMapper.updateById(sub);
 
@@ -99,6 +102,21 @@ public class EvaluationServiceImpl implements EvaluationService {
             eval.setGrade("F");
             eval.setIsSpecial(1);
             evaluationMapper.insert(eval);
+        }
+
+        if (isSpecial || hasQuestionScores) {
+            List<DimensionScoreService.ScoreInput> scoreInputs = hasQuestionScores
+                    ? dto.getQuestionScores().stream()
+                            .map(score -> new DimensionScoreService.ScoreInput(
+                                    score.getQuestionId(),
+                                    score.getDimension(),
+                                    score.getEarnedScore(),
+                                    score.getMaxScore(),
+                                    Boolean.TRUE.equals(score.getAutoGraded())
+                            ))
+                            .toList()
+                    : List.of();
+            dimensionScoreService.replaceScores("process", submissionId, sub.getStudentId(), scoreInputs);
         }
 
         auditLogService.record("评分", "submission", submissionId,
@@ -171,7 +189,6 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
-    @org.springframework.cache.annotation.Cacheable("gradeScores")
     public Map<String, Integer> getGradeScores() {
         return GRADE_SCORES;
     }

@@ -1008,6 +1008,45 @@ PUT    /api/tasks/{id}                  编辑任务
 DELETE /api/tasks/{id}                  删除任务
 ```
 
+任务创建支持两类：
+
+- `worksheet`：题目式练习，`formSchema` 使用 JSON 字符串保存题目配置。
+- `artifact`：课堂作品，`formSchema` 可保存提交方式、文件后缀限制等配置。
+
+当前题目 schema 使用 `version: 3`：
+
+```json
+{
+  "version": 3,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "single",
+      "stem": "题干 Markdown",
+      "required": true,
+      "imageUrl": "https://...",
+      "options": ["A", "B"],
+      "answer": "A",
+      "autoGrade": true,
+      "dimensionScores": [
+        { "dimension": "COMPUTING", "maxScore": 5 },
+        { "dimension": "DIGITAL_LEARNING", "maxScore": 3 }
+      ]
+    }
+  ]
+}
+```
+
+题型包括：
+
+- `blank`：填空
+- `single`：单选
+- `multiple`：多选
+- `true_false`：是非
+- `short`：简答
+
+`stem` 为唯一题干字段，前端用 Markdown/Monaco 编辑，学生端渲染 Markdown。单选、多选、是非默认可自动批改；填空、简答可选择开启自动批改。
+
 ## 14. 学生提交 (Phase 4)
 
 ```
@@ -1036,6 +1075,13 @@ POST   /api/tasks/{id}/auto-grade       自动评F
 GET    /api/evaluations/grade-scores    评分对照表
 ```
 
+当前评分同时支持旧的等级评价表和新的数值得分表：
+
+- `evaluations`：保留 A-E/F 等级评价与特殊情况。
+- `dimension_scores`：按来源、题目、核心素养维度记录 `earnedScore/maxScore`。
+
+自动批改和逐题手动评分写入 `dimension_scores`。雷达图和学期总评优先按四维度数值得分折算。
+
 ## 17. 考试 (Phase 6a)
 
 ```
@@ -1043,6 +1089,7 @@ GET    /api/exam-papers                 试卷列表
 POST   /api/exam-papers                 创建试卷
 GET    /api/semesters/{id}/exams        考试列表
 POST   /api/semesters/{id}/exams        创建考试
+PUT    /api/exams/{id}                  更新考试
 DELETE /api/exams/{id}                  删除考试
 POST   /api/exams/{id}/start            开始考试
 POST   /api/exams/{id}/submit           提交考试
@@ -1050,17 +1097,35 @@ GET    /api/exams/{id}/submissions      查看提交
 PUT    /api/exam-submissions/{id}/grade 考试评分
 ```
 
+考试列表会返回关联试卷的 `paperContent`，学生答题页按同一套 `version: 3` 题目 schema 渲染。选择、是非等自动批改题提交后写入 `dimension_scores`。
+
 ## 18. 项目化学习 (Phase 6b)
 
 ```
 GET    /api/semesters/{id}/projects     项目列表
 POST   /api/semesters/{id}/projects     创建项目
+PUT    /api/projects/{id}               更新项目
 DELETE /api/projects/{id}               删除项目
 POST   /api/projects/{id}/teams         创建队伍
 POST   /api/teams/{id}/join             加入队伍
 POST   /api/projects/{id}/submit        提交项目
-POST   /api/projects/{id}/scores        教师评分
-GET    /api/projects/{id}/scores        查看评分
+GET    /api/projects/{id}/submissions   教师查看项目提交
+POST   /api/project-submissions/{id}/score 项目提交逐维度评分
+POST   /api/projects/{id}/scores        旧项目评分接口（兼容保留）
+GET    /api/projects/{id}/scores        旧项目评分查询（兼容保留）
+```
+
+项目说明当前以 JSON 文本保存扩展配置，例如提交方式、允许文件后缀和项目评分维度：
+
+```json
+{
+  "text": "项目说明",
+  "artifact": { "submitMode": "file", "allowedExtensions": ["zip", "py"] },
+  "rubric": [
+    { "dimension": "COMPUTING", "maxScore": 10 },
+    { "dimension": "RESPONSIBILITY", "maxScore": 5 }
+  ]
+}
 ```
 
 ## 19. 学生网盘 (Phase 7)
@@ -1082,7 +1147,39 @@ GET    /api/stats/semester/{id}/preview 总评预览
 GET    /api/stats/semester/{id}/export  Excel 导出
 ```
 
-## 21. 健康检查
+## 21. 学期考核方案
+
+```
+GET    /api/semesters/{id}/assessment-scheme 获取考核方案
+PUT    /api/semesters/{id}/assessment-scheme 设置考核方案
+```
+
+请求体：
+
+```json
+{
+  "processPercent": 50,
+  "examPercent": 50,
+  "projectPercent": 0
+}
+```
+
+约束：
+
+- 三项占比均为 0-100。
+- `processPercent + examPercent + projectPercent = 100`。
+- 未设置时默认 `50/50/0`。
+
+## 22. 首页聚合
+
+```
+GET    /api/dashboard/student           学生首页聚合
+GET    /api/dashboard/teacher           教师工作台聚合
+```
+
+用于替代前端首页逐层请求课程、学期、课时、任务、提交记录的串行加载。学生接口返回课程、即将截止任务、最近评分；教师接口返回待评分数量、近期提交、即将截止任务等概览。
+
+## 23. 健康检查
 
 ```
 GET    /api/health                      服务状态 (公开)

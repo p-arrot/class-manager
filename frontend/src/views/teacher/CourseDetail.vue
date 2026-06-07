@@ -1,30 +1,29 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, h, watch, computed } from 'vue'
-import { formatDate } from '@/utils/date'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { formatDate, toLocalDateTime } from '@/utils/date'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, NCard, NTag, NTabs, NTabPane, NSpace, NIcon, useMessage, useDialog } from 'naive-ui'
+import { NButton, NModal, NForm, NFormItem, NInput, NSelect, NDatePicker, NTag, NTabs, NTabPane, NSpace, NIcon, useMessage, useDialog } from 'naive-ui'
 import { AddOutline, CreateOutline, TrashOutline, ChevronUpOutline, ChevronDownOutline, ChevronForwardOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { getCourse } from '@/api/courses'
 import { listSemesters, createSemester, updateSemester, deleteSemester } from '@/api/semesters'
 import { listLessons, createLesson, updateLesson, deleteLesson, reorderLesson } from '@/api/lessons'
 import { listAllClasses } from '@/api/classes'
-import { useThemeStore } from '@/stores/theme'
-import http from '@/api/request'
+import { listTasks } from '@/api/tasks'
 import CourseResourcePanel from '@/components/CourseResourcePanel.vue'
 import LessonTaskPanel from '@/components/LessonTaskPanel.vue'
+import AssessmentSchemePanel from '@/components/AssessmentSchemePanel.vue'
 import ExamPanel from '@/components/ExamPanel.vue'
 import ProjectPanel from '@/components/ProjectPanel.vue'
 import ExportPanel from '@/components/ExportPanel.vue'
 import StudentOverviewPanel from '@/components/StudentOverviewPanel.vue'
+import { getErrorMessage } from '@/utils/error'
 import type { CourseDetailVO, SemesterVO, SemesterCreateDTO, LessonVO, ClassVO } from '@/types/api'
-import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
+import type { FormInst, FormRules } from 'naive-ui'
 
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
-const theme = useThemeStore()
-const isDark = computed(() => theme.isDark)
 
 const courseId = Number(route.params.courseId)
 const course = ref<CourseDetailVO | null>(null)
@@ -34,6 +33,10 @@ const activeTab = ref('semesters')
 const activeSemesterId = ref<number | null>(null)
 const allClasses = ref<ClassVO[]>([])
 const classMap = computed(() => new Map(allClasses.value.map(c => [c.id, c])))
+const semesterOptions = computed(() => semesters.value.map(semester => ({
+  label: semester.name,
+  value: semester.id,
+})))
 
 // Semester modal
 const showSemModal = ref(false)
@@ -61,101 +64,200 @@ function toggleLesson(id: number) {
 
 // ---- Fetch ----
 async function loadCourse() {
-  try { course.value = await getCourse(courseId) } catch (e: any) { message.error(e.message || '加载失败'); router.push('/teacher/courses') }
+  try {
+    course.value = await getCourse(courseId)
+  } catch (e) {
+    message.error(getErrorMessage(e, '加载失败'))
+    router.push('/teacher/courses')
+  }
 }
 
 async function loadSemesters() {
-  try { semesters.value = await listSemesters(courseId) } catch (e) { console.error("CourseDetail.vue failed", e) }
+  try {
+    semesters.value = await listSemesters(courseId)
+  } catch (e) {
+    semesters.value = []
+    message.error(getErrorMessage(e, '加载学期列表失败'))
+  }
 }
 
 async function loadLessons() {
-  if (!activeSemesterId.value) { lessons.value = []; return }
-  try { lessons.value = await listLessons(activeSemesterId.value) } catch (e) { console.error("CourseDetail.vue failed", e) }
-  // Fetch task counts for each lesson
-  for (const l of lessons.value) {
-    try {
-      const tasks: any[] = await http.get(`/lessons/${l.id}/tasks`)
-      lessonTaskCounts.value[l.id] = (tasks || []).length
-    } catch { lessonTaskCounts.value[l.id] = 0 }
+  if (!activeSemesterId.value) {
+    lessons.value = []
+    return
   }
+  try {
+    lessons.value = await listLessons(activeSemesterId.value)
+  } catch (e) {
+    lessons.value = []
+    message.error(getErrorMessage(e, '加载课时列表失败'))
+  }
+  // Fetch task counts for each lesson
+  const countEntries = await Promise.all(lessons.value.map(async (l) => {
+    try {
+      const tasks = await listTasks(l.id)
+      return [l.id, (tasks || []).length] as const
+    } catch {
+      return [l.id, 0] as const
+    }
+  }))
+  lessonTaskCounts.value = Object.fromEntries(countEntries)
 }
 
 // ---- Semester CRUD ----
 function openCreateSemester() {
-  semTitle.value = '创建学期'; editingSemId.value = null
-  semForm.name = ''; semForm.startEnd = null; showSemModal.value = true
+  semTitle.value = '创建学期'
+  editingSemId.value = null
+  semForm.name = ''
+  semForm.startEnd = null
+  showSemModal.value = true
 }
 
 function openEditSemester(row: SemesterVO) {
-  semTitle.value = '编辑学期'; editingSemId.value = row.id
+  semTitle.value = '编辑学期'
+  editingSemId.value = row.id
   semForm.name = row.name
   semForm.startEnd = [new Date(row.startTime).getTime(), new Date(row.endTime).getTime()]
   showSemModal.value = true
 }
 
 async function handleSemSubmit() {
-  try { await semFormRef.value?.validate() } catch { return }
+  try {
+    await semFormRef.value?.validate()
+  } catch {
+    return
+  }
   try {
     const data: SemesterCreateDTO = {
       name: semForm.name,
-      startTime: new Date(semForm.startEnd![0]).toISOString().replace('Z', ''),
-      endTime: new Date(semForm.startEnd![1]).toISOString().replace('Z', ''),
+      startTime: toLocalDateTime(semForm.startEnd![0])!,
+      endTime: toLocalDateTime(semForm.startEnd![1])!,
     }
-    if (editingSemId.value) { await updateSemester(editingSemId.value, data); message.success('更新成功') }
-    else { await createSemester(courseId, data); message.success('创建成功') }
-    showSemModal.value = false; loadSemesters()
-  } catch (e: any) { message.error(e.message || '操作失败') }
+    if (editingSemId.value) {
+      await updateSemester(editingSemId.value, data)
+      message.success('更新成功')
+    } else {
+      await createSemester(courseId, data)
+      message.success('创建成功')
+    }
+    showSemModal.value = false
+    loadSemesters()
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
+  }
 }
 
 async function handleDeleteSemester(row: SemesterVO) {
-  dialog.warning({ title: '确认删除', content: `确定删除学期「${row.name}」吗？学期下有课时将无法删除。`, positiveText: '删除', negativeText: '取消',
-    onPositiveClick: async () => { try { await deleteSemester(row.id); message.success('已删除'); loadSemesters() } catch (e: any) { message.error(e.message || '删除失败') } },
+  dialog.warning({
+    title: '确认删除',
+    content: `确定删除学期「${row.name}」吗？学期下有课时将无法删除。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await deleteSemester(row.id)
+        message.success('已删除')
+        loadSemesters()
+      } catch (e) {
+        message.error(getErrorMessage(e, '删除失败'))
+      }
+    },
   })
 }
 
 // ---- Lesson CRUD ----
 function openCreateLesson() {
-  lesTitle.value = '创建课时'; editingLesId.value = null; lesForm.name = ''; showLesModal.value = true
+  lesTitle.value = '创建课时'
+  editingLesId.value = null
+  lesForm.name = ''
+  showLesModal.value = true
 }
 
 function openEditLesson(row: LessonVO) {
-  lesTitle.value = '编辑课时'; editingLesId.value = row.id; lesForm.name = row.name; showLesModal.value = true
+  lesTitle.value = '编辑课时'
+  editingLesId.value = row.id
+  lesForm.name = row.name
+  showLesModal.value = true
 }
 
 async function handleLesSubmit() {
-  try { await lesFormRef.value?.validate() } catch { return }
+  if (!activeSemesterId.value) return
   try {
-    if (editingLesId.value) { await updateLesson(editingLesId.value, { name: lesForm.name }); message.success('更新成功') }
-    else { await createLesson(activeSemesterId.value!, { name: lesForm.name }); message.success('创建成功') }
-    showLesModal.value = false; loadLessons()
-  } catch (e: any) { message.error(e.message || '操作失败') }
+    await lesFormRef.value?.validate()
+  } catch {
+    return
+  }
+  try {
+    if (editingLesId.value) {
+      await updateLesson(editingLesId.value, { name: lesForm.name })
+      message.success('更新成功')
+    } else {
+      await createLesson(activeSemesterId.value, { name: lesForm.name })
+      message.success('创建成功')
+    }
+    showLesModal.value = false
+    loadLessons()
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
+  }
 }
 
 async function handleDeleteLesson(row: LessonVO) {
-  dialog.warning({ title: '确认删除', content: `确定删除课时「${row.name}」吗？`, positiveText: '删除', negativeText: '取消',
-    onPositiveClick: async () => { try { await deleteLesson(row.id); message.success('已删除'); loadLessons() } catch (e: any) { message.error(e.message || '删除失败') } },
+  dialog.warning({
+    title: '确认删除',
+    content: `确定删除课时「${row.name}」吗？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await deleteLesson(row.id)
+        message.success('已删除')
+        loadLessons()
+      } catch (e) {
+        message.error(getErrorMessage(e, '删除失败'))
+      }
+    },
   })
 }
 
 async function handleMoveUp(row: LessonVO) {
   const idx = lessons.value.findIndex(l => l.id === row.id)
   if (idx <= 0) return
-  try { await reorderLesson(row.id, { targetIndex: idx - 1 }); loadLessons() } catch (e: any) { message.error(e.message || '操作失败') }
+  try {
+    await reorderLesson(row.id, { targetIndex: idx - 1 })
+    loadLessons()
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
+  }
 }
 
 async function handleMoveDown(row: LessonVO) {
   const idx = lessons.value.findIndex(l => l.id === row.id)
   if (idx >= lessons.value.length - 1) return
-  try { await reorderLesson(row.id, { targetIndex: idx + 1 }); loadLessons() } catch (e: any) { message.error(e.message || '操作失败') }
+  try {
+    await reorderLesson(row.id, { targetIndex: idx + 1 })
+    loadLessons()
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
+  }
 }
 
 function goBack() { router.push('/teacher/courses') }
 
+function openLessonTab(semesterId: number) {
+  activeSemesterId.value = semesterId
+  activeTab.value = 'lessons'
+}
 
 
-// Auto-select first semester
+function pickCurrentSemester(list: SemesterVO[]) {
+  const now = Date.now()
+  return list.find(s => new Date(s.startTime).getTime() <= now && now <= new Date(s.endTime).getTime())
+}
+
+// Auto-select current semester
 watch(semesters, (val) => {
-  if (val.length && !activeSemesterId.value) activeSemesterId.value = val[0].id
+  if (val.length && !activeSemesterId.value) activeSemesterId.value = pickCurrentSemester(val)?.id ?? val[0].id
   if (!val.length) activeSemesterId.value = null
 })
 
@@ -164,7 +266,12 @@ watch(activeSemesterId, () => { if (activeSemesterId.value) loadLessons() })
 onMounted(async () => {
   await loadCourse()
   await loadSemesters()
-  try { allClasses.value = await listAllClasses() } catch (e) { console.error("CourseDetail.vue failed", e) }
+  try {
+    allClasses.value = await listAllClasses()
+  } catch (e) {
+    allClasses.value = []
+    message.error(getErrorMessage(e, '加载班级信息失败'))
+  }
 })
 </script>
 
@@ -179,7 +286,7 @@ onMounted(async () => {
       <p v-if="course.description" class="course-desc">{{ course.description }}</p>
       <NSpace :size="4">
         <NTag v-for="(id, i) in course.classIds" :key="i" size="tiny" :bordered="false">{{ classMap.get(id)?.grade }}级{{ classMap.get(id)?.name || id }}</NTag>
-        <span v-if="!course.classIds?.length" style="font-size:12px;color:var(--n-text-color-3)">未绑定班级</span>
+        <span v-if="!course.classIds?.length" class="unbound-class">未绑定班级</span>
       </NSpace>
     </div>
 
@@ -200,9 +307,9 @@ onMounted(async () => {
               <span class="sem-count">{{ s.lessonCount }} 课时</span>
             </div>
             <NSpace :size="2">
-              <NButton size="tiny" @click="activeSemesterId = s.id; activeTab = 'lessons'">查看课时</NButton>
-              <NButton size="tiny" quaternary @click="openEditSemester(s)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click="handleDeleteSemester(s)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
+              <NButton size="tiny" @click="openLessonTab(s.id)">查看课时</NButton>
+              <NButton size="tiny" quaternary title="编辑学期" aria-label="编辑学期" @click="openEditSemester(s)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary title="删除学期" aria-label="删除学期" @click="handleDeleteSemester(s)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
             </NSpace>
           </div>
         </div>
@@ -211,20 +318,20 @@ onMounted(async () => {
 
       <NTabPane name="lessons" tab="课时管理">
         <div class="tab-head">
-          <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesters.map(s => ({ label: s.name, value: s.id }))" size="small" style="width:220px" />
+          <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesterOptions" size="small" class="semester-select" />
           <NButton v-if="activeSemesterId" size="small" @click="openCreateLesson"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>新建课时</NButton>
         </div>
         <div v-if="activeSemesterId && lessons.length" class="lesson-list">
           <div v-for="(row, idx) in lessons" :key="row.id">
             <div class="lesson-row" @click="toggleLesson(row.id)">
-              <NIcon :size="14" :style="{ transform: expandedLessonId === row.id ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }"><ChevronForwardOutline /></NIcon>
+              <NIcon :size="14" class="lesson-chevron" :class="{ expanded: expandedLessonId === row.id }"><ChevronForwardOutline /></NIcon>
               <span class="lesson-index">{{ row.sortOrder }}</span>
               <span class="lesson-name">{{ row.name }}</span>
-              <NTag size="tiny" :bordered="false" style="margin-left:auto">{{ lessonTaskCounts[row.id] || 0 }}个任务</NTag>
-              <NButton size="tiny" quaternary @click.stop="handleMoveUp(row)" :disabled="idx===0"><template #icon><NIcon :size="14"><ChevronUpOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="handleMoveDown(row)" :disabled="idx===lessons.length-1"><template #icon><NIcon :size="14"><ChevronDownOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="openEditLesson(row)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
-              <NButton size="tiny" quaternary @click.stop="handleDeleteLesson(row)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
+              <NTag size="tiny" :bordered="false" class="lesson-task-count">{{ lessonTaskCounts[row.id] || 0 }}个任务</NTag>
+              <NButton size="tiny" quaternary title="上移课时" aria-label="上移课时" @click.stop="handleMoveUp(row)" :disabled="idx===0"><template #icon><NIcon :size="14"><ChevronUpOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary title="下移课时" aria-label="下移课时" @click.stop="handleMoveDown(row)" :disabled="idx===lessons.length-1"><template #icon><NIcon :size="14"><ChevronDownOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary title="编辑课时" aria-label="编辑课时" @click.stop="openEditLesson(row)"><template #icon><NIcon :size="14"><CreateOutline /></NIcon></template></NButton>
+              <NButton size="tiny" quaternary title="删除课时" aria-label="删除课时" @click.stop="handleDeleteLesson(row)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
             </div>
             <div v-if="expandedLessonId === row.id" class="lesson-expand">
               <LessonTaskPanel :lesson-id="row.id" />
@@ -239,30 +346,38 @@ onMounted(async () => {
         <CourseResourcePanel :course-id="courseId" />
       </NTabPane>
       <NTabPane name="exams" tab="考核管理">
-        <ExamPanel :course-id="courseId" />
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--n-border-color)">
-          <ProjectPanel :course-id="courseId" />
+        <div class="assessment-head">
+          <div>
+            <h3>按学期设置考核方案</h3>
+            <p>同一门课程的不同学期可以采用不同的平时任务、考试、项目占比。</p>
+          </div>
+          <NSelect v-if="semesters.length" v-model:value="activeSemesterId" :options="semesterOptions" size="small" class="semester-select" />
+        </div>
+        <AssessmentSchemePanel :semester-id="activeSemesterId" />
+        <ExamPanel :course-id="courseId" :semester-id="activeSemesterId" />
+        <div class="section-divider section-divider-large">
+          <ProjectPanel :course-id="courseId" :semester-id="activeSemesterId" />
         </div>
       </NTabPane>
       <NTabPane name="overview" tab="学生总览">
         <StudentOverviewPanel :course-id="courseId" />
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--n-border-color)">
+        <div class="section-divider">
           <ExportPanel :course-id="courseId" />
         </div>
       </NTabPane>
     </NTabs>
 
     <!-- Semester Modal -->
-    <NModal v-model:show="showSemModal" :title="semTitle" preset="card" style="width:440px">
+    <NModal v-model:show="showSemModal" :title="semTitle" preset="card" class="semester-modal">
       <NForm ref="semFormRef" :model="semForm" :rules="semRules" label-placement="left" label-width="72">
         <NFormItem label="学期名称" path="name"><NInput v-model:value="semForm.name" placeholder="如：2026年秋季学期" /></NFormItem>
-        <NFormItem label="起止时间" path="startEnd"><NDatePicker v-model:value="semForm.startEnd" type="daterange" clearable style="width:100%" /></NFormItem>
+        <NFormItem label="起止时间" path="startEnd"><NDatePicker v-model:value="semForm.startEnd" type="daterange" clearable class="date-picker" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showSemModal = false">取消</NButton><NButton type="primary" @click="handleSemSubmit">确定</NButton></NSpace></template>
     </NModal>
 
     <!-- Lesson Modal -->
-    <NModal v-model:show="showLesModal" :title="lesTitle" preset="card" style="width:400px">
+    <NModal v-model:show="showLesModal" :title="lesTitle" preset="card" class="lesson-modal">
       <NForm ref="lesFormRef" :model="lesForm" :rules="lesRules" label-placement="left" label-width="72">
         <NFormItem label="课时名称" path="name"><NInput v-model:value="lesForm.name" placeholder="如：第一课：认识Python" /></NFormItem>
       </NForm>
@@ -276,10 +391,12 @@ onMounted(async () => {
 @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .back-bar { margin-bottom: 12px; }
 .course-header { margin-bottom: 24px; }
-.course-name { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
+.course-name { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
 .course-desc { font-size: 14px; color: var(--n-text-color-2); margin: 0 0 10px; line-height: 1.5; }
+.unbound-class { font-size: 12px; color: var(--n-text-color-3); }
 .tab-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .tab-subtitle { font-size: 13px; color: var(--n-text-color-3); }
+.semester-select { width: 220px; }
 .sem-list { display: flex; flex-direction: column; gap: 10px; }
 .sem-card { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border: 1px solid var(--n-border-color); border-radius: 10px; transition: border-color 0.15s; }
 .sem-card:hover { border-color: var(--n-primary-color-hover); }
@@ -296,8 +413,23 @@ onMounted(async () => {
 .lesson-list { display: flex; flex-direction: column; gap: 0; }
 .lesson-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
 .lesson-row:hover { background: var(--n-color-embedded); }
+.lesson-chevron { transition: transform 0.15s; }
+.lesson-chevron.expanded { transform: rotate(90deg); }
 .lesson-index { width: 24px; font-size: 13px; color: var(--n-text-color-3); text-align: center; }
 .lesson-name { font-size: 14px; font-weight: 500; flex: 1; }
+.lesson-task-count { margin-left: auto; }
 .lesson-expand { padding: 0 12px 12px 36px; animation: slideDown 0.15s ease; }
+.section-divider { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--n-border-color); }
+.section-divider-large { margin-top: 24px; }
+.assessment-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; padding: 16px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-color); }
+.assessment-head h3 { margin: 0 0 4px; font-size: 16px; }
+.assessment-head p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--n-text-color-3); }
+.semester-modal { width: 440px; }
+.lesson-modal { width: 400px; }
+.date-picker { width: 100%; }
 @keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 720px) {
+  .assessment-head { flex-direction: column; }
+  .semester-select { width: 100%; }
+}
 </style>

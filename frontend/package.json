@@ -6,16 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "check": "npm run quality && vue-tsc -b && vitest run && vite build",
+    "quality": "node scripts/quality-gate.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",
+    "@types/dompurify": "^3.0.5",
     "@vicons/ionicons5": "^0.13.0",
-    "axios": "^1.15.2",
+    "axios": "^1.17.0",
     "dayjs": "^1.11.20",
+    "dompurify": "^3.4.8",
     "echarts": "^6.1.0",
+    "markdown-it": "^14.2.0",
+    "monaco-editor": "^0.53.0",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.4",
     "sockjs-client": "^1.6.1",
@@ -23,14 +29,15 @@
     "vue-router": "^5.0.6"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.12.2",
     "@vitejs/plugin-vue": "^6.0.6",
+    "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.9.1",
+    "jsdom": "^26.1.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.10",
-    "vue-tsc": "^3.2.7",
-    "@vue/test-utils": "^2.4.6",
-    "jsdom": "^26.1.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.2.7"
   }
 }

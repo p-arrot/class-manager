@@ -1,60 +1,281 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { NEmpty, NButton, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NIcon, NPopconfirm, useMessage } from 'naive-ui'
-import { AddOutline, TrashOutline } from '@vicons/ionicons5'
-import http from '@/api/request'
-import { formatDate } from '@/utils/date'
+import { computed, h, ref, watch } from 'vue'
+import {
+  NButton,
+  NDataTable,
+  NEmpty,
+  NIcon,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NSpin,
+  NTag,
+  useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { AddOutline, EyeOutline, TrashOutline } from '@vicons/ionicons5'
+import { getDrivePreview, getDriveRaw } from '@/api/drive'
+import { listSemesters } from '@/api/semesters'
+import { createProject, deleteProject, listProjectSubmissions, listProjects, scoreProjectSubmission } from '@/api/projects'
+import { formatDate, toLocalDateTime } from '@/utils/date'
+import { getErrorMessage } from '@/utils/error'
+import ProjectCreateModal from '@/components/project/ProjectCreateModal.vue'
+import ProjectSubmissionModal from '@/components/project/ProjectSubmissionModal.vue'
+import { buildProjectDescription, createEmptyProjectForm, parseProjectDescription, parseProjectSubmissionContent } from '@/types/project'
+import type { ArtifactFile } from '@/types/grading'
+import type { ProjectSubmissionVO, ProjectVO, SemesterVO } from '@/types/api'
+import type { ProjectSubmissionRow } from '@/types/project'
 
-const props = defineProps<{ courseId: number }>()
+const props = defineProps<{ courseId: number; semesterId?: number | null }>()
 const message = useMessage()
-const semesters = ref<any[]>([])
+const semesters = ref<SemesterVO[]>([])
 const activeSemesterId = ref<number | null>(null)
-const projects = ref<any[]>([])
+const projects = ref<ProjectVO[]>([])
 const showModal = ref(false)
+const showSubmissions = ref(false)
+const submissions = ref<ProjectSubmissionVO[]>([])
+const activeProject = ref<ProjectVO | null>(null)
+const previewUrl = ref('')
+const previewTitle = ref('')
+const previewLoading = ref(false)
+const projectScores = ref<Record<number, Record<string, number>>>({})
+const form = ref(createEmptyProjectForm())
 
-watch(() => props.courseId, async () => { try { semesters.value = await http.get(`/courses/${props.courseId}/semesters`) || [] } catch (e) { console.error("ProjectPanel.vue failed", e) } }, { immediate: true })
+const columns: DataTableColumns<ProjectVO> = [
+  { title: '名称', key: 'name' },
+  { title: '说明', key: 'description', ellipsis: { tooltip: true } },
+  { title: '组队上限', key: 'maxTeamSize', width: 90 },
+  { title: '截止', key: 'deadline', width: 150, render: row => row.deadline ? formatDate(row.deadline, 'datetime') : '-' },
+  {
+    title: '提交要求',
+    key: 'submit',
+    width: 150,
+    render: row => {
+      const config = parseProjectDescription(row).artifact
+      return h(NSpace, { size: 4 }, () => [
+        h(NTag, { size: 'tiny', bordered: false }, () => config.submitMode === 'folder' ? '文件夹' : '文件'),
+        h(NTag, { size: 'tiny', bordered: false }, () => config.allowedExtensions.length ? config.allowedExtensions.map(ext => `.${ext}`).join(' ') : '不限格式'),
+      ])
+    },
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 110,
+    render: row => h(NSpace, { size: 2 }, () => [
+      h(NButton, { size: 'tiny', quaternary: true, title: '查看提交', 'aria-label': '查看提交', onClick: () => openSubmissions(row) }, () => h(NIcon, { size: 14 }, () => h(EyeOutline))),
+      h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
+        trigger: () => h(NButton, { size: 'tiny', quaternary: true, title: '删除项目', 'aria-label': '删除项目' }, () => h(NIcon, { size: 14 }, () => h(TrashOutline))),
+        default: () => '确认删除？',
+      }),
+    ]),
+  },
+]
+
+const submissionRows = computed(() => submissions.value.map(sub => ({
+  ...sub,
+  parsed: parseProjectSubmissionContent(sub.content),
+})))
+
+const activeProjectRubric = computed(() => parseProjectDescription(activeProject.value).rubric)
+
+const submissionModalTitle = computed(() => activeProject.value ? `${activeProject.value.name} · 提交情况` : '提交情况')
+const semesterOptions = computed(() => semesters.value.map(semester => ({
+  label: semester.name,
+  value: semester.id,
+})))
+const showSemesterPicker = computed(() => props.semesterId === undefined)
+
+watch(() => props.courseId, async () => {
+  if (!showSemesterPicker.value) return
+  try {
+    semesters.value = await listSemesters(props.courseId) || []
+    activeSemesterId.value = pickCurrentSemester(semesters.value)?.id ?? semesters.value[0]?.id ?? null
+  } catch (e) {
+    semesters.value = []
+    activeSemesterId.value = null
+    message.error(getErrorMessage(e, '加载学期列表失败'))
+  }
+}, { immediate: true })
+watch(() => props.semesterId, value => {
+  if (!showSemesterPicker.value) activeSemesterId.value = value ?? null
+}, { immediate: true })
 
 async function loadProjects() {
-  if (!activeSemesterId.value) { projects.value = []; return }
-  try { projects.value = await http.get(`/semesters/${activeSemesterId.value}/projects`) || [] } catch (e) { console.error("ProjectPanel.vue failed", e) }
+  if (!activeSemesterId.value) {
+    projects.value = []
+    return
+  }
+  try {
+    projects.value = await listProjects(activeSemesterId.value) || []
+  } catch (e) {
+    projects.value = []
+    message.error(getErrorMessage(e, '加载项目列表失败'))
+  }
 }
 watch(activeSemesterId, loadProjects)
 
-const form = ref({ name: '', description: '', maxTeamSize: '1', deadline: '', weight: '1.0' })
-
-function openCreate() { form.value = { name: '', description: '', maxTeamSize: '1', deadline: '', weight: '1.0' }; showModal.value = true }
-async function handleSubmit() {
-  try {
-    const body: any = { name: form.value.name, description: form.value.description, maxTeamSize: parseInt(form.value.maxTeamSize) || 1, deadline: form.value.deadline || undefined, weight: parseFloat(form.value.weight) || 1.0 }
-    await http.post(`/semesters/${activeSemesterId.value}/projects`, body)
-    message.success('已创建'); showModal.value = false; loadProjects()
-  } catch (e: any) { message.error(e.message || '操作失败') }
+function pickCurrentSemester(list: SemesterVO[]) {
+  const now = Date.now()
+  return list.find(s => new Date(s.startTime).getTime() <= now && now <= new Date(s.endTime).getTime())
 }
-async function handleDelete(id: number) { try { await http.delete(`/projects/${id}`); message.success('已删除'); loadProjects() } catch (e: any) { message.error(e.message || '删除失败') } }
+
+function openCreate() {
+  form.value = createEmptyProjectForm()
+  showModal.value = true
+}
+
+async function handleSubmit() {
+  if (!activeSemesterId.value) return
+  try {
+    await createProject(activeSemesterId.value, {
+      name: form.value.name,
+      description: buildProjectDescription(form.value),
+      maxTeamSize: form.value.maxTeamSize,
+      deadline: toLocalDateTime(form.value.deadline),
+      weight: 1,
+    })
+    message.success('已创建')
+    showModal.value = false
+    loadProjects()
+  } catch (e) {
+    message.error(getErrorMessage(e))
+  }
+}
+
+async function handleDelete(id: number) {
+  try {
+    await deleteProject(id)
+    message.success('已删除')
+    loadProjects()
+  } catch (e) {
+    message.error(getErrorMessage(e, '删除失败'))
+  }
+}
+
+async function openSubmissions(project: ProjectVO) {
+  activeProject.value = project
+  showSubmissions.value = true
+  try {
+    submissions.value = await listProjectSubmissions(project.id)
+  } catch (e) {
+    submissions.value = []
+    message.error(getErrorMessage(e, '加载提交失败'))
+  }
+}
+
+async function previewFile(file: ArtifactFile) {
+  previewLoading.value = true
+  previewTitle.value = file.name
+  previewUrl.value = ''
+  try {
+    const data = await getDrivePreview(file.id)
+    previewUrl.value = data.url
+  } catch (e) {
+    message.error(getErrorMessage(e, '预览失败'))
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function downloadFile(file: ArtifactFile) {
+  try {
+    const blob = await getDriveRaw(file.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    message.error(getErrorMessage(e, '下载失败'))
+  }
+}
+
+function getProjectScore(submissionId: number, dimension: string) {
+  return projectScores.value[submissionId]?.[dimension] ?? 0
+}
+
+function setProjectScore(submissionId: number, dimension: string, value: number | null) {
+  if (!projectScores.value[submissionId]) projectScores.value[submissionId] = {}
+  projectScores.value[submissionId][dimension] = Math.max(0, Number(value ?? 0))
+}
+
+async function saveProjectScore(row: ProjectSubmissionVO | ProjectSubmissionRow) {
+  const rubric = activeProjectRubric.value.filter(item => item.maxScore > 0)
+  if (!rubric.length) {
+    message.warning('项目未设置评分维度')
+    return
+  }
+  try {
+    await scoreProjectSubmission(row.id, rubric.map(item => ({
+      questionId: 'project',
+      dimension: item.dimension,
+      earnedScore: getProjectScore(row.id, item.dimension),
+      maxScore: item.maxScore,
+    })))
+    message.success('评分已保存')
+  } catch (e) {
+    message.error(getErrorMessage(e, '评分失败'))
+  }
+}
 </script>
 
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <NSelect v-model:value="activeSemesterId" :options="semesters.map((s:any)=>({label:s.name,value:s.id}))" placeholder="选择学期" style="width:200px" />
-      <NButton v-if="activeSemesterId" size="small" @click="openCreate"><template #icon><NIcon :size="14"><AddOutline /></NIcon></template>创建项目</NButton>
+    <div class="toolbar">
+      <NSelect v-if="showSemesterPicker" v-model:value="activeSemesterId" :options="semesterOptions" placeholder="选择学期" class="toolbar-select" />
+      <span v-else class="semester-hint">当前学期项目</span>
+      <NButton v-if="activeSemesterId" size="small" @click="openCreate">
+        <template #icon><NIcon :size="14"><AddOutline /></NIcon></template>
+        创建项目
+      </NButton>
     </div>
-    <NDataTable v-if="projects.length" :data="projects" :columns="[
-      {title:'名称',key:'name'},{title:'说明',key:'description',ellipsis:{tooltip:true}},{title:'组队上限',key:'maxTeamSize',width:80},{title:'截止',key:'deadline',width:100,render:(r:any)=>r.deadline?formatDate(r.deadline,'date'):'-'},{title:'权重',key:'weight',width:60},
-      {title:'',key:'actions',width:60,render:(r:any)=>h(NPopconfirm,{onPositiveClick:()=>handleDelete(r.id)},{trigger:()=>h(NButton,{size:'tiny',quaternary:true},()=>h(NIcon,{size:14},()=>h(TrashOutline))),default:()=>'确认删除？'})}
-    ]" size="small" :row-key="(r:any)=>r.id" />
-    <NEmpty v-else-if="activeSemesterId" description="暂无项目" style="padding:40px 0" />
-    <NModal v-model:show="showModal" title="创建项目" preset="card" style="width:480px">
-      <NForm label-placement="left" label-width="64">
-        <NFormItem label="名称"><NInput v-model:value="form.name" /></NFormItem>
-        <NFormItem label="说明"><NInput v-model:value="form.description" type="textarea" :autosize="{minRows:2}" /></NFormItem>
-        <NFormItem label="组队上限"><NInput v-model:value="form.maxTeamSize" /></NFormItem>
-        <NFormItem label="截止"><NInput v-model:value="form.deadline" placeholder="2027-06-30T23:59" /></NFormItem>
-        <NFormItem label="权重"><NInput v-model:value="form.weight" /></NFormItem>
-      </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showModal=false">取消</NButton><NButton type="primary" @click="handleSubmit">确定</NButton></NSpace></template>
+    <NDataTable v-if="projects.length" :data="projects" :columns="columns" size="small" :row-key="r => r.id" />
+    <NEmpty v-else-if="activeSemesterId" description="暂无项目" class="empty-state" />
+
+    <ProjectCreateModal v-model:show="showModal" v-model:form="form" @submit="handleSubmit" />
+
+    <ProjectSubmissionModal
+      v-model:show="showSubmissions"
+      :title="submissionModalTitle"
+      :rows="submissionRows"
+      :rubric="activeProjectRubric"
+      :get-score="getProjectScore"
+      @preview="previewFile"
+      @download="downloadFile"
+      @score-change="setProjectScore"
+      @save-score="saveProjectScore"
+    />
+
+    <NModal
+      :show="!!previewTitle"
+      preset="card"
+      :title="previewTitle"
+      class="preview-modal"
+      :bordered="false"
+      @update:show="v => { if (!v) { previewTitle = ''; previewUrl = '' } }"
+    >
+      <div class="preview-body">
+        <NSpin v-if="previewLoading" />
+        <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-frame" />
+        <NEmpty v-else description="暂无预览" />
+      </div>
     </NModal>
   </div>
 </template>
 
-<script lang="ts">import { h } from 'vue'</script>
+<style scoped>
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.toolbar-select { width: 220px; }
+.semester-hint { font-size: 13px; color: var(--n-text-color-3); }
+.empty-state { padding: 40px 0; }
+.preview-modal { width: 90vw; max-width: 1100px; height: 85vh; }
+.preview-body { height: calc(85vh - 90px); display: flex; align-items: stretch; justify-content: stretch; min-height: 0; }
+.preview-frame { display: block; width: 100%; height: 100%; min-width: 100%; min-height: 100%; border: 0; flex: 1 1 auto; }
+@media (max-width: 720px) {
+  .toolbar { align-items: stretch; flex-direction: column; }
+  .toolbar-select { width: 100%; }
+}
+</style>

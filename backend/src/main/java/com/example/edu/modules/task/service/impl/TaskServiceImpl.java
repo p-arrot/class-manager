@@ -1,6 +1,8 @@
 package com.example.edu.modules.task.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
@@ -16,6 +18,8 @@ import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.classes.entity.TeacherClass;
 import com.example.edu.modules.classes.mapper.TeacherClassMapper;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
+import com.example.edu.modules.evaluation.service.DimensionScoreService;
+import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
 import com.example.edu.modules.task.dto.SubmissionDTO;
 import com.example.edu.modules.task.dto.TaskCreateDTO;
 import com.example.edu.modules.task.dto.TaskUpdateDTO;
@@ -26,6 +30,7 @@ import com.example.edu.modules.task.mapper.TaskMapper;
 import com.example.edu.modules.task.service.TaskService;
 import com.example.edu.modules.realtime.service.RealtimeService;
 import com.example.edu.modules.task.vo.SubmissionVO;
+import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
 import com.example.edu.modules.task.vo.TaskVO;
 import com.example.edu.modules.user.entity.User;
@@ -35,6 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.format.DateTimeParseException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,6 +49,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class TaskServiceImpl implements TaskService {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final TaskMapper taskMapper;
     private final SubmissionMapper submissionMapper;
@@ -54,6 +62,8 @@ public class TaskServiceImpl implements TaskService {
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
     private final RealtimeService realtimeService;
+    private final DimensionScoreService dimensionScoreService;
+    private final QuestionScoreHelper questionScoreHelper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -69,7 +79,7 @@ public class TaskServiceImpl implements TaskService {
         task.setFormSchema(dto.getFormSchema());
         task.setDescription(dto.getDescription());
         if (dto.getDeadline() != null) {
-            task.setDeadline(LocalDateTime.parse(dto.getDeadline()));
+            task.setDeadline(parseDeadline(dto.getDeadline()));
         }
         taskMapper.insert(task);
 
@@ -87,7 +97,7 @@ public class TaskServiceImpl implements TaskService {
         if (dto.getTitle() != null) task.setTitle(dto.getTitle());
         if (dto.getFormSchema() != null) task.setFormSchema(dto.getFormSchema());
         if (dto.getDescription() != null) task.setDescription(dto.getDescription());
-        if (dto.getDeadline() != null) task.setDeadline(LocalDateTime.parse(dto.getDeadline()));
+        if (dto.getDeadline() != null) task.setDeadline(parseDeadline(dto.getDeadline()));
         taskMapper.updateById(task);
 
         auditLogService.record("更新任务", "task", id, task.getTitle());
@@ -196,6 +206,8 @@ public class TaskServiceImpl implements TaskService {
             submissionMapper.updateById(sub);
         }
 
+        autoGradeWorksheet(task, sub);
+
         SubmissionVO vo = toSubmissionVO(sub);
         // Push real-time update to teachers subscribed to this task
         realtimeService.pushSubmissionUpdate(taskId, vo);
@@ -279,15 +291,7 @@ public class TaskServiceImpl implements TaskService {
         long graded = subs.stream().filter(s -> "graded".equals(s.getStatus())).count();
         long special = subs.stream().filter(s -> "special".equals(s.getStatus())).count();
 
-        // Get total students in course's classes
-        Lesson lesson = lessonMapper.selectById(task.getLessonId());
-        Semester semester = semesterMapper.selectById(lesson.getSemesterId());
-        Course course = courseMapper.selectById(semester.getCourseId());
-        List<CourseClass> bindings = courseClassMapper.selectList(
-                new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, course.getId()));
-        java.util.Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(java.util.stream.Collectors.toSet());
-        long total = userMapper.selectCount(new LambdaQueryWrapper<User>()
-                .eq(User::getRole, "student").in(User::getClassId, classIds));
+        long total = getCourseStudents(task).size();
 
         return java.util.Map.of(
                 "total", total,
@@ -296,6 +300,63 @@ public class TaskServiceImpl implements TaskService {
                 "special", special,
                 "notSubmitted", total - submitted - graded - special
         );
+    }
+
+    @Override
+    public TaskAnalyticsVO getTaskAnalytics(Long taskId) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
+        checkTaskOwner(task);
+
+        List<User> students = getCourseStudents(task);
+        Map<Long, User> studentMap = students.stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+
+        List<Submission> subs = submissionMapper.selectList(
+                new LambdaQueryWrapper<Submission>()
+                        .eq(Submission::getTaskId, taskId)
+                        .orderByDesc(Submission::getSubmittedAt));
+        long submitted = subs.stream().filter(s -> "submitted".equals(s.getStatus())).count();
+        long graded = subs.stream().filter(s -> "graded".equals(s.getStatus())).count();
+        long special = subs.stream().filter(s -> "special".equals(s.getStatus())).count();
+        int completed = Math.toIntExact(submitted + graded + special);
+        int total = students.size();
+
+        List<Map<String, Object>> questionDefs = "worksheet".equals(task.getType())
+                ? parseQuestions(task.getFormSchema())
+                : List.of();
+        List<TaskAnalyticsVO.QuestionAnalyticsVO> questions = buildQuestionAnalytics(questionDefs, subs, studentMap);
+        double accuracyRate = questions.stream()
+                .filter(TaskAnalyticsVO.QuestionAnalyticsVO::getAutoGradable)
+                .mapToDouble(TaskAnalyticsVO.QuestionAnalyticsVO::getAccuracyRate)
+                .average()
+                .orElse(0);
+
+        return TaskAnalyticsVO.builder()
+                .taskId(task.getId())
+                .title(task.getTitle())
+                .type(task.getType())
+                .totalStudents(total)
+                .submittedCount(completed)
+                .gradedCount(Math.toIntExact(graded))
+                .specialCount(Math.toIntExact(special))
+                .notSubmittedCount(Math.max(total - completed, 0))
+                .submissionRate(percent(completed, total))
+                .accuracyRate(round(accuracyRate))
+                .questions(questions)
+                .submissions(subs.stream().map(sub -> {
+                    User student = studentMap.get(sub.getStudentId());
+                    return TaskAnalyticsVO.StudentTaskAnswerVO.builder()
+                            .submissionId(sub.getId())
+                            .studentId(sub.getStudentId())
+                            .studentName(student != null ? student.getName() : null)
+                            .studentNo(student != null ? student.getStudentNo() : null)
+                            .status(sub.getStatus())
+                            .content(sub.getContent())
+                            .submittedAt(sub.getSubmittedAt())
+                            .build();
+                }).toList())
+                .build();
     }
 
     @Override
@@ -398,5 +459,195 @@ public class TaskServiceImpl implements TaskService {
                 .submittedAt(sub.getSubmittedAt())
                 .createdAt(sub.getCreatedAt())
                 .build();
+    }
+
+    private LocalDateTime parseDeadline(String deadline) {
+        try {
+            return LocalDateTime.parse(deadline);
+        } catch (DateTimeParseException e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "截止时间格式不正确");
+        }
+    }
+
+    private void autoGradeWorksheet(Task task, Submission sub) {
+        if (!"worksheet".equals(task.getType()) || task.getFormSchema() == null || sub.getContent() == null) return;
+        try {
+            List<DimensionScoreService.ScoreInput> scores = questionScoreHelper.autoGrade(task.getFormSchema(), sub.getContent());
+            if (scores.isEmpty()) return;
+            dimensionScoreService.replaceAutoScores("process", sub.getId(), sub.getStudentId(), scores);
+            sub.setStatus("graded");
+            submissionMapper.updateById(sub);
+            log.debug("Auto graded worksheet: taskId={}, submissionId={}, scoreRows={}", task.getId(), sub.getId(), scores.size());
+        } catch (Exception e) {
+            log.warn("Worksheet auto grade skipped: taskId={}, submissionId={}", task.getId(), sub.getId(), e);
+        }
+    }
+
+    private List<User> getCourseStudents(Task task) {
+        Lesson lesson = lessonMapper.selectById(task.getLessonId());
+        if (lesson == null) throw new BizException(ErrorCode.LESSON_NOT_FOUND);
+        Semester semester = semesterMapper.selectById(lesson.getSemesterId());
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        List<CourseClass> bindings = courseClassMapper.selectList(
+                new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, course.getId()));
+        Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(Collectors.toSet());
+        if (classIds.isEmpty()) return List.of();
+        return userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "student")
+                .in(User::getClassId, classIds));
+    }
+
+    private List<Map<String, Object>> parseQuestions(String schemaJson) {
+        if (schemaJson == null || schemaJson.isBlank()) return List.of();
+        try {
+            Map<String, Object> schema = JSON.readValue(schemaJson, new TypeReference<>() {});
+            Object questions = schema.get("questions");
+            if (!(questions instanceof List<?> list)) return List.of();
+            return list.stream()
+                    .map(this::asStringObjectMap)
+                    .filter(Objects::nonNull)
+                    .toList();
+        } catch (Exception e) {
+            log.debug("Task analytics ignored invalid schema", e);
+            return List.of();
+        }
+    }
+
+    private Map<String, Object> asStringObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) return null;
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        raw.forEach((key, item) -> normalized.put(String.valueOf(key), item));
+        return normalized;
+    }
+
+    private List<TaskAnalyticsVO.QuestionAnalyticsVO> buildQuestionAnalytics(
+            List<Map<String, Object>> questions,
+            List<Submission> submissions,
+            Map<Long, User> studentMap) {
+        List<TaskAnalyticsVO.QuestionAnalyticsVO> rows = new ArrayList<>();
+        for (int index = 0; index < questions.size(); index++) {
+            Map<String, Object> question = questions.get(index);
+            String questionId = String.valueOf(question.getOrDefault("id", ""));
+            Object expected = question.get("answer");
+            boolean autoGradable = Boolean.TRUE.equals(question.get("autoGrade")) && expected != null;
+            Map<String, Integer> distribution = initialDistribution(question);
+            List<TaskAnalyticsVO.StudentAnswerVO> answers = new ArrayList<>();
+            int answered = 0;
+            int correct = 0;
+
+            for (Submission sub : submissions) {
+                Map<String, Object> answerMap = parseAnswerMap(sub.getContent());
+                Object answer = answerMap.get(questionId);
+                if (hasAnswer(answer)) {
+                    answered++;
+                    for (String key : answerKeys(answer)) {
+                        distribution.merge(key, 1, Integer::sum);
+                    }
+                }
+                Boolean isCorrect = autoGradable ? answersEqual(expected, answer) : null;
+                if (Boolean.TRUE.equals(isCorrect)) correct++;
+                User student = studentMap.get(sub.getStudentId());
+                answers.add(TaskAnalyticsVO.StudentAnswerVO.builder()
+                        .submissionId(sub.getId())
+                        .studentId(sub.getStudentId())
+                        .studentName(student != null ? student.getName() : null)
+                        .studentNo(student != null ? student.getStudentNo() : null)
+                        .status(sub.getStatus())
+                        .answer(answer)
+                        .correct(isCorrect)
+                        .submittedAt(sub.getSubmittedAt())
+                        .build());
+            }
+
+            rows.add(TaskAnalyticsVO.QuestionAnalyticsVO.builder()
+                    .questionId(questionId)
+                    .index(index + 1)
+                    .type(String.valueOf(question.getOrDefault("type", "")))
+                    .stem(questionStem(question))
+                    .autoGradable(autoGradable)
+                    .answerCount(answered)
+                    .correctCount(autoGradable ? correct : 0)
+                    .accuracyRate(autoGradable ? percent(correct, answered) : 0)
+                    .optionDistribution(distribution)
+                    .answers(answers)
+                    .build());
+        }
+        return rows;
+    }
+
+    private Map<String, Object> parseAnswerMap(String content) {
+        if (content == null || content.isBlank()) return Map.of();
+        try {
+            return JSON.readValue(content, new TypeReference<>() {});
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, Integer> initialDistribution(Map<String, Object> question) {
+        Map<String, Integer> distribution = new LinkedHashMap<>();
+        Object options = question.get("options");
+        if (options instanceof List<?> list) {
+            list.stream().map(String::valueOf).forEach(option -> distribution.put(option, 0));
+        }
+        if ("true_false".equals(question.get("type"))) {
+            distribution.putIfAbsent("正确", 0);
+            distribution.putIfAbsent("错误", 0);
+        }
+        return distribution;
+    }
+
+    private String questionStem(Map<String, Object> question) {
+        Object stem = question.get("stem");
+        if (stem instanceof String text && !text.isBlank()) return text;
+        return List.of(question.get("title"), question.get("markdown")).stream()
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .filter(text -> !text.isBlank())
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    private boolean hasAnswer(Object answer) {
+        if (answer == null) return false;
+        if (answer instanceof String text) return !text.isBlank();
+        if (answer instanceof Collection<?> collection) return !collection.isEmpty();
+        return true;
+    }
+
+    private List<String> answerKeys(Object answer) {
+        if (answer instanceof Collection<?> collection) {
+            return collection.stream().map(this::answerKey).toList();
+        }
+        return List.of(answerKey(answer));
+    }
+
+    private String answerKey(Object answer) {
+        if (answer instanceof Boolean value) return value ? "正确" : "错误";
+        return String.valueOf(answer);
+    }
+
+    private boolean answersEqual(Object expected, Object actual) {
+        if (expected instanceof Collection<?> || actual instanceof Collection<?>) {
+            Collection<?> left = expected instanceof Collection<?> collection ? collection : List.of(expected);
+            Collection<?> right = actual instanceof Collection<?> collection ? collection : List.of(actual);
+            return left.stream().map(String::valueOf).collect(Collectors.toSet())
+                    .equals(right.stream().map(String::valueOf).collect(Collectors.toSet()));
+        }
+        if (expected instanceof Boolean expectedBool) {
+            if (actual instanceof Boolean actualBool) return expectedBool.equals(actualBool);
+            return expectedBool.toString().equalsIgnoreCase(String.valueOf(actual));
+        }
+        return Objects.equals(String.valueOf(expected).trim(), String.valueOf(actual).trim());
+    }
+
+    private double percent(double numerator, double denominator) {
+        if (denominator <= 0) return 0;
+        return round(numerator * 100 / denominator);
+    }
+
+    private double round(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 }

@@ -15,6 +15,7 @@ public class ExamVO {
     @Schema(description = "考试名称") private String name;
     @Schema(description = "所属学期ID") private Long semesterId;
     @Schema(description = "试卷ID") private Long paperId;
+    @Schema(description = "试卷内容JSON") private String paperContent;
     @Schema(description = "开始时间") private LocalDateTime startTime;
     @Schema(description = "结束时间") private LocalDateTime endTime;
     @Schema(description = "权重") private BigDecimal weight;

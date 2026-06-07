@@ -4,6 +4,7 @@ import com.example.edu.modules.task.dto.SubmissionDTO;
 import com.example.edu.modules.task.dto.TaskCreateDTO;
 import com.example.edu.modules.task.dto.TaskUpdateDTO;
 import com.example.edu.modules.task.vo.SubmissionVO;
+import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
 import com.example.edu.modules.task.vo.TaskVO;
 
@@ -31,6 +32,8 @@ public interface TaskService {
     List<SubmissionVO> getStudentSubmissions(Long studentId, Long semesterId);
 
     Map<String, Object> getSubmissionStats(Long taskId);
+
+    TaskAnalyticsVO getTaskAnalytics(Long taskId);
 
     SubmissionVO getMySubmission(Long taskId, Long studentId);
 }

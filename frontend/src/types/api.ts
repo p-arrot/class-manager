@@ -304,8 +304,120 @@ export interface SubmissionVO {
   createdAt: string
 }
 
+export interface TaskAnalyticsVO {
+  taskId: number
+  title: string
+  type: 'worksheet' | 'artifact'
+  totalStudents: number
+  submittedCount: number
+  gradedCount: number
+  specialCount: number
+  notSubmittedCount: number
+  submissionRate: number
+  accuracyRate: number
+  questions: QuestionAnalyticsVO[]
+  submissions: StudentTaskAnswerVO[]
+}
+
+export interface QuestionAnalyticsVO {
+  questionId: string
+  index: number
+  type: string
+  stem: string
+  autoGradable: boolean
+  answerCount: number
+  correctCount: number
+  accuracyRate: number
+  optionDistribution: Record<string, number>
+  answers: StudentAnswerVO[]
+}
+
+export interface StudentAnswerVO {
+  submissionId: number
+  studentId: number
+  studentName: string | null
+  studentNo: string | null
+  status: string
+  answer: unknown
+  correct: boolean | null
+  submittedAt: string | null
+}
+
+export interface StudentTaskAnswerVO {
+  submissionId: number
+  studentId: number
+  studentName: string | null
+  studentNo: string | null
+  status: string
+  content: string | null
+  submittedAt: string | null
+}
+
 export interface SubmissionDTO {
   content: string
+}
+
+export interface StudentDashboardVO {
+  courses: CourseVO[]
+  totalCourses: number
+  dueTasks: Array<{
+    task: TaskVO
+    courseName: string
+    lessonName: string
+    courseId: number | null
+  }>
+  recentGrades: Array<{
+    submission: SubmissionVO
+    taskTitle: string
+    courseName: string
+  }>
+}
+
+export interface TeacherDashboardVO {
+  pendingGrading: number
+  upcomingDeadlines: number
+  recentCount: number
+  pendingSubmissions: Array<{
+    submission: SubmissionVO
+    taskTitle: string
+    semesterName: string
+  }>
+  recentSubmissions: Array<{
+    submission: SubmissionVO
+    taskTitle: string
+    semesterName: string
+  }>
+  upcomingTasks: Array<{
+    task: TaskVO
+    semesterName: string
+    lessonName: string
+  }>
+}
+
+export interface SubmissionEvaluationSummary {
+  autoScore: number | null
+  totalAutoScore: number
+  correctCount: number
+  autoGradableCount: number
+}
+
+export interface EvaluationDimensionDTO {
+  dimension: string
+  grade: string
+}
+
+export interface SubmissionEvaluationDTO {
+  dimensions: EvaluationDimensionDTO[]
+  questionScores?: QuestionDimensionScoreDTO[]
+  isSpecial?: boolean
+}
+
+export interface QuestionDimensionScoreDTO {
+  questionId: string
+  dimension: string
+  earnedScore: number
+  maxScore: number
+  autoGraded?: boolean
 }
 
 // ========== File (Phase 3b / F2) ==========
@@ -321,4 +433,127 @@ export interface FileUploadDTO {
 export interface FileUploadVO {
   presignedUrl?: string
   resourceId: number
+}
+
+// ========== Evaluation / Stats ==========
+
+export interface RadarPointVO {
+  dimension: string
+  label: string
+  avgScore: number
+}
+
+export interface RadarVO {
+  current: RadarPointVO[]
+  previous?: RadarPointVO[]
+  hasPrevious: boolean
+}
+
+export interface EvaluationVO {
+  dimension: string
+  grade: string
+  score: number
+  label: string
+}
+
+export interface SemesterStatsPreviewRow {
+  studentId: number
+  studentNo: string
+  studentName: string
+  processScore: number | null
+  examScore: number | null
+  projectScore: number | null
+  totalScore: number | null
+  totalGrade: string | null
+}
+
+export interface AssessmentSchemeVO {
+  id?: number | null
+  semesterId: number
+  processPercent: number
+  examPercent: number
+  projectPercent: number
+}
+
+export interface AssessmentSchemeDTO {
+  processPercent: number
+  examPercent: number
+  projectPercent: number
+}
+
+// ========== Exams / Projects ==========
+
+export interface ExamVO {
+  id: number
+  name: string
+  startTime: string
+  endTime: string
+  weight: number
+  semesterId: number
+  paperId?: number | null
+  paperContent?: string | null
+}
+
+export interface ExamPaperVO {
+  id: number
+  title: string
+  content?: string | null
+  totalScore?: number
+}
+
+export interface ExamSubmitDTO {
+  answers: string
+}
+
+export interface ProjectVO {
+  id: number
+  name: string
+  description: string | null
+  maxTeamSize: number
+  deadline: string | null
+  weight?: number
+  semesterId: number
+}
+
+export interface ProjectSubmitDTO {
+  content: string
+}
+
+export interface ProjectSubmissionVO {
+  id: number
+  projectId: number
+  teamId: number | null
+  studentId: number
+  studentName: string | null
+  studentNo: string | null
+  content: string | null
+  submittedAt: string | null
+  createdAt: string
+}
+
+// ========== Drive ==========
+
+export interface DriveItemVO {
+  id: number
+  name: string
+  type: 'FOLDER' | 'FILE'
+  fileSize: number | null
+  contentType?: string | null
+  parentId?: number | null
+  objectName?: string | null
+  createdAt: string
+}
+
+export interface PreviewUrlVO {
+  url: string
+}
+
+export interface DriveTreeQuery {
+  parentId?: number | null
+  userId?: number
+}
+
+export interface DriveFolderCreateDTO {
+  name: string
+  parentId?: number | null
 }

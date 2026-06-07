@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.Map;
 
 @RestController
@@ -22,7 +23,9 @@ public class HealthController {
         if (dataSource != null) {
             try (var conn = dataSource.getConnection()) {
                 db = conn.isValid(2) ? "ok" : "error";
-            } catch (Exception e) { db = "error:" + e.getMessage(); }
+            } catch (SQLException e) {
+                db = "error:" + e.getMessage();
+            }
         }
         return R.ok(Map.of("db", db, "status", "UP"));
     }

@@ -1,149 +1,261 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NInput, NSelect, NTag, NIcon, NSpace, NForm, NFormItem, NRadio, NCheckbox, NUpload, NModal, useMessage } from 'naive-ui'
-import { ArrowBackOutline, AddOutline, TrashOutline, ImageOutline } from '@vicons/ionicons5'
-import http from '@/api/request'
+import {
+  NButton,
+  NCard,
+  NDatePicker,
+  NForm,
+  NFormItem,
+  NIcon,
+  NInput,
+  NRadio,
+  NRadioGroup,
+  NSelect,
+  NSpace,
+  useMessage,
+} from 'naive-ui'
+import type { UploadCustomRequestOptions } from 'naive-ui'
+import { ArrowBackOutline } from '@vicons/ionicons5'
+import { createTask } from '@/api/tasks'
+import { getLesson } from '@/api/lessons'
+import { getSemester } from '@/api/semesters'
+import { getStreamUrl } from '@/api/files'
 import PageHeader from '@/components/PageHeader.vue'
+import TaskQuestionList from '@/components/task/TaskQuestionList.vue'
+import { toLocalDateTime } from '@/utils/date'
+import { getErrorMessage } from '@/utils/error'
+import {
+  emptyQuestion,
+  normalizeDimensionScores,
+  questionTotalScore,
+  type ArtifactSchema,
+  type TaskQuestion,
+  type TaskFormSchema,
+} from '@/types/taskSchema'
+import type { FileUploadVO, TaskCreateDTO } from '@/types/api'
+import http from '@/api/request'
 
-const route = useRoute(); const router = useRouter(); const message = useMessage()
+const route = useRoute()
+const router = useRouter()
+const message = useMessage()
 const lessonId = Number(route.params.lessonId)
 const lessonName = ref('')
+const courseId = ref<number | null>(null)
 
-const form = ref({ title: '', type: 'worksheet' as string, description: '', deadline: '' })
+type TaskType = TaskCreateDTO['type']
 
-interface Field {
-  id: string; type: string; label: string; required: boolean
-  options?: string[]; imageUrl?: string
+const form = ref<{
+  title: string
+  type: TaskType
+  description: string
+  deadline: number | null
+}>({ title: '', type: 'worksheet', description: '', deadline: null })
+
+const artifact = ref<ArtifactSchema>({ submitMode: 'file', allowedExtensions: [] })
+const extensionText = ref('')
+const questions = ref<TaskQuestion[]>([emptyQuestion('single')])
+
+const schemaPreview = computed<TaskFormSchema>(() => {
+  if (form.value.type === 'artifact') {
+    return {
+      version: 3,
+      artifact: {
+        submitMode: artifact.value.submitMode,
+        allowedExtensions: extensionText.value
+          .split(',')
+          .map(item => item.trim().replace(/^\./, '').toLowerCase())
+          .filter(Boolean),
+      },
+    }
+  }
+  return {
+    version: 3,
+    questions: questions.value.map(question => ({
+      ...question,
+      stem: question.stem.trim(),
+      dimensionScores: normalizeDimensionScores(question.dimensionScores),
+      title: undefined,
+      markdown: undefined,
+      score: undefined,
+    })),
+  }
+})
+
+async function handleImageUpload(question: TaskQuestion, { file }: UploadCustomRequestOptions) {
+  const rawFile = file.file
+  if (!rawFile) return
+  if (!courseId.value) {
+    message.error('无法确定课程，暂不能上传图片')
+    return
+  }
+  try {
+    const fd = new FormData()
+    fd.append('file', rawFile)
+    fd.append('courseId', String(courseId.value))
+    const upload = await http.post<FileUploadVO>('/files/upload', fd)
+    const stream = await getStreamUrl(upload.resourceId)
+    question.imageUrl = stream.url
+    message.success('题目图片已插入')
+  } catch (error) {
+    message.error(getErrorMessage(error, '图片上传失败'))
+  }
 }
-const fields = ref<Field[]>([])
 
-const typeOptions = [
-  { label: '单选题', value: 'radio' },
-  { label: '多选题', value: 'checkbox' },
-  { label: '填空题', value: 'text' },
-  { label: '简答题', value: 'textarea' },
-]
-
-function addField(type: string) {
-  fields.value.push({ id: crypto.randomUUID().slice(0,8), type, label: '', required: true, options: type === 'radio' || type === 'checkbox' ? [''] : undefined })
-}
-
-function removeField(idx: number) { fields.value.splice(idx, 1) }
-function addOption(fIdx: number) { fields.value[fIdx].options?.push('') }
-function removeOption(fIdx: number, oIdx: number) { fields.value[fIdx].options?.splice(oIdx, 1) }
-
-function handleImageUpload(fIdx: number, { file }: any) {
-  if (!file.file) return
-  const fd = new FormData(); fd.append('file', file.file)
-  http.post('/files/upload', fd).then((r: any) => {
-    http.get(`/files/${r.resourceId}/stream`).then((stream: any) => {
-      fields.value[fIdx].imageUrl = stream.url
-    })
-  }).catch(() => message.error('图片上传失败'))
+function validateWorksheet() {
+  if (!questions.value.length) {
+    message.warning('请至少添加一道题目')
+    return false
+  }
+  for (const [index, question] of questions.value.entries()) {
+    if (!question.stem.trim()) {
+      message.warning(`第 ${index + 1} 题缺少题干`)
+      return false
+    }
+    if (questionTotalScore(question) <= 0) {
+      message.warning(`第 ${index + 1} 题至少需要设置一个核心素养分值`)
+      return false
+    }
+    if ((question.type === 'single' || question.type === 'multiple') && !(question.options ?? []).filter(Boolean).length) {
+      message.warning(`第 ${index + 1} 题至少需要一个选项`)
+      return false
+    }
+    if ((question.type === 'single' || question.type === 'multiple' || question.type === 'true_false') && question.autoGrade && (question.answer === '' || question.answer == null || (Array.isArray(question.answer) && !question.answer.length))) {
+      message.warning(`第 ${index + 1} 题开启自动批改后需要设置正确答案`)
+      return false
+    }
+  }
+  return true
 }
 
 async function handleSubmit() {
-  if (!form.value.title.trim()) { message.warning('请输入任务标题'); return }
-  const schema = { version: 1, fields: fields.value.map(f => {
-    const base: any = { id: f.id, type: f.type, label: f.label, required: f.required, imageUrl: f.imageUrl }
-    if (f.type === 'radio' || f.type === 'checkbox') base.options = f.options
-    return base
-  })}
+  if (!form.value.title.trim()) {
+    message.warning('请输入任务标题')
+    return
+  }
+  if (form.value.type === 'worksheet' && !validateWorksheet()) return
+
   try {
-    await http.post(`/lessons/${lessonId}/tasks`, {
-      title: form.value.title, type: form.value.type,
+    const payload: TaskCreateDTO = {
+      title: form.value.title.trim(),
+      type: form.value.type,
       description: form.value.description || undefined,
-      deadline: form.value.deadline || undefined,
-      formSchema: JSON.stringify(schema),
-    })
+      deadline: toLocalDateTime(form.value.deadline),
+      formSchema: JSON.stringify(schemaPreview.value),
+    }
+    await createTask(lessonId, payload)
     message.success('任务创建成功')
-    router.push(`/teacher/courses`)
-  } catch (e: any) { message.error(e.message || '创建失败') }
+    router.back()
+  } catch (error) {
+    message.error(getErrorMessage(error, '创建失败'))
+  }
 }
 
 onMounted(async () => {
-  try { const l: any = await http.get(`/lessons/${lessonId}`); lessonName.value = l.name } catch (e) { console.error("TaskCreate.vue failed", e) }
+  try {
+    const lesson = await getLesson(lessonId)
+    lessonName.value = lesson.name
+    const semester = await getSemester(lesson.semesterId)
+    courseId.value = semester.courseId
+  } catch (error) {
+    message.error(getErrorMessage(error, '加载课时失败'))
+  }
 })
 </script>
 
 <template>
   <div class="page">
     <div class="back-bar">
-      <NButton text @click="router.back()"><template #icon><NIcon><ArrowBackOutline /></NIcon></template>返回</NButton>
-    </div>
-    <PageHeader title="创建任务" :subtitle="lessonName" />
-
-    <div class="form-section">
-      <NForm label-placement="top" style="max-width:640px">
-        <NFormItem label="任务标题" required><NInput v-model:value="form.title" placeholder="如：Python基础选择练习" size="large" /></NFormItem>
-        <NFormItem label="任务类型" required>
-          <NSelect v-model:value="form.type" :options="[
-            {label:'学习单(有题目)',value:'worksheet'},{label:'课堂作品(交文件)',value:'artifact'}
-          ]" size="large" />
-        </NFormItem>
-        <NFormItem label="任务说明"><NInput v-model:value="form.description" type="textarea" placeholder="可选的任务说明" :autosize="{minRows:2}" /></NFormItem>
-        <NFormItem label="截止时间"><NInput v-model:value="form.deadline" placeholder="2027-06-30T23:59" /></NFormItem>
-      </NForm>
+      <NButton text @click="router.back()">
+        <template #icon><NIcon><ArrowBackOutline /></NIcon></template>
+        返回
+      </NButton>
     </div>
 
-    <!-- Worksheet editor -->
-    <div v-if="form.type === 'worksheet'" class="fields-section">
-      <h3 class="section-title">题目设计</h3>
-      <div v-if="fields.length" class="field-list">
-        <div v-for="(f, fi) in fields" :key="f.id" class="field-card">
-          <div class="field-header">
-            <NTag size="small" :bordered="false">{{ typeOptions.find(o=>o.value===f.type)?.label }}</NTag>
-            <NInput v-model:value="f.label" placeholder="题目标题" style="flex:1" />
-            <NButton size="tiny" quaternary @click="removeField(fi)"><template #icon><NIcon :size="14"><TrashOutline /></NIcon></template></NButton>
+    <PageHeader title="创建任务" :subtitle="lessonName || '课时任务'" />
+
+    <div class="layout">
+      <section class="main">
+        <NCard size="small" class="panel">
+          <NForm label-placement="top">
+            <NFormItem label="任务标题" required>
+              <NInput v-model:value="form.title" placeholder="如：Python 条件语句练习" size="large" />
+            </NFormItem>
+            <NFormItem label="任务类型" required>
+              <NSelect
+                v-model:value="form.type"
+                :options="[
+                  { label: '学习单 / 练习题', value: 'worksheet' },
+                  { label: '课堂作品 / 文件提交', value: 'artifact' },
+                ]"
+                size="large"
+              />
+            </NFormItem>
+            <NFormItem label="任务说明">
+              <NInput v-model:value="form.description" type="textarea" placeholder="写给学生看的说明，可简述目标、要求和评分方式" :autosize="{ minRows: 3, maxRows: 8 }" />
+            </NFormItem>
+            <NFormItem label="截止时间">
+              <NDatePicker v-model:value="form.deadline" type="datetime" clearable class="date-picker" />
+            </NFormItem>
+          </NForm>
+        </NCard>
+
+        <TaskQuestionList
+          v-if="form.type === 'worksheet'"
+          v-model="questions"
+          @upload-image="handleImageUpload"
+        />
+
+        <NCard v-else size="small" class="panel">
+          <template #header>作品提交设置</template>
+          <NForm label-placement="top">
+            <NFormItem label="提交方式">
+              <NRadioGroup v-model:value="artifact.submitMode">
+                <NSpace>
+                  <NRadio value="file">提交文件</NRadio>
+                  <NRadio value="folder">提交文件夹</NRadio>
+                </NSpace>
+              </NRadioGroup>
+            </NFormItem>
+            <NFormItem v-if="artifact.submitMode === 'file'" label="限定文件后缀">
+              <NInput v-model:value="extensionText" placeholder="例如：py,ipynb,png。留空表示不限制" />
+            </NFormItem>
+          </NForm>
+        </NCard>
+      </section>
+
+      <aside class="side">
+        <NCard size="small" class="panel">
+          <template #header>发布检查</template>
+          <div class="check-list">
+            <span :class="{ ok: !!form.title.trim() }">任务标题</span>
+            <span :class="{ ok: form.type === 'artifact' || questions.length > 0 }">题目或提交设置</span>
+            <span :class="{ ok: !!form.deadline }">截止时间</span>
           </div>
-
-          <!-- Image upload -->
-          <div v-if="f.imageUrl" class="field-image">
-            <img :src="f.imageUrl" style="max-width:300px;max-height:200px;border-radius:6px" />
-            <NButton size="tiny" quaternary @click="f.imageUrl = undefined">移除图片</NButton>
-          </div>
-          <NUpload v-else :show-file-list="false" accept="image/*" :custom-request="(opt:any) => handleImageUpload(fi, opt)">
-            <NButton size="tiny" text><template #icon><NIcon :size="12"><ImageOutline /></NIcon></template>插入图片</NButton>
-          </NUpload>
-
-          <!-- Options for radio/checkbox -->
-          <div v-if="f.type === 'radio' || f.type === 'checkbox'" class="field-options">
-            <div v-for="(opt, oi) in f.options" :key="oi" class="opt-row">
-              <span class="opt-marker">{{ f.type === 'radio' ? '○' : '☐' }}</span>
-              <NInput v-model:value="f.options![oi]" size="small" placeholder="选项文字" />
-              <NButton size="tiny" quaternary @click="removeOption(fi, oi)"><template #icon><NIcon :size="12"><TrashOutline /></NIcon></template></NButton>
-            </div>
-            <NButton size="tiny" text @click="addOption(fi)">+ 添加选项</NButton>
-          </div>
-        </div>
-      </div>
-
-      <NSpace :size="8" class="add-buttons">
-        <NButton v-for="t in typeOptions" :key="t.value" size="small" @click="addField(t.value)">
-          <template #icon><NIcon :size="14"><AddOutline /></NIcon></template>{{ t.label }}
-        </NButton>
-      </NSpace>
-    </div>
-
-    <div class="submit-bar">
-      <NButton type="primary" size="large" @click="handleSubmit">创建任务</NButton>
+          <NButton type="primary" size="large" block @click="handleSubmit">创建任务</NButton>
+        </NCard>
+      </aside>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page { max-width: 760px; margin: 0 auto; padding: 24px 0; }
+.page { max-width: 1180px; margin: 0 auto; padding: 24px 0 40px; }
 .back-bar { margin-bottom: 8px; }
-.form-section { margin-bottom: 24px; }
-.section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
-.field-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.field-card { border: 1px solid var(--n-border-color); border-radius: 8px; padding: 12px 14px; }
-.field-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.field-image { margin: 6px 0; }
-.field-options { margin-top: 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
-.opt-row { display: flex; align-items: center; gap: 6px; }
-.opt-marker { font-size: 14px; color: var(--n-text-color-3); width: 18px; }
-.add-buttons { margin-top: 8px; }
-.submit-bar { margin-top: 32px; text-align: center; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+.main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.side { position: sticky; top: 72px; min-width: 0; }
+.panel { border-radius: 8px; }
+.date-picker { width: 100%; }
+.check-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--n-text-color-3); }
+.check-list span::before { content: '○'; margin-right: 6px; }
+.check-list span.ok { color: var(--n-success-color); }
+.check-list span.ok::before { content: '✓'; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .side { position: static; }
+}
+@media (max-width: 640px) {
+  .page { padding-top: 8px; }
+}
 </style>

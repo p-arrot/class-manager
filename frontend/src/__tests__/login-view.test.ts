@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
-import { useAuthStore } from '@/stores/auth'
 
 // Mock LoginCharacters to avoid rAF/character rendering issues in tests
 vi.mock('@/components/LoginCharacters.vue', () => ({
@@ -29,8 +28,9 @@ function createWrapper() {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
+      { path: '/', redirect: '/login' },
       { path: '/login', name: 'Login', component: LoginView, meta: { public: true } },
-      { path: '/admin/classes', name: 'AdminClasses', component: { template: '<div>admin</div>' }, meta: { requiresRole: 'admin' } },
+      { path: '/admin/overview', name: 'AdminOverview', component: { template: '<div>admin</div>' }, meta: { requiresRole: 'admin' } },
     ],
   })
   setActivePinia(createPinia())

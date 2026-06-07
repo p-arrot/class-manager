@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.YearMonth;
 import java.util.*;
 
@@ -151,8 +152,8 @@ public class FileServiceImpl implements FileService {
         // 6. Upload file to MinIO
         try {
             minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
-        } catch (Exception e) {
-            log.error("Failed to upload to MinIO: objectName={}", objectName, e);
+        } catch (IOException e) {
+            log.error("Failed to read upload stream: objectName={}", objectName, e);
             throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "文件上传失败");
         }
 
@@ -200,18 +201,13 @@ public class FileServiceImpl implements FileService {
     @Override
     public FileRawDTO getRawFile(Long resourceId) {
         CourseResource resource = loadFileResource(resourceId);
-        try {
-            java.io.InputStream stream = minioService.getObject(resource.getObjectName());
-            return FileRawDTO.builder()
-                    .inputStream(stream)
-                    .contentType(resource.getContentType())
-                    .fileName(resource.getName())
-                    .fileSize(resource.getFileSize() != null ? resource.getFileSize() : 0)
-                    .build();
-        } catch (Exception e) {
-            log.error("Failed to get file from MinIO: objectName={}", resource.getObjectName(), e);
-            throw new BizException(ErrorCode.FILE_NOT_FOUND);
-        }
+        java.io.InputStream stream = minioService.getObject(resource.getObjectName());
+        return FileRawDTO.builder()
+                .inputStream(stream)
+                .contentType(resource.getContentType())
+                .fileName(resource.getName())
+                .fileSize(resource.getFileSize() != null ? resource.getFileSize() : 0)
+                .build();
     }
 
     // ========== private helpers ==========

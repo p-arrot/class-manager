@@ -1,70 +1,125 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NInput, NRadio, NCheckbox, NTag } from 'naive-ui'
+import { computed } from 'vue'
+import { NCheckbox, NCheckboxGroup, NInput, NRadio, NRadioGroup, NTag } from 'naive-ui'
+import MarkdownView from '@/components/MarkdownView.vue'
+import { parseTaskSchema, questionStem, type TaskQuestion } from '@/types/taskSchema'
+import type { WorksheetAnswerMap, WorksheetAnswerValue } from '@/types/taskSchema'
 
-interface Field { id: string; type: string; label: string; options?: string[]; required: boolean; imageUrl?: string }
+type CheckboxGroupValue = Array<string | number>
+
 const props = defineProps<{ schema: string }>()
-const model = defineModel<Record<string, any>>({ default: () => ({}) })
-const fields = ref<Field[]>([])
+const model = defineModel<WorksheetAnswerMap>({ default: () => ({}) })
 
-try {
-  const s = JSON.parse(props.schema || '{"fields":[]}')
-  fields.value = s.fields || []
-} catch { fields.value = [] }
+const questions = computed<TaskQuestion[]>(() => parseTaskSchema(props.schema).questions ?? [])
 
-function setAnswer(fId: string, val: any) { model.value[fId] = val }
-function radioVal(f: Field) { return model.value[f.id] || '' }
-function checkboxVal(f: Field): string[] { return model.value[f.id] || [] }
-function toggleCheckbox(f: Field, opt: string) {
-  const cur: string[] = model.value[f.id] || []
-  const idx = cur.indexOf(opt)
-  if (idx >= 0) cur.splice(idx, 1); else cur.push(opt)
-  model.value[f.id] = [...cur]
+function setAnswer(id: string, value: WorksheetAnswerValue) {
+  model.value = { ...model.value, [id]: value }
 }
+
+function setMultipleAnswer(id: string, value: CheckboxGroupValue) {
+  model.value = { ...model.value, [id]: value.map(String) }
+}
+
+function stringAnswer(id: string): string {
+  const value = model.value[id]
+  return typeof value === 'string' ? value : ''
+}
+
+function multipleAnswer(id: string): Array<string | number> {
+  const value = model.value[id]
+  return Array.isArray(value) ? value : []
+}
+
+function booleanAnswer(id: string): boolean | null {
+  const value = model.value[id]
+  return typeof value === 'boolean' ? value : null
+}
+
 </script>
 
 <template>
-  <div class="survey" v-if="fields.length">
-    <div v-for="(f, fi) in fields" :key="f.id" class="question">
-      <div class="q-num">{{ fi + 1 }}</div>
-      <div class="q-body">
-        <div class="q-title">
-          {{ f.label }}
-          <NTag v-if="f.required" size="tiny" type="error" :bordered="false">必填</NTag>
-        </div>
-        <img v-if="f.imageUrl" :src="f.imageUrl" class="q-image" />
-
-        <div v-if="f.type === 'radio'" class="q-options">
-          <NRadio.Group :value="radioVal(f)" @update:value="(v: string) => setAnswer(f.id, v)">
-            <div v-for="(opt, oi) in f.options" :key="oi" class="q-opt">
-              <NRadio :value="opt">{{ opt }}</NRadio>
-            </div>
-          </NRadio.Group>
-        </div>
-
-        <div v-else-if="f.type === 'checkbox'" class="q-options">
-          <div v-for="(opt, oi) in f.options" :key="oi" class="q-opt">
-            <NCheckbox :checked="checkboxVal(f).includes(opt!)" @update:checked="() => toggleCheckbox(f, opt!)">{{ opt }}</NCheckbox>
+  <div v-if="questions.length" class="survey">
+    <article v-for="(q, index) in questions" :key="q.id" class="question">
+      <div class="question-index">{{ index + 1 }}</div>
+      <div class="question-body">
+        <header class="question-head">
+          <div class="question-title">
+            <span>第 {{ index + 1 }} 题</span>
+            <NTag v-if="q.required" size="tiny" type="error" :bordered="false">必填</NTag>
           </div>
-        </div>
+          <MarkdownView class="question-markdown" :content="questionStem(q) || '未填写题干'" />
+        </header>
 
-        <NInput v-else-if="f.type === 'text'" :value="model[f.id] || ''" @update:value="(v: string) => setAnswer(f.id, v)" placeholder="请输入" />
-        <NInput v-else-if="f.type === 'textarea'" type="textarea" :value="model[f.id] || ''" @update:value="(v: string) => setAnswer(f.id, v)" placeholder="请输入" :autosize="{ minRows: 3, maxRows: 10 }" />
+        <img v-if="q.imageUrl" :src="q.imageUrl" class="question-image" alt="题目配图" />
+
+        <NRadioGroup
+          v-if="q.type === 'single'"
+          :value="stringAnswer(q.id)"
+          class="choice-list"
+          @update:value="value => setAnswer(q.id, value)"
+        >
+          <NRadio v-for="option in q.options ?? []" :key="option" :value="option" class="choice-option">
+            {{ option }}
+          </NRadio>
+        </NRadioGroup>
+
+        <NCheckboxGroup
+          v-else-if="q.type === 'multiple'"
+          :value="multipleAnswer(q.id)"
+          class="choice-list"
+          @update:value="value => setMultipleAnswer(q.id, value)"
+        >
+          <NCheckbox v-for="option in q.options ?? []" :key="option" :value="option" class="choice-option">
+            {{ option }}
+          </NCheckbox>
+        </NCheckboxGroup>
+
+        <NRadioGroup
+          v-else-if="q.type === 'true_false'"
+          :value="booleanAnswer(q.id)"
+          class="choice-list"
+          @update:value="value => setAnswer(q.id, value)"
+        >
+          <NRadio :value="true" class="choice-option">正确</NRadio>
+          <NRadio :value="false" class="choice-option">错误</NRadio>
+        </NRadioGroup>
+
+        <NInput
+          v-else-if="q.type === 'blank'"
+          :value="stringAnswer(q.id)"
+          placeholder="请输入答案"
+          @update:value="value => setAnswer(q.id, value)"
+        />
+
+        <NInput
+          v-else
+          type="textarea"
+          :value="stringAnswer(q.id)"
+          placeholder="请输入作答内容"
+          :autosize="{ minRows: 4, maxRows: 12 }"
+          @update:value="value => setAnswer(q.id, value)"
+        />
       </div>
-    </div>
+    </article>
   </div>
   <div v-else class="survey-empty">此学习单暂无题目</div>
 </template>
 
 <style scoped>
-.survey { display: flex; flex-direction: column; gap: 24px; }
+.survey { display: flex; flex-direction: column; gap: 18px; }
 .survey-empty { text-align: center; padding: 40px; color: var(--n-text-color-3); font-size: 14px; }
-.question { display: flex; gap: 14px; }
-.q-num { width: 32px; height: 32px; border-radius: 50%; background: #7C3AED; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; flex-shrink: 0; }
-.q-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.q-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.q-image { max-width: 100%; max-height: 240px; border-radius: 8px; border: 1px solid var(--n-border-color); }
-.q-options { display: flex; flex-direction: column; gap: 2px; }
-.q-opt { padding: 6px 12px; border-radius: 6px; }
-.q-opt:hover { background: var(--n-color-embedded); }
+.question { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-card-color); }
+.question-index { width: 34px; height: 34px; border-radius: 999px; background: var(--n-primary-color); color: white; display: grid; place-items: center; font-size: 14px; font-weight: 650; }
+.question-body { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.question-head { display: flex; flex-direction: column; gap: 6px; }
+.question-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 650; line-height: 1.5; }
+.question-markdown { background: var(--n-color-embedded); border-radius: 6px; padding: 10px 12px; }
+.question-image { max-width: min(100%, 520px); max-height: 260px; border-radius: 8px; border: 1px solid var(--n-border-color); object-fit: contain; }
+.choice-list { display: flex; flex-direction: column; gap: 8px; }
+.choice-option { padding: 8px 10px; border-radius: 6px; transition: background-color 150ms ease; }
+.choice-option:hover { background: var(--n-color-embedded); }
+@media (max-width: 640px) {
+  .question { grid-template-columns: 1fr; padding: 14px; }
+  .question-index { width: 28px; height: 28px; }
+}
 </style>

@@ -19,3 +19,13 @@ export function formatDate(s: string | null | undefined, fmt: 'date' | 'datetime
 export function formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
   return `${formatDate(start, 'date')} — ${formatDate(end, 'date')}`
 }
+
+/**
+ * Convert a millisecond timestamp from Naive UI date pickers to the backend's
+ * local datetime string format without applying UTC timezone offsets.
+ */
+export function toLocalDateTime(value: number | null | undefined): string | undefined {
+  if (!value) return undefined
+  const d = dayjs(value)
+  return d.isValid() ? d.format('YYYY-MM-DDTHH:mm:ss') : undefined
+}

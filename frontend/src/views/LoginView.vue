@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { NButton, NInput, NIcon } from 'naive-ui'
 import { EyeOutline, EyeOffOutline } from '@vicons/ionicons5'
 import LoginCharacters from '@/components/LoginCharacters.vue'
+import { getErrorMessage } from '@/utils/error'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -22,8 +23,8 @@ const passwordFocused = ref(false)
 const passwordVisible = ref(false)
 
 const roleHomeMap: Record<string, string> = {
-  admin: '/admin/classes',
-  teacher: '/teacher/courses',
+  admin: '/admin/overview',
+  teacher: '/teacher/home',
   student: '/student/home',
 }
 
@@ -39,8 +40,8 @@ async function handleLogin() {
   try {
     const data = await auth.login(account.value, password.value)
     router.replace(roleHomeMap[data.role] || '/login')
-  } catch (e: any) {
-    errorMsg.value = e.message || '登录失败'
+  } catch (e) {
+    errorMsg.value = getErrorMessage(e, '登录失败')
   } finally {
     loading.value = false
   }
@@ -212,7 +213,6 @@ async function handleLogin() {
   font-weight: 600;
   line-height: 1.25;
   color: #1a1a18;
-  letter-spacing: -0.02em;
   margin: 0 0 16px;
 }
 .dark .brand-title { color: #e8e6e1; }
@@ -248,7 +248,6 @@ async function handleLogin() {
   font-weight: 600;
   color: #1a1a18;
   margin-bottom: 4px;
-  letter-spacing: -0.01em;
 }
 .dark .form-title { color: #e8e6e1; }
 

@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { NModal, NSpin } from 'naive-ui'
 import { getPreviewUrl } from '@/api/files'
+import { getErrorMessage } from '@/utils/error'
 
 const props = defineProps<{
   resourceId: number | null
@@ -27,8 +28,8 @@ watch(() => props.resourceId, async (id) => {
   try {
     const data = await getPreviewUrl(id)
     previewUrl.value = data.url
-  } catch (e: any) {
-    error.value = e.message || '加载预览失败'
+  } catch (e) {
+    error.value = getErrorMessage(e, '加载预览失败')
   } finally {
     loading.value = false
   }
@@ -46,7 +47,7 @@ function handleClose() {
     :show="resourceId !== null"
     preset="card"
     :title="fileName || '文件预览'"
-    style="width: 90vw; max-width: 1100px; height: 85vh;"
+    class="file-preview-modal"
     :on-close="handleClose"
     :bordered="false"
   >
@@ -65,14 +66,15 @@ function handleClose() {
 </template>
 
 <style>
-/* Make the entire card chain a strict flex column so the content area fills available space */
-.n-modal .n-card {
+.file-preview-modal.n-card {
   display: flex !important;
   flex-direction: column !important;
-  height: 100% !important;
+  width: min(1100px, 90vw) !important;
+  height: min(85vh, 900px) !important;
+  max-height: calc(100vh - 48px) !important;
   overflow: hidden !important;
 }
-.n-modal .n-card__content {
+.file-preview-modal .n-card__content {
   padding: 0 !important;
   flex: 1 !important;
   min-height: 0 !important;

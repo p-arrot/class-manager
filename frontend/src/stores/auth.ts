@@ -10,7 +10,11 @@ export const useAuthStore = defineStore('auth', () => {
   // Restore user info from localStorage on init
   const saved = localStorage.getItem('userInfo')
   if (saved) {
-    try { userInfo.value = JSON.parse(saved) } catch (e) { console.error("auth.ts failed", e) }
+    try {
+      userInfo.value = JSON.parse(saved)
+    } catch {
+      localStorage.removeItem('userInfo')
+    }
   }
 
   const isLoggedIn = computed(() => !!token.value)

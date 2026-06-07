@@ -3,18 +3,20 @@ package com.example.edu.modules.stats.service;
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.entity.AssessmentScheme;
 import com.example.edu.modules.course.entity.Lesson;
+import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
-import com.example.edu.modules.evaluation.entity.Evaluation;
-import com.example.edu.modules.evaluation.mapper.EvaluationMapper;
+import com.example.edu.modules.evaluation.entity.DimensionScore;
+import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
 import com.example.edu.modules.exam.entity.Exam;
 import com.example.edu.modules.exam.entity.ExamSubmission;
 import com.example.edu.modules.exam.mapper.ExamMapper;
 import com.example.edu.modules.exam.mapper.ExamSubmissionMapper;
 import com.example.edu.modules.project.entity.Project;
-import com.example.edu.modules.project.entity.ProjectScore;
+import com.example.edu.modules.project.entity.ProjectSubmission;
 import com.example.edu.modules.project.mapper.ProjectMapper;
-import com.example.edu.modules.project.mapper.ProjectScoreMapper;
+import com.example.edu.modules.project.mapper.ProjectSubmissionMapper;
 import com.example.edu.modules.task.entity.Submission;
 import com.example.edu.modules.task.entity.Task;
 import com.example.edu.modules.task.mapper.SubmissionMapper;
@@ -38,17 +40,17 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class StatsService {
 
-    private static final Map<String, Integer> GS = Map.of("A", 100, "B", 80, "C", 60, "D", 40, "E", 20, "F", 0);
     private static final List<String> DIMS = List.of("AWARENESS", "COMPUTING", "DIGITAL_LEARNING", "RESPONSIBILITY");
 
-    private final EvaluationMapper evaluationMapper;
+    private final DimensionScoreMapper dimensionScoreMapper;
     private final ExamSubmissionMapper examSubmissionMapper;
     private final ExamMapper examMapper;
-    private final ProjectScoreMapper projectScoreMapper;
+    private final ProjectSubmissionMapper projectSubmissionMapper;
     private final ProjectMapper projectMapper;
     private final SubmissionMapper submissionMapper;
     private final TaskMapper taskMapper;
     private final LessonMapper lessonMapper;
+    private final AssessmentSchemeMapper assessmentSchemeMapper;
     private final UserMapper userMapper;
     private final SchoolClassMapper schoolClassMapper;
     private final AuditLogService auditLogService;
@@ -61,12 +63,12 @@ public class StatsService {
             Double resultScore, Double totalScore, String totalGrade, String remark) {}
 
     public List<GradeRow> calculateSemesterGrades(Long semesterId) {
+        AssessmentScheme scheme = getScheme(semesterId);
         // 1. Collect all tasks in this semester's lessons
         List<Lesson> lessons = lessonMapper.selectList(
                 new LambdaQueryWrapper<Lesson>().eq(Lesson::getSemesterId, semesterId));
-        if (lessons.isEmpty()) return List.of();
         List<Long> lessonIds = lessons.stream().map(Lesson::getId).toList();
-        List<Task> tasks = taskMapper.selectList(
+        List<Task> tasks = lessonIds.isEmpty() ? List.of() : taskMapper.selectList(
                 new LambdaQueryWrapper<Task>().in(Task::getLessonId, lessonIds));
 
         // 2. Get all submissions in one batch query
@@ -74,46 +76,61 @@ public class StatsService {
         List<Submission> allSubs = taskIds.isEmpty() ? List.of() :
                 submissionMapper.selectList(new LambdaQueryWrapper<Submission>().in(Submission::getTaskId, taskIds));
         Set<Long> studentIds = allSubs.stream().map(Submission::getStudentId).collect(Collectors.toSet());
-        Map<Long, User> userMap = userMapper.selectBatchIds(studentIds).stream()
-                .collect(Collectors.toMap(User::getId, u -> u));
-        Map<Long, SchoolClass> classMap = schoolClassMapper.selectBatchIds(
-                userMap.values().stream().map(User::getClassId).filter(Objects::nonNull).collect(Collectors.toSet()))
-                .stream().collect(Collectors.toMap(SchoolClass::getId, c -> c));
 
-        // 3. Get evaluations
-        List<Evaluation> evals = evaluationMapper.selectList(
-                new LambdaQueryWrapper<Evaluation>()
-                        .in(Evaluation::getSourceId, allSubs.stream().map(Submission::getId).collect(Collectors.toList()))
-                        .eq(Evaluation::getIsSpecial, 0));
-        Map<Long, List<Evaluation>> evalsBySubmission = evals.stream()
-                .collect(Collectors.groupingBy(Evaluation::getSourceId));
+        // 3. Get numeric process dimension scores
+        List<Long> submissionIds = allSubs.stream().map(Submission::getId).collect(Collectors.toList());
+        List<DimensionScore> processScores = submissionIds.isEmpty() ? List.of() :
+                dimensionScoreMapper.selectList(new LambdaQueryWrapper<DimensionScore>()
+                        .eq(DimensionScore::getSourceType, "process")
+                        .in(DimensionScore::getSourceId, submissionIds));
 
         // 4. Get exams (batch)
         List<Exam> exams = examMapper.selectList(
                 new LambdaQueryWrapper<Exam>().eq(Exam::getSemesterId, semesterId));
         List<Long> examIds = exams.stream().map(Exam::getId).collect(Collectors.toList());
-        Map<Long, List<ExamSubmission>> examSubsByStudent = new HashMap<>();
+        List<Long> examSubmissionIds = new ArrayList<>();
         if (!examIds.isEmpty()) {
             List<ExamSubmission> allExamSubs = examSubmissionMapper.selectList(
                     new LambdaQueryWrapper<ExamSubmission>().in(ExamSubmission::getExamId, examIds));
-            for (ExamSubmission es : allExamSubs) {
-                examSubsByStudent.computeIfAbsent(es.getStudentId(), k -> new ArrayList<>()).add(es);
-            }
+            examSubmissionIds = allExamSubs.stream().map(ExamSubmission::getId).toList();
+            studentIds.addAll(allExamSubs.stream().map(ExamSubmission::getStudentId).collect(Collectors.toSet()));
         }
+        List<DimensionScore> examDimensionScores = examSubmissionIds.isEmpty() ? List.of() :
+                dimensionScoreMapper.selectList(new LambdaQueryWrapper<DimensionScore>()
+                        .eq(DimensionScore::getSourceType, "exam")
+                        .in(DimensionScore::getSourceId, examSubmissionIds));
 
         // 5. Get projects (batch)
         List<Project> projects = projectMapper.selectList(
                 new LambdaQueryWrapper<Project>().eq(Project::getSemesterId, semesterId));
         List<Long> projectIds = projects.stream().map(Project::getId).collect(Collectors.toList());
-        Map<Long, List<ProjectScore>> scoresByStudent = new HashMap<>();
-        if (!projectIds.isEmpty()) {
-            List<ProjectScore> allScores = projectScoreMapper.selectList(
-                    new LambdaQueryWrapper<ProjectScore>().in(ProjectScore::getProjectId, projectIds)
-                            .eq(ProjectScore::getIsSpecial, 0));
-            for (ProjectScore ps : allScores) {
-                scoresByStudent.computeIfAbsent(ps.getStudentId(), k -> new ArrayList<>()).add(ps);
-            }
+        List<ProjectSubmission> projectSubs = projectIds.isEmpty() ? List.of() :
+                projectSubmissionMapper.selectList(new LambdaQueryWrapper<ProjectSubmission>()
+                        .in(ProjectSubmission::getProjectId, projectIds));
+        List<Long> projectSubmissionIds = projectSubs.stream().map(ProjectSubmission::getId).toList();
+        studentIds.addAll(projectSubs.stream().map(ProjectSubmission::getStudentId).collect(Collectors.toSet()));
+        List<DimensionScore> projectDimensionScores = List.of();
+        if (!projectSubmissionIds.isEmpty()) {
+            projectDimensionScores = dimensionScoreMapper.selectList(new LambdaQueryWrapper<DimensionScore>()
+                    .eq(DimensionScore::getSourceType, "project")
+                    .in(DimensionScore::getSourceId, projectSubmissionIds));
         }
+
+        if (studentIds.isEmpty()) return List.of();
+        Map<Long, User> userMap = userMapper.selectBatchIds(studentIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> u));
+        Set<Long> classIds = userMap.values().stream()
+                .map(User::getClassId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, SchoolClass> classMap = classIds.isEmpty() ? Map.of() :
+                schoolClassMapper.selectBatchIds(classIds).stream()
+                        .collect(Collectors.toMap(SchoolClass::getId, c -> c));
+
+        Map<String, Map<Long, Map<String, ScoreBucket>>> buckets = new HashMap<>();
+        buckets.put("process", bucketByStudentAndDimension(processScores));
+        buckets.put("exam", bucketByStudentAndDimension(examDimensionScores));
+        buckets.put("project", bucketByStudentAndDimension(projectDimensionScores));
 
         // 6. Calculate per student
         List<GradeRow> rows = new ArrayList<>();
@@ -122,85 +139,39 @@ public class StatsService {
             if (u == null) continue;
             SchoolClass sc = u.getClassId() != null ? classMap.get(u.getClassId()) : null;
 
-            // Process evaluation: weighted avg of worksheet(1.0) + artifact(1.5)
-            double processWeightedSum = 0;
-            double processWeightTotal = 0;
-            Map<String, List<Integer>> dimScores = new LinkedHashMap<>();
-            for (String d : DIMS) dimScores.put(d, new ArrayList<>());
+            Map<String, Double> processDim = dimensionRates(buckets.get("process").get(sid));
+            Map<String, Double> examDim = dimensionRates(buckets.get("exam").get(sid));
+            Map<String, Double> projectDim = dimensionRates(buckets.get("project").get(sid));
 
-            for (Submission sub : allSubs.stream().filter(s -> s.getStudentId().equals(sid)).toList()) {
-                Task t = tasks.stream().filter(tk -> tk.getId().equals(sub.getTaskId())).findFirst().orElse(null);
-                if (t == null || "special".equals(sub.getStatus())) continue;
-                List<Evaluation> subEvals = evalsBySubmission.getOrDefault(sub.getId(), List.of());
-                if (subEvals.isEmpty()) {
-                    // Submission exists but no evaluations — likely auto-F from missed deadline
-                    if ("graded".equals(sub.getStatus())) {
-                        for (String d : DIMS) dimScores.get(d).add(0);
-                        double w = "artifact".equals(t.getType()) ? 1.5 : 1.0;
-                        processWeightedSum += 0;
-                        processWeightTotal += w;
-                    }
-                    // If not graded and no evals, skip (teacher hasn't graded yet)
-                } else {
-                    double avg = subEvals.stream().mapToInt(e -> GS.getOrDefault(e.getGrade(), 0)).average().orElse(0);
-                    for (Evaluation e : subEvals) {
-                        dimScores.get(e.getDimension()).add(GS.getOrDefault(e.getGrade(), 0));
-                    }
-                    double w = "artifact".equals(t.getType()) ? 1.5 : 1.0;
-                    processWeightedSum += avg * w;
-                    processWeightTotal += w;
-                }
+            Double processScore = averageDimensionScore(processDim);
+            Double examScore = averageDimensionScore(examDim);
+            Double projectScore = averageDimensionScore(projectDim);
+
+            Map<String, Double> finalDim = new LinkedHashMap<>();
+            for (String d : DIMS) {
+                finalDim.put(d, calculateWeightedScore(
+                        Arrays.asList(processDim.get(d), examDim.get(d), projectDim.get(d)),
+                        Arrays.asList(scheme.getProcessPercent(), scheme.getExamPercent(), scheme.getProjectPercent())));
             }
-            Double processScore = processWeightTotal > 0 ?
-                    round(processWeightedSum / processWeightTotal) : null;
 
-            // Dimension averages
-            Integer awareness = avgOrNull(dimScores.get("AWARENESS"));
-            Integer computing = avgOrNull(dimScores.get("COMPUTING"));
-            Integer digitalLearn = avgOrNull(dimScores.get("DIGITAL_LEARNING"));
-            Integer responsibility = avgOrNull(dimScores.get("RESPONSIBILITY"));
+            Integer awareness = intOrNull(finalDim.get("AWARENESS"));
+            Integer computing = intOrNull(finalDim.get("COMPUTING"));
+            Integer digitalLearn = intOrNull(finalDim.get("DIGITAL_LEARNING"));
+            Integer responsibility = intOrNull(finalDim.get("RESPONSIBILITY"));
 
-            // Exam score: weighted average
-            double examWeightedSum = 0, examWeightTotal = 0;
-            List<ExamSubmission> studentExamSubs = examSubsByStudent.getOrDefault(sid, List.of());
-            for (ExamSubmission es : studentExamSubs) {
-                Exam exam = exams.stream().filter(e -> e.getId().equals(es.getExamId())).findFirst().orElse(null);
-                if (exam == null || es.getScore() == null) continue;
-                double w = exam.getWeight() != null ? exam.getWeight().doubleValue() : 1.0;
-                examWeightedSum += es.getScore() * w;
-                examWeightTotal += w;
-            }
-            Double examScore = examWeightTotal > 0 ? round(examWeightedSum / examWeightTotal) : null;
-
-            // Project score: weighted average
-            double projWeightedSum = 0, projWeightTotal = 0;
-            List<ProjectScore> studentScores = scoresByStudent.getOrDefault(sid, List.of());
-            for (ProjectScore ps : studentScores) {
-                Project p = projects.stream().filter(pr -> pr.getId().equals(ps.getProjectId())).findFirst().orElse(null);
-                if (p == null) continue;
-                double w = p.getWeight() != null ? p.getWeight().doubleValue() : 1.0;
-                projWeightedSum += GS.getOrDefault(ps.getGrade(), 0) * w;
-                projWeightTotal += w;
-            }
-            Double projectScore = projWeightTotal > 0 ? round(projWeightedSum / projWeightTotal) : null;
-
-            // Result score
-            double resultSum = 0, resultTotal = 0;
-            if (examScore != null) { resultSum += examScore; resultTotal++; }
-            if (projectScore != null) { resultSum += projectScore; resultTotal++; }
-            Double resultScore = resultTotal > 0 ? round(resultSum / resultTotal) : null;
-
-            // Total score
-            Double totalScore = (processScore != null && resultScore != null) ?
-                    round(processScore * 0.5 + resultScore * 0.5) : null;
+            Double resultScore = calculateWeightedScore(
+                    Arrays.asList(examScore, projectScore),
+                    Arrays.asList(scheme.getExamPercent(), scheme.getProjectPercent()));
+            Double totalScore = averageDimensionScore(finalDim);
 
             // Grade
             String totalGrade = totalScore != null ? gradeLabel(totalScore) : "暂无数据";
 
             String remark = "";
-            if (processScore == null && resultScore == null) remark = "无评价数据";
-            else if (processScore == null) remark = "缺过程评价";
-            else if (resultScore == null) remark = "缺结果评价";
+            if (totalScore == null) remark = "无可折算评价数据";
+            else if (scheme.getProcessPercent() > 0 && processScore == null) remark = "缺平时任务成绩";
+            else if (scheme.getExamPercent() > 0 && examScore == null) remark = "缺考试成绩";
+            else if (scheme.getProjectPercent() > 0 && projectScore == null) remark = "缺项目成绩";
 
             String className = sc != null ? sc.getGrade() + "级" + sc.getName() : "";
             rows.add(new GradeRow(
@@ -225,17 +196,88 @@ public class StatsService {
         return out.toByteArray();
     }
 
-    private static Integer avgOrNull(List<Integer> scores) {
-        if (scores.isEmpty()) return null;
-        return (int) Math.round(scores.stream().mapToInt(Integer::intValue).average().orElse(0));
-    }
-
     private static Double round(double v) {
         return BigDecimal.valueOf(v).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static Map<Long, Map<String, ScoreBucket>> bucketByStudentAndDimension(List<DimensionScore> scores) {
+        Map<Long, Map<String, ScoreBucket>> result = new HashMap<>();
+        for (DimensionScore score : scores) {
+            if (score.getMaxScore() == null || score.getMaxScore().compareTo(BigDecimal.ZERO) <= 0) continue;
+            result.computeIfAbsent(score.getStudentId(), ignored -> new HashMap<>())
+                    .computeIfAbsent(score.getDimension(), ignored -> new ScoreBucket())
+                    .add(score.getEarnedScore(), score.getMaxScore());
+        }
+        return result;
+    }
+
+    private static Map<String, Double> dimensionRates(Map<String, ScoreBucket> buckets) {
+        if (buckets == null || buckets.isEmpty()) return Map.of();
+        Map<String, Double> result = new HashMap<>();
+        for (String dim : DIMS) {
+            ScoreBucket bucket = buckets.get(dim);
+            if (bucket != null && bucket.max.compareTo(BigDecimal.ZERO) > 0) {
+                result.put(dim, round(bucket.earned.divide(bucket.max, 6, RoundingMode.HALF_UP).doubleValue() * 100));
+            }
+        }
+        return result;
+    }
+
+    private static Double averageDimensionScore(Map<String, Double> scores) {
+        if (scores == null || scores.isEmpty()) return null;
+        double sum = 0;
+        int count = 0;
+        for (String dim : DIMS) {
+            Double score = scores.get(dim);
+            if (score == null) continue;
+            sum += score;
+            count++;
+        }
+        return count > 0 ? round(sum / count) : null;
+    }
+
+    private static Integer intOrNull(Double score) {
+        return score == null ? null : (int) Math.round(score);
+    }
+
+    private AssessmentScheme getScheme(Long semesterId) {
+        AssessmentScheme scheme = assessmentSchemeMapper == null ? null : assessmentSchemeMapper.selectOne(new LambdaQueryWrapper<AssessmentScheme>()
+                .eq(AssessmentScheme::getSemesterId, semesterId));
+        if (scheme != null) return scheme;
+        scheme = new AssessmentScheme();
+        scheme.setSemesterId(semesterId);
+        scheme.setProcessPercent(50);
+        scheme.setExamPercent(50);
+        scheme.setProjectPercent(0);
+        return scheme;
+    }
+
+    private static Double calculateWeightedScore(List<Double> scores, List<Integer> percents) {
+        double sum = 0;
+        double weight = 0;
+        for (int i = 0; i < scores.size(); i++) {
+            Integer percent = percents.get(i);
+            if (percent == null || percent <= 0) continue;
+            Double score = scores.get(i);
+            if (score == null) continue;
+            sum += score * percent;
+            weight += percent;
+        }
+        return weight > 0 ? round(sum / weight) : null;
     }
 
     private static String gradeLabel(double s) {
         if (s >= 90) return "A"; if (s >= 75) return "B"; if (s >= 60) return "C";
         if (s >= 40) return "D"; return "E";
+    }
+
+    private static class ScoreBucket {
+        private BigDecimal earned = BigDecimal.ZERO;
+        private BigDecimal max = BigDecimal.ZERO;
+
+        private void add(BigDecimal earnedScore, BigDecimal maxScore) {
+            earned = earned.add(earnedScore == null ? BigDecimal.ZERO : earnedScore);
+            max = max.add(maxScore == null ? BigDecimal.ZERO : maxScore);
+        }
     }
 }

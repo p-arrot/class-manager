@@ -84,8 +84,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/submissions/*/evaluate", "/api/tasks/*/auto-grade").hasAnyRole("ADMIN", "TEACHER")
                         // Exams
                         .requestMatchers(HttpMethod.GET, "/api/exam-papers", "/api/semesters/*/exams", "/api/exams/*/submissions").hasAnyRole("ADMIN", "TEACHER")
-                        .requestMatchers("/api/exam-papers/**", "/api/exams/**", "/api/exam-submissions/**").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/exams/*/start", "/api/exams/*/submit").hasRole("STUDENT")
+                        .requestMatchers("/api/exam-papers/**", "/api/exams/**", "/api/exam-submissions/**").hasAnyRole("ADMIN", "TEACHER")
                         // Projects & Teams (specific student rules MUST come before broad /api/projects/**)
                         .requestMatchers(HttpMethod.GET, "/api/semesters/*/projects").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/projects/*/teams", "/api/teams/*/join", "/api/projects/*/submit").hasRole("STUDENT")

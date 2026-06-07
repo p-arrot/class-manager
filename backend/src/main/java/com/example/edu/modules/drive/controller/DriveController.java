@@ -1,12 +1,12 @@
 package com.example.edu.modules.drive.controller;
 
+import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.result.R;
 import com.example.edu.common.security.SecurityUtils;
-import com.example.edu.infrastructure.minio.MinioService;
 import com.example.edu.infrastructure.preview.PreviewService;
+import com.example.edu.modules.drive.dto.DriveRawFileDTO;
 import com.example.edu.modules.drive.entity.DriveItem;
-import com.example.edu.modules.drive.mapper.DriveMapper;
 import com.example.edu.modules.drive.service.DriveService;
 import com.example.edu.modules.drive.vo.DriveItemVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,8 +29,6 @@ import java.util.UUID;
 @RestController @RequestMapping("/api/drive") @RequiredArgsConstructor
 public class DriveController {
     private final DriveService driveService;
-    private final DriveMapper driveMapper;
-    private final MinioService minioService;
     private final PreviewService previewService;
 
     @PostMapping("/upload")
@@ -39,13 +37,8 @@ public class DriveController {
                                    @RequestParam(value = "parentId", required = false) Long parentId) {
         Long uid = SecurityUtils.getCurrentUserId();
         String objectName = "drive/" + uid + "/" + UUID.randomUUID().toString().substring(0, 8) + "_" + file.getOriginalFilename();
-        try {
-            minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
-        } catch (Exception e) {
-            return R.fail(ErrorCode.FILE_UPLOAD_ERROR);
-        }
-        return R.ok(toVO(driveService.createFile(uid, file.getOriginalFilename(), file.getSize(),
-                file.getContentType(), objectName, parentId)));
+        return R.ok(toVO(driveService.uploadFile(uid, file.getOriginalFilename(), file.getSize(),
+                file.getContentType(), objectName, fileStream(file), parentId)));
     }
 
     @GetMapping("/tree")
@@ -81,17 +74,13 @@ public class DriveController {
     @GetMapping("/{id}/raw")
     @PreAuthorize("hasAnyRole('STUDENT','TEACHER','ADMIN')")
     public ResponseEntity<InputStreamResource> raw(@PathVariable Long id) {
-        DriveItem item = driveMapper.selectById(id);
-        if (item == null || !"FILE".equals(item.getType())) return ResponseEntity.notFound().build();
-        try {
-            java.io.InputStream stream = minioService.getObject(item.getObjectName());
-            String encoded = java.net.URLEncoder.encode(item.getName(), StandardCharsets.UTF_8).replace("+", "%20");
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(item.getContentType() != null ? item.getContentType() : "application/octet-stream"))
-                    .contentLength(item.getFileSize() != null ? item.getFileSize() : 0)
-                    .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(encoded).build().toString())
-                    .body(new InputStreamResource(stream));
-        } catch (Exception e) { return ResponseEntity.internalServerError().build(); }
+        DriveRawFileDTO raw = driveService.getRawFile(id);
+        String encoded = java.net.URLEncoder.encode(raw.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(raw.getContentType() != null ? raw.getContentType() : "application/octet-stream"))
+                .contentLength(raw.getFileSize())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(encoded).build().toString())
+                .body(new InputStreamResource(raw.getInputStream()));
     }
 
     @GetMapping("/{id}/download")
@@ -122,5 +111,13 @@ public class DriveController {
                 .parentId(item.getParentId())
                 .createdAt(item.getCreatedAt())
                 .build();
+    }
+
+    private java.io.InputStream fileStream(MultipartFile file) {
+        try {
+            return file.getInputStream();
+        } catch (java.io.IOException e) {
+            throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "读取上传文件失败");
+        }
     }
 }

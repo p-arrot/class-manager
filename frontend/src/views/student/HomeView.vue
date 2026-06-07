@@ -1,62 +1,64 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NGrid, NGi, NEmpty, NIcon, NTag, NSpin, useMessage } from 'naive-ui'
 import { ArrowForwardOutline, TimeOutline, CheckmarkCircleOutline } from '@vicons/ionicons5'
-import { useAuthStore } from '@/stores/auth'
-import { listCourses } from '@/api/courses'
+import { getStudentDashboard } from '@/api/dashboard'
 import CourseCard from '@/components/CourseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import http from '@/api/request'
-import type { CourseVO, CoursePageQuery } from '@/types/api'
+import { getErrorMessage } from '@/utils/error'
+import type { CourseVO, SubmissionVO, TaskVO } from '@/types/api'
 
-const router = useRouter(); const message = useMessage()
-const auth = useAuthStore()
+interface DueTask extends TaskVO {
+  courseName: string
+  lessonName: string
+  courseId: number
+}
+
+interface RecentGrade extends SubmissionVO {
+  taskTitle: string
+  courseName: string
+}
+
+const router = useRouter()
+const message = useMessage()
 const loading = ref(false)
 const records = ref<CourseVO[]>([])
 const total = ref(0)
-const query = reactive<CoursePageQuery>({ page: 1, size: 12 })
-const dueTasks = ref<any[]>([])
-const recentGrades = ref<any[]>([])
-
-async function loadDueAndGrades(courses: CourseVO[]) {
-  const due: any[] = []; const graded: any[] = []
-  for (const course of courses.slice(0, 3)) {
-    try {
-      const semesters: any[] = await http.get(`/courses/${course.id}/semesters`) || []
-      for (const sem of (semesters || []).slice(0, 1)) {
-        const lessons: any[] = await http.get(`/semesters/${sem.id}/lessons`) || []
-        for (const les of (lessons || []).slice(0, 3)) {
-          const tasks: any[] = await http.get(`/lessons/${les.id}/tasks`) || []
-          for (const t of (tasks || [])) {
-            if (t.deadline && new Date(t.deadline) > new Date()) {
-              due.push({ ...t, courseName: course.name, lessonName: les.name, courseId: course.id })
-            }
-            try {
-              const subs: any[] = await http.get(`/tasks/${t.id}/submissions`) || []
-              const mine = subs.find((s: any) => s.studentId === auth.userInfo?.userId)
-              if (mine && mine.status === 'graded') {
-                graded.push({ ...mine, taskTitle: t.title, courseName: course.name })
-              }
-            } catch (e) { console.error("HomeView.vue failed", e) }
-          }
-        }
-      }
-    } catch (e) { console.error("HomeView.vue failed", e) }
-  }
-  dueTasks.value = due.slice(0, 4)
-  recentGrades.value = graded.slice(0, 3)
-}
+const dueTasks = ref<DueTask[]>([])
+const recentGrades = ref<RecentGrade[]>([])
 
 async function fetchData() {
   loading.value = true
-  try { const r = await listCourses(query); records.value = r.records; total.value = r.total; await loadDueAndGrades(r.records) }
-  catch (e: any) { message.error(e.message || '加载失败') }
-  finally { loading.value = false }
+  try {
+    const dashboard = await getStudentDashboard()
+    records.value = dashboard.courses
+    total.value = dashboard.totalCourses
+    dueTasks.value = dashboard.dueTasks.map(item => ({
+      ...item.task,
+      courseName: item.courseName,
+      lessonName: item.lessonName,
+      courseId: item.courseId ?? 0,
+    }))
+    recentGrades.value = dashboard.recentGrades.map(item => ({
+      ...item.submission,
+      taskTitle: item.taskTitle,
+      courseName: item.courseName,
+    }))
+  } catch (e) {
+    message.error(getErrorMessage(e, '加载失败'))
+  } finally {
+    loading.value = false
+  }
 }
 
-function goDetail(id: number) { router.push(`/student/courses/${id}`) }
-function goTask(taskId: number) { router.push(`/student/tasks/${taskId}`) }
+function goDetail(id: number) {
+  router.push(`/student/courses/${id}`)
+}
+
+function goTask(taskId: number) {
+  router.push(`/student/tasks/${taskId}`)
+}
 
 onMounted(fetchData)
 </script>
@@ -69,7 +71,7 @@ onMounted(fetchData)
       <!-- Due soon -->
       <div v-if="dueTasks.length" class="section">
         <h3 class="section-title"><NIcon :size="16"><TimeOutline /></NIcon> 即将截止</h3>
-        <div v-for="t in dueTasks" :key="'d'+t.id" class="row" @click="goTask(t.id)" style="cursor:pointer">
+        <div v-for="t in dueTasks" :key="'d'+t.id" class="row clickable-row" @click="goTask(t.id)">
           <NTag size="tiny" :bordered="false" :type="t.type==='worksheet'?'info':'warning'">{{ t.type==='worksheet'?'学习单':'课堂作品' }}</NTag>
           <span class="row-title">{{ t.title }}</span>
           <span class="row-sub">{{ t.courseName }}</span>
@@ -89,9 +91,9 @@ onMounted(fetchData)
       </div>
 
       <!-- Course grid -->
-      <h3 class="section-title" style="margin-top:24px">我的课程</h3>
+      <h3 class="section-title course-section-title">我的课程</h3>
       <div v-if="records.length" class="course-grid">
-        <NGrid :cols="3" :x-gap="16" :y-gap="16" responsive="screen">
+        <NGrid cols="1 s:2 l:3" :x-gap="16" :y-gap="16" responsive="screen">
           <NGi v-for="c in records" :key="c.id">
             <CourseCard :course="c" @enter="goDetail">
               <template #actions="{ course }">
@@ -113,8 +115,10 @@ onMounted(fetchData)
 @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .section { margin-bottom: 20px; }
 .section-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.course-section-title { margin-top: 24px; }
 .row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; }
 .row:hover { background: var(--n-color-embedded); }
+.clickable-row { cursor: pointer; }
 .row-title { font-size: 14px; font-weight: 500; }
 .row-sub { font-size: 13px; color: var(--n-text-color-2); }
 .row-deadline { font-size: 12px; color: var(--n-text-color-3); margin-left: auto; }

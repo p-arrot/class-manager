@@ -1,22 +1,35 @@
 import { ref, onMounted } from 'vue'
-import http from '@/api/request'
+import { useMessage } from 'naive-ui'
+import { listCourses } from '@/api/courses'
+import { listSemesters as listCourseSemesters } from '@/api/semesters'
+import { getErrorMessage } from '@/utils/error'
+import type { CourseVO, SemesterVO } from '@/types/api'
 
 export function useStudentContext() {
-  const courses = ref<any[]>([])
-  const semesters = ref<any[]>([])
+  const message = useMessage()
+  const courses = ref<CourseVO[]>([])
+  const semesters = ref<SemesterVO[]>([])
   const loading = ref(false)
 
   async function loadCourses() {
     loading.value = true
     try {
-      courses.value = (await http.get('/courses?page=1&size=50'))?.records || []
-    } catch { courses.value = [] }
-    finally { loading.value = false }
+      courses.value = (await listCourses({ page: 1, size: 50 })).records || []
+    } catch (e) {
+      courses.value = []
+      message.error(getErrorMessage(e, '加载课程列表失败'))
+    } finally {
+      loading.value = false
+    }
   }
 
   async function loadSemesters(courseId: number) {
-    try { semesters.value = await http.get(`/courses/${courseId}/semesters`) }
-    catch { semesters.value = [] }
+    try {
+      semesters.value = await listCourseSemesters(courseId)
+    } catch (e) {
+      semesters.value = []
+      message.error(getErrorMessage(e, '加载学期列表失败'))
+    }
   }
 
   onMounted(loadCourses)

@@ -24,6 +24,7 @@
 | Phase F5 | 前端：考试 + 项目 + 结果评价 | ✅ 已完成 |
 | Phase 7 | 后端：网盘和总评导出 | ✅ 已完成 |
 | Phase F6 | 前端：网盘 + 总评导出 | ✅ 已完成 |
+| Phase 8 | 评分模型重构 + 工作台性能优化 | 🔄 进行中 |
 
 ---
 
@@ -134,28 +135,7 @@
 ---
 
 
-> 详细任务清单见 `FRONTEND_PLAN.md` 第六节和 `SPECIFICATION.md` 第二十九节。
-
-### 后端待开始
-
-| 阶段 | 关键产出 |
-|------|----------|
-| Phase 4 | Task 模块、学习单 JSON Schema、WebSocket + STOMP |
-| Phase 5 | Evaluation 模块、四维度评分 A-E、雷达图数据 |
-| Phase 6a | 试卷管理（JSONB）、考试任务、缺考处理 |
-| Phase 6b | 项目创建 + 组队、项目评分（组队同分） |
-| Phase 6c | 结果评价计算（加权平均、"暂无数据"） |
-| Phase 7 | 学生网盘（MinIO、树形目录）、学期总评 Excel 导出 |
-
-### 前端待开始
-
-| 阶段 | 关键页面 |
-|------|----------|
-| Phase F2 | FileUpload/FilePreview/FileTree 组件、课程资源管理页 |
-| Phase F3 | 任务创建页（schema 编辑器）、学习单填写、作品提交、实时统计 |
-| Phase F4 | 评分页（A-E 选择器）、雷达图、学生评价页 |
-| Phase F5 | 试卷编辑器、考试答题页、项目组队页、项目评分页 |
-| Phase F6 | 学生网盘页、学期总评预览 + Excel 导出 |
+> 详细任务清单见 `FRONTEND_PLAN.md` 第六节和 `SPECIFICATION.md` 第二十九节。历史规划中的 F2-F6/Phase 4-7 已基本落地；后续重点转向评分模型一致性、权限收敛、性能和体验质量。
 
 ---
 
@@ -177,6 +157,8 @@
 - `LessonTaskPanel.vue`：任务列表（折叠行内嵌）、创建/编辑/删除弹窗
 - Teacher CourseDetail：课时表 expand row 显示 LessonTaskPanel
 - Student CourseDetail：课时表 expand row 显示 LessonTaskPanel（只读）
+- `TaskCreate.vue`：问卷式题目创建界面，支持填空、单选、多选、是非、简答、题干 Markdown/Monaco、题目配图、截止时间选择器
+- `WorksheetRenderer.vue`：学生端问卷式答题体验，Markdown 渲染题干
 
 ## Phase 5 — 后端：四维度评价 + 雷达图 ✅
 
@@ -194,18 +176,22 @@
 - Exam 实体 + ExamPaper 实体 + ExamSubmission 实体 + Mapper
 - ExamController：8 个端点（papers CRUD / exams CRUD / submit / list / grade）
 - 缺考处理：absent 状态 + 0 分
+- 考试关联 `version: 3` 题目 schema；自动批改题提交后写入四维度数值得分
 
 ## Phase 6b — 后端：项目化学习 ✅
 
 - Flyway V9：projects / project_teams / team_members / project_submissions / project_scores 表
-- Project 实体 + ProjectScore 实体 + Mapper
-- ProjectController：5 个端点（list / create / delete / score / listScores）
-- 组队同分：score 批量写入实现
+- Project / ProjectTeam / ProjectTeamMember / ProjectSubmission 实体 + Mapper
+- ProjectController：项目 CRUD、组队、提交、提交列表、项目提交逐维度评分
+- 项目支持文件/文件夹提交配置、文件后缀限制、按核心素养维度设置评分项
 
 ## Phase 6c — 后端：结果评价 ✅
 
-- StatsService：calculateSemesterGrades / exportGrades 基础框架
-- 权重加权平均计算脉络就绪
+- Flyway V11：assessment_schemes 表
+- Flyway V12：dimension_scores 表
+- StatsService：按平时任务、考试、项目三类来源分别汇总核心素养四维度得分
+- 学期考核方案：平时任务/考试/项目占比合计必须为 100%，默认 50/50/0
+- 多考试、多项目通过同一来源桶内“学生得分 / 该维度总分”折算
 
 ## Phase 7 — 后端：学生网盘 + 总评导出 ✅
 
@@ -213,3 +199,15 @@
 - DriveItem 实体 + Mapper
 - DriveController：4 个端点（tree / createFolder / delete / download）
 - MinIO 集成：上传/下载/预览 via presigned URL
+
+## Phase 8 — 评分模型重构 + 性能优化 🔄
+
+- 后端新增 `dimension_scores` 数值得分模型，自动批改和手动逐题评分都按四个核心素养维度落分
+- 前端新增 `MarkdownEditor.vue` / `MarkdownView.vue`，Markdown 编辑使用 Monaco 懒加载，降低非编辑页面首屏负担
+- `vite.config.ts` 增加 Monaco/ECharts/Naive UI 手动分包，生产构建不再出现大 chunk 警告
+- 教师工作台、学生首页改用 `/api/dashboard/teacher` 和 `/api/dashboard/student` 聚合接口，避免前端课程→学期→课时→任务→提交的串行 N+1 请求
+- 当前已发现待处理技术债：
+  - 学生考试提交权限在 `SecurityConfig` 中可能被 broad `/api/exams/**` 规则提前拦截
+  - 项目提交/评分服务需要补齐课程归属权限校验
+  - 旧 `/api/projects/{id}/scores` 接口当前只做兼容保留，不应继续作为主要评分入口
+  - 教师 dashboard 后端仍会加载较多历史提交，后续应改为 count + limit 查询

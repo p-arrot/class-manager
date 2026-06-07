@@ -6,6 +6,7 @@ import com.example.edu.modules.task.dto.TaskCreateDTO;
 import com.example.edu.modules.task.dto.TaskUpdateDTO;
 import com.example.edu.modules.task.service.TaskService;
 import com.example.edu.modules.task.vo.SubmissionVO;
+import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
 import com.example.edu.modules.task.vo.TaskVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -99,6 +100,13 @@ public class TaskController {
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<java.util.Map<String, Object>> getSubmissionStats(@PathVariable Long taskId) {
         return R.ok(taskService.getSubmissionStats(taskId));
+    }
+
+    @Operation(summary = "教师查看任务完成情况数据看板")
+    @GetMapping("/api/tasks/{taskId}/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<TaskAnalyticsVO> getTaskAnalytics(@PathVariable Long taskId) {
+        return R.ok(taskService.getTaskAnalytics(taskId));
     }
 
     @Operation(summary = "教师查看任务提交列表")

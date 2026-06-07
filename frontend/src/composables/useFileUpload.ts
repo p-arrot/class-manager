@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import http from '@/api/request'
 import { validateFileSize } from '@/utils/validation'
+import { getErrorMessage } from '@/utils/error'
 
 export function useFileUpload() {
   const state = ref<{ uploading: boolean; progress: number; error: string | null }>({
@@ -36,18 +37,17 @@ export function useFileUpload() {
       fd.append('courseId', String(courseId))
       if (parentId != null) fd.append('parentId', String(parentId))
 
-      const result = await http.post('/files/upload', fd, {
+      const result = await http.post<{ resourceId: number }>('/files/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 120000,
         onUploadProgress: (e) => {
           if (e.total) state.value.progress = Math.round((e.loaded / e.total) * 100)
         },
-      }) as unknown as { resourceId: number }
+      })
       state.value = { uploading: false, progress: 100, error: null }
       return result.resourceId
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : '上传失败'
-      state.value = { uploading: false, progress: 0, error: message }
+      state.value = { uploading: false, progress: 0, error: getErrorMessage(e, '上传失败') }
       return null
     }
   }

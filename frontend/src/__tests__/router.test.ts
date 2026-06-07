@@ -48,7 +48,7 @@ describe('router guards', () => {
   it('redirects authenticated user away from login page', async () => {
     const router = createMockRouter([
       { path: '/login', name: 'Login', component: {}, meta: { public: true } },
-      { path: '/admin/classes', name: 'AdminClasses', component: {}, meta: { requiresRole: 'admin' } },
+      { path: '/admin/overview', name: 'AdminOverview', component: {}, meta: { requiresRole: 'admin' } },
     ])
 
     // Set auth state
@@ -59,12 +59,13 @@ describe('router guards', () => {
     })
 
     await router.push('/login')
-    expect(router.currentRoute.value.path).toBe('/admin/classes')
+    expect(router.currentRoute.value.path).toBe('/admin/overview')
   })
 
   it('redirects to correct role home based on role', async () => {
     const router = createMockRouter([
       { path: '/login', name: 'Login', component: {}, meta: { public: true } },
+      { path: '/teacher/home', name: 'TeacherHome', component: {}, meta: { requiresRole: 'teacher' } },
       { path: '/teacher/courses', name: 'TeacherCourses', component: {}, meta: { requiresRole: 'teacher' } },
       { path: '/student/home', name: 'StudentHome', component: {}, meta: { requiresRole: 'student' } },
     ])

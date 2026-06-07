@@ -5,15 +5,19 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.evaluation.service.DimensionScoreService;
+import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
 import com.example.edu.modules.exam.entity.*;
 import com.example.edu.modules.exam.mapper.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExamService {
@@ -22,6 +26,8 @@ public class ExamService {
     private final ExamPaperMapper paperMapper;
     private final ExamSubmissionMapper submissionMapper;
     private final AuditLogService auditLogService;
+    private final DimensionScoreService dimensionScoreService;
+    private final QuestionScoreHelper questionScoreHelper;
 
     // Papers
     public ExamPaper createPaper(ExamPaper paper) {
@@ -37,9 +43,15 @@ public class ExamService {
                 .orderByDesc(ExamPaper::getCreatedAt));
     }
 
+    public List<ExamPaper> listPaperByIds(java.util.Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return paperMapper.selectBatchIds(ids);
+    }
+
     // Exams
     @Transactional
     public Exam createExam(Exam exam) {
+        validateExam(exam);
         examMapper.insert(exam);
         auditLogService.record("创建考试", "exam", exam.getId(), exam.getName());
         return exam;
@@ -49,6 +61,30 @@ public class ExamService {
         return examMapper.selectList(new LambdaQueryWrapper<Exam>()
                 .eq(Exam::getSemesterId, semesterId)
                 .orderByDesc(Exam::getCreatedAt));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Exam updateExam(Long id, Exam exam) {
+        Exam existing = examMapper.selectById(id);
+        if (existing == null) throw new BizException(ErrorCode.NOT_FOUND);
+        validateExam(exam);
+        existing.setName(exam.getName());
+        existing.setPaperId(exam.getPaperId());
+        existing.setStartTime(exam.getStartTime());
+        existing.setEndTime(exam.getEndTime());
+        existing.setWeight(exam.getWeight());
+        examMapper.updateById(existing);
+        auditLogService.record("更新考试", "exam", id, existing.getName());
+        return existing;
+    }
+
+    private void validateExam(Exam exam) {
+        if (exam.getPaperId() == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请选择试卷");
+        }
+        if (paperMapper.selectById(exam.getPaperId()) == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "试卷不存在");
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -82,6 +118,7 @@ public class ExamService {
         sub.setSubmittedAt(LocalDateTime.now());
         if (sub.getId() == null) submissionMapper.insert(sub);
         else submissionMapper.updateById(sub);
+        autoGradeExam(exam, sub);
         return sub;
     }
 
@@ -98,5 +135,22 @@ public class ExamService {
         sub.setStatus(absent ? "absent" : "graded");
         submissionMapper.updateById(sub);
         auditLogService.record("考试评分", "exam_submission", submissionId, String.valueOf(score));
+    }
+
+    private void autoGradeExam(Exam exam, ExamSubmission sub) {
+        ExamPaper paper = paperMapper.selectById(exam.getPaperId());
+        if (paper == null || paper.getContent() == null || sub.getAnswers() == null) return;
+        try {
+            List<DimensionScoreService.ScoreInput> scores = questionScoreHelper.autoGrade(paper.getContent(), sub.getAnswers());
+            if (scores.isEmpty()) return;
+            dimensionScoreService.replaceAutoScores("exam", sub.getId(), sub.getStudentId(), scores);
+            int earned = scores.stream().map(DimensionScoreService.ScoreInput::earnedScore)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add).intValue();
+            sub.setScore(earned);
+            sub.setStatus("graded");
+            submissionMapper.updateById(sub);
+        } catch (Exception e) {
+            log.warn("Exam auto grade skipped: examId={}, submissionId={}", exam.getId(), sub.getId(), e);
+        }
     }
 }

@@ -2,9 +2,11 @@ import { ref, onUnmounted } from 'vue'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 
+export type RealtimePayload = Record<string, unknown>
+
 export function useRealtime() {
   const connected = ref(false)
-  const lastUpdate = ref<any>(null)
+  const lastUpdate = ref<RealtimePayload | null>(null)
   let client: Client | null = null
 
   function connect() {
@@ -17,10 +19,11 @@ export function useRealtime() {
     client.activate()
   }
 
-  function subscribeTask(taskId: number, callback: (data: any) => void) {
+  function subscribeTask(taskId: number, callback: (data: RealtimePayload) => void) {
     if (!client) return
     client.subscribe(`/topic/task/${taskId}`, (msg) => {
-      const data = JSON.parse(msg.body)
+      const parsed = JSON.parse(msg.body) as unknown
+      const data = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as RealtimePayload : { value: parsed }
       lastUpdate.value = data
       callback(data)
     })

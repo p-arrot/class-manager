@@ -7,19 +7,23 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.dto.AssessmentSchemeDTO;
 import com.example.edu.modules.course.dto.CourseCreateDTO;
 import com.example.edu.modules.course.dto.CoursePageDTO;
 import com.example.edu.modules.course.dto.CourseUpdateDTO;
+import com.example.edu.modules.course.entity.AssessmentScheme;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
 import com.example.edu.modules.course.entity.Semester;
+import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.course.service.CourseService;
+import com.example.edu.modules.course.vo.AssessmentSchemeVO;
 import com.example.edu.modules.course.vo.CourseDetailVO;
 import com.example.edu.modules.course.vo.CourseVO;
 import com.example.edu.modules.user.entity.User;
@@ -46,6 +50,7 @@ public class CourseServiceImpl implements CourseService {
     private final CourseClassMapper courseClassMapper;
     private final SemesterMapper semesterMapper;
     private final LessonMapper lessonMapper;
+    private final AssessmentSchemeMapper assessmentSchemeMapper;
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
 
@@ -292,6 +297,57 @@ public class CourseServiceImpl implements CourseService {
         });
     }
 
+    @Override
+    public AssessmentSchemeVO getAssessmentScheme(Long semesterId) {
+        Semester semester = semesterMapper.selectById(semesterId);
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
+
+        AssessmentScheme scheme = assessmentSchemeMapper.selectOne(new LambdaQueryWrapper<AssessmentScheme>()
+                .eq(AssessmentScheme::getSemesterId, semesterId));
+        if (scheme == null) {
+            return AssessmentSchemeVO.builder()
+                    .semesterId(semesterId)
+                    .processPercent(50)
+                    .examPercent(50)
+                    .projectPercent(0)
+                    .build();
+        }
+        return toAssessmentSchemeVO(scheme);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AssessmentSchemeVO saveAssessmentScheme(Long semesterId, AssessmentSchemeDTO dto) {
+        validateAssessmentScheme(dto);
+        Semester semester = semesterMapper.selectById(semesterId);
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
+
+        AssessmentScheme scheme = assessmentSchemeMapper.selectOne(new LambdaQueryWrapper<AssessmentScheme>()
+                .eq(AssessmentScheme::getSemesterId, semesterId));
+        if (scheme == null) {
+            scheme = new AssessmentScheme();
+            scheme.setSemesterId(semesterId);
+            scheme.setProcessPercent(dto.getProcessPercent());
+            scheme.setExamPercent(dto.getExamPercent());
+            scheme.setProjectPercent(dto.getProjectPercent());
+            assessmentSchemeMapper.insert(scheme);
+        } else {
+            scheme.setProcessPercent(dto.getProcessPercent());
+            scheme.setExamPercent(dto.getExamPercent());
+            scheme.setProjectPercent(dto.getProjectPercent());
+            assessmentSchemeMapper.updateById(scheme);
+        }
+        auditLogService.record("设置考核方案", "semester", semesterId,
+                dto.getProcessPercent() + "/" + dto.getExamPercent() + "/" + dto.getProjectPercent());
+        return toAssessmentSchemeVO(scheme);
+    }
+
     // ========== private helpers ==========
 
     private CourseVO toVO(Course course) {
@@ -312,6 +368,23 @@ public class CourseServiceImpl implements CourseService {
                 .createdAt(course.getCreatedAt())
                 .updatedAt(course.getUpdatedAt())
                 .build();
+    }
+
+    private AssessmentSchemeVO toAssessmentSchemeVO(AssessmentScheme scheme) {
+        return AssessmentSchemeVO.builder()
+                .id(scheme.getId())
+                .semesterId(scheme.getSemesterId())
+                .processPercent(scheme.getProcessPercent())
+                .examPercent(scheme.getExamPercent())
+                .projectPercent(scheme.getProjectPercent())
+                .build();
+    }
+
+    private void validateAssessmentScheme(AssessmentSchemeDTO dto) {
+        int total = dto.getProcessPercent() + dto.getExamPercent() + dto.getProjectPercent();
+        if (total != 100) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "平时任务、考试、项目占比之和必须为100%");
+        }
     }
 
     private void checkNameDuplicate(String name, Long teacherId, Long excludeId) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
+import type { StyleValue } from 'vue'
 
 const props = defineProps<{
   emailFocused: boolean
@@ -175,7 +176,7 @@ const anyFocus = ref(false)
 watch(() => props.emailFocused || props.passwordFocused, (v) => { anyFocus.value = v })
 
 // ── Transform per character ──
-function getCharStyle(c: Persona) {
+function getCharStyle(c: Persona): StyleValue {
   const r = reacting.value[c.id]
   const typingEmail = r?.email ?? false
   const typingPassword = (r?.password ?? false) && props.passwordLength > 0 && !props.passwordVisible
@@ -279,7 +280,7 @@ function getPupilStyle(id: string, ei: number) {
       v-for="c in characters"
       :key="c.id"
       class="character"
-      :style="getCharStyle(c) as any"
+      :style="getCharStyle(c)"
     >
       <div class="eyes-row" :style="{ gap: `${c.eyeGap}px`, top: `${c.eyeY}%` }">
         <div
