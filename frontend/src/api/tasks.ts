@@ -29,8 +29,8 @@ export function listSubmissions(taskId: number, classId?: number): Promise<Submi
   return http.get(`/tasks/${taskId}/submissions`, { params: classId ? { classId } : undefined })
 }
 
-export function getTaskAnalytics(taskId: number): Promise<TaskAnalyticsVO> {
-  return http.get(`/tasks/${taskId}/analytics`)
+export function getTaskAnalytics(taskId: number, classId?: number): Promise<TaskAnalyticsVO> {
+  return http.get(`/tasks/${taskId}/analytics`, { params: classId ? { classId } : undefined })
 }
 
 export function evaluateSubmission(submissionId: number, data: SubmissionEvaluationDTO): Promise<void> {

@@ -81,7 +81,7 @@ async function submitGrade() {
   if (!sub) return
   const scoreRows = buildQuestionScoreRows(sub.id)
   if (!scoreRows.length) {
-    message.warning('请至少填写一个题目维度得分')
+    message.warning('请至少填写一个题目的维度得分')
     return
   }
   try {
@@ -122,7 +122,9 @@ function getQuestionScore(subId: number, questionId: string, dimension: string) 
   const existing = questionScores.value[subId]?.[questionId]?.[dimension]
   if (typeof existing === 'number') return existing
   const question = schema.value.questions?.find(item => item.id === questionId)
-  return question?.autoGrade && isCorrect(question) ? normalizeDimensionScores(question.dimensionScores).find(item => item.dimension === dimension)?.maxScore ?? 0 : 0
+  return question?.autoGrade && isCorrect(question)
+    ? normalizeDimensionScores(question.dimensionScores).find(item => item.dimension === dimension)?.maxScore ?? 0
+    : 0
 }
 
 function setQuestionScore(subId: number, questionId: string, dimension: string, value: number | null) {
@@ -152,6 +154,19 @@ function isCorrect(question: TaskQuestion) {
     return [...expected].map(String).sort().join('|') === [...actual].map(String).sort().join('|')
   }
   return String(expected) === String(actual)
+}
+
+function statusType(status: string) {
+  if (status === 'graded') return 'success'
+  if (status === 'special') return 'warning'
+  return 'info'
+}
+
+function statusLabel(status: string) {
+  if (status === 'submitted') return '待评分'
+  if (status === 'graded') return '已评分'
+  if (status === 'special') return '特殊处理'
+  return status
 }
 
 async function previewFile(file: ArtifactFile) {
@@ -186,29 +201,34 @@ onMounted(loadSubmissions)
 </script>
 
 <template>
-  <div class="page">
-    <NButton text @click="router.back()">
+  <div class="page grading-page">
+    <NButton text class="back-button" @click="router.back()">
       <template #icon><NIcon><ArrowBackOutline /></NIcon></template>
       返回
     </NButton>
-    <PageHeader title="批量评分" :subtitle="`${task?.title || '任务'} · ${submissions.length} 份提交 · ${currentIdx + 1}/${submissions.length || 1}`" />
+    <PageHeader title="学习单批改" :subtitle="`${task?.title || '任务'} · ${submissions.length} 份提交 · ${currentIdx + 1}/${submissions.length || 1}`" />
 
     <NSpin :show="loading">
       <div v-if="current" class="grading-area">
         <div class="student-bar">
-          <span class="student-name">{{ current.studentName || '学生' }}</span>
-          <span class="student-no">{{ current.studentNo }}</span>
-          <NTag size="small" :type="current.status === 'submitted' ? 'warning' : current.status === 'graded' ? 'success' : 'default'" :bordered="false">
-            {{ current.status === 'submitted' ? '待评分' : current.status === 'graded' ? '已评分' : current.status }}
+          <div class="student-main">
+            <span class="student-name">{{ current.studentName || '学生' }}</span>
+            <span class="student-no">{{ current.studentNo }}</span>
+          </div>
+          <NTag size="small" :type="statusType(current.status)" :bordered="false">
+            {{ statusLabel(current.status) }}
           </NTag>
-          <NButton size="tiny" quaternary class="profile-btn" aria-label="查看学生档案" @click="openProfile(current.studentId, current.studentName || '学生')">
+          <NButton size="small" quaternary class="profile-btn" aria-label="查看学生档案" @click="openProfile(current.studentId, current.studentName || '学生')">
             <template #icon><NIcon :size="14"><PersonOutline /></NIcon></template>
-            查看档案
+            学生档案
           </NButton>
         </div>
 
         <div class="content-preview">
-          <div class="content-label">提交内容</div>
+          <div class="content-label">
+            <span>提交内容</span>
+            <small>每题按核心素养维度评分，提交后同步到学生评价数据。</small>
+          </div>
 
           <WorksheetSubmissionPanel
             v-if="task?.type === 'worksheet'"
@@ -268,20 +288,97 @@ onMounted(loadSubmissions)
 </template>
 
 <style scoped>
-.page { max-width: 920px; margin: 0 auto; }
-.grading-area { margin-top: 16px; }
-.student-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 1px solid var(--n-border-color); border-radius: 8px; margin-bottom: 16px; }
-.student-name { font-size: 16px; font-weight: 600; }
-.student-no { font-size: 13px; color: var(--n-text-color-3); }
-.profile-btn { margin-left: auto; }
-.content-preview { margin-bottom: 20px; }
-.content-label { font-size: 13px; color: var(--n-text-color-3); margin-bottom: 6px; }
-.actions { margin-top: 24px; }
-.preview-modal { width: 90vw; max-width: 1100px; height: 85vh; }
-.preview-body { height: calc(85vh - 90px); display: flex; align-items: stretch; justify-content: stretch; min-height: 0; }
-.preview-frame { display: block; width: 100%; height: 100%; min-width: 100%; min-height: 100%; border: 0; flex: 1 1 auto; }
+.grading-page {
+  max-width: 980px;
+  margin: 0 auto;
+}
+.back-button {
+  margin-bottom: 8px;
+}
+.grading-area {
+  margin-top: 16px;
+}
+.student-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  background: #ffffff;
+}
+.student-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.student-name {
+  color: #1c1917;
+  font-size: 16px;
+  font-weight: 600;
+}
+.student-no {
+  color: #78716c;
+  font-size: 13px;
+}
+.profile-btn {
+  margin-left: auto;
+}
+.content-preview {
+  margin-bottom: 20px;
+}
+.content-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #44403c;
+  font-size: 13px;
+}
+.content-label span {
+  font-weight: 600;
+}
+.content-label small {
+  color: #78716c;
+  font-size: 12px;
+}
+.actions {
+  margin-top: 24px;
+}
+.preview-modal {
+  width: 90vw;
+  max-width: 1100px;
+  height: 85vh;
+}
+.preview-body {
+  height: calc(85vh - 90px);
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 0;
+}
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  border: 0;
+  flex: 1 1 auto;
+}
 @media (max-width: 720px) {
-  .student-bar { align-items: flex-start; flex-direction: column; }
-  .profile-btn { margin-left: 0; }
+  .student-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .profile-btn {
+    margin-left: 0;
+  }
+  .content-label {
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 </style>

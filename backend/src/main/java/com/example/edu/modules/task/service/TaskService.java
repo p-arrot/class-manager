@@ -33,7 +33,7 @@ public interface TaskService {
 
     Map<String, Object> getSubmissionStats(Long taskId);
 
-    TaskAnalyticsVO getTaskAnalytics(Long taskId);
+    TaskAnalyticsVO getTaskAnalytics(Long taskId, Long classId);
 
     SubmissionVO getMySubmission(Long taskId, Long studentId);
 }

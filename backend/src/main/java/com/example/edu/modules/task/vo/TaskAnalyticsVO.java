@@ -22,8 +22,22 @@ public class TaskAnalyticsVO {
     private Integer notSubmittedCount;
     private Double submissionRate;
     private Double accuracyRate;
+    private Integer questionCount;
+    private Integer autoQuestionCount;
+    private Integer manualQuestionCount;
+    private Long selectedClassId;
+    private List<ClassScopeVO> classScopes;
     private List<QuestionAnalyticsVO> questions;
     private List<StudentTaskAnswerVO> submissions;
+
+    @Data
+    @Builder
+    public static class ClassScopeVO {
+        private Long id;
+        private String grade;
+        private String name;
+        private Integer studentCount;
+    }
 
     @Data
     @Builder

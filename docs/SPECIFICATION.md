@@ -82,13 +82,14 @@
 - user ✅ — 用户、学生、教师管理
 - classes ✅ — 班级管理
 - course ✅ — 课程 + 学期 + 课时 + 课程资源文件夹
-- task 🔲 — 课堂任务、学习单、课堂作品（Phase 4）
-- evaluation 🔲 — 四维度评价（Phase 5）
-- exam 🔲 — 试卷和考试（Phase 6a）
-- project 🔲 — 项目化学习（Phase 6b）
-- drive 🔲 — 学生网盘（Phase 7）
-- stats 🔲 — 统计分析、雷达图、学期总评（Phase 5/7）
-- realtime 🔲 — WebSocket 实时汇总（Phase 4）
+- task ✅ — 课堂任务、学习单、课堂作品
+- evaluation ✅ — 四维度评价
+- exam ✅ — 试卷和考试
+- project ✅ — 项目化学习
+- drive ✅ — 学生网盘
+- stats ✅ — 统计分析、学期总评
+- realtime ✅ — WebSocket 实时汇总
+- dashboard ✅ — 首页聚合接口
 - audit ✅ — 审计日志
 
 > 注：`semester` 和 `lesson` 作为 `course` 模块的子包实现，不独立为顶层模块。`school` 表预留但未实现 CRUD。
@@ -110,14 +111,14 @@ src/main/java/com/example/edu
 │   ├── classes/      # ✅ 班级管理
 │   ├── course/       # ✅ 课程 + 学期 + 课时 + 资源文件夹
 │   ├── audit/        # ✅ 审计日志
-│   ├── task/         # 🔲 Phase 4
-│   ├── evaluation/   # 🔲 Phase 5
-│   ├── exam/         # 🔲 Phase 6a
-│   ├── project/      # 🔲 Phase 6b
-│   ├── drive/        # 🔲 Phase 7
-│   ├── stats/        # 🔲 Phase 5/7
-│   └── realtime/     # 🔲 Phase 4
-└── infrastructure/   # 🔲 MinIO / Redis / Preview（待 Phase 3b）
+│   ├── task/         # ✅
+│   ├── evaluation/   # ✅
+│   ├── exam/         # ✅
+│   ├── project/      # ✅
+│   ├── drive/        # ✅
+│   ├── stats/        # ✅
+│   └── realtime/     # ✅
+└── infrastructure/    # ✅ minio / preview
 
 每个业务模块按照以下结构组织：
 
@@ -2047,19 +2048,19 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
 | Phase 2 | 班级/教师/学生管理 + Excel 导入 | ✅ |
 | Phase F0 | 前端脚手架：登录 + 三套 Layout + 路由守卫 | ✅ |
 | Phase 3a | 后端：Course/Semester/Lesson + 课程资源文件夹 | ✅ |
-| Phase F1 | 前端：管理员管理页 + 教师/学生课程页 | 🔄 |
+| Phase F1 | 前端：管理员管理页 + 教师/学生课程页 | ✅ |
 | Phase 3b | 后端：MinIO 文件基础设施（预签名 URL、kkFileView） | ✅ |
 | Phase F2 | 前端：文件组件（Upload/Preview/Tree）+ 课程资源管理 | ✅ |
-| Phase 4 | 后端：课堂任务（worksheet/artifact）+ WebSocket | ⬜ |
-| Phase F3 | 前端：任务创建 + 学习单填写 + 作品提交 + 实时统计 | ⬜ |
-| Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ⬜ |
-| Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ⬜ |
-| Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ⬜ |
-| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ⬜ |
-| Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ⬜ |
-| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ⬜ |
-| Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ⬜ |
-| Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ⬜ |
+| Phase 4 | 后端：课堂任务（worksheet/artifact）+ WebSocket | ✅ |
+| Phase F3 | 前端：任务创建 + 学习单填写 + 作品提交 + 实时统计 | ✅ |
+| Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ✅ |
+| Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ✅ |
+| Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ✅ |
+| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ✅ |
+| Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ✅ |
+| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ✅ |
+| Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ✅ |
+| Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ✅ |
 
 ---
 

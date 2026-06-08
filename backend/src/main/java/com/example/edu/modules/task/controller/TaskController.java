@@ -105,8 +105,9 @@ public class TaskController {
     @Operation(summary = "教师查看任务完成情况数据看板")
     @GetMapping("/api/tasks/{taskId}/analytics")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public R<TaskAnalyticsVO> getTaskAnalytics(@PathVariable Long taskId) {
-        return R.ok(taskService.getTaskAnalytics(taskId));
+    public R<TaskAnalyticsVO> getTaskAnalytics(@PathVariable Long taskId,
+                                               @RequestParam(required = false) Long classId) {
+        return R.ok(taskService.getTaskAnalytics(taskId, classId));
     }
 
     @Operation(summary = "教师查看任务提交列表")

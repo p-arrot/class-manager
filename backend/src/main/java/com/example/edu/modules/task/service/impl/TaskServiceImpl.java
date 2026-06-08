@@ -44,6 +44,7 @@ import java.time.format.DateTimeParseException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -303,12 +304,12 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public TaskAnalyticsVO getTaskAnalytics(Long taskId) {
+    public TaskAnalyticsVO getTaskAnalytics(Long taskId, Long classId) {
         Task task = taskMapper.selectById(taskId);
         if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
         checkTaskOwner(task);
 
-        List<User> students = getCourseStudents(task);
+        List<User> students = getCourseStudents(task, classId);
         Map<Long, User> studentMap = students.stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
 
@@ -316,6 +317,12 @@ public class TaskServiceImpl implements TaskService {
                 new LambdaQueryWrapper<Submission>()
                         .eq(Submission::getTaskId, taskId)
                         .orderByDesc(Submission::getSubmittedAt));
+        if (classId != null) {
+            Set<Long> studentIds = studentMap.keySet();
+            subs = subs.stream()
+                    .filter(sub -> studentIds.contains(sub.getStudentId()))
+                    .toList();
+        }
         long submitted = subs.stream().filter(s -> "submitted".equals(s.getStatus())).count();
         long graded = subs.stream().filter(s -> "graded".equals(s.getStatus())).count();
         long special = subs.stream().filter(s -> "special".equals(s.getStatus())).count();
@@ -326,6 +333,9 @@ public class TaskServiceImpl implements TaskService {
                 ? parseQuestions(task.getFormSchema())
                 : List.of();
         List<TaskAnalyticsVO.QuestionAnalyticsVO> questions = buildQuestionAnalytics(questionDefs, subs, studentMap);
+        int autoQuestionCount = (int) questions.stream()
+                .filter(TaskAnalyticsVO.QuestionAnalyticsVO::getAutoGradable)
+                .count();
         double accuracyRate = questions.stream()
                 .filter(TaskAnalyticsVO.QuestionAnalyticsVO::getAutoGradable)
                 .mapToDouble(TaskAnalyticsVO.QuestionAnalyticsVO::getAccuracyRate)
@@ -343,6 +353,11 @@ public class TaskServiceImpl implements TaskService {
                 .notSubmittedCount(Math.max(total - completed, 0))
                 .submissionRate(percent(completed, total))
                 .accuracyRate(round(accuracyRate))
+                .questionCount(questions.size())
+                .autoQuestionCount(autoQuestionCount)
+                .manualQuestionCount(questions.size() - autoQuestionCount)
+                .selectedClassId(classId)
+                .classScopes(List.of())
                 .questions(questions)
                 .submissions(subs.stream().map(sub -> {
                     User student = studentMap.get(sub.getStudentId());
@@ -484,6 +499,10 @@ public class TaskServiceImpl implements TaskService {
     }
 
     private List<User> getCourseStudents(Task task) {
+        return getCourseStudents(task, null);
+    }
+
+    private List<User> getCourseStudents(Task task, Long classId) {
         Lesson lesson = lessonMapper.selectById(task.getLessonId());
         if (lesson == null) throw new BizException(ErrorCode.LESSON_NOT_FOUND);
         Semester semester = semesterMapper.selectById(lesson.getSemesterId());
@@ -494,6 +513,12 @@ public class TaskServiceImpl implements TaskService {
                 new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, course.getId()));
         Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(Collectors.toSet());
         if (classIds.isEmpty()) return List.of();
+        if (classId != null) {
+            if (!classIds.contains(classId)) {
+                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+            }
+            classIds = Set.of(classId);
+        }
         return userMapper.selectList(new LambdaQueryWrapper<User>()
                 .eq(User::getRole, "student")
                 .in(User::getClassId, classIds));
@@ -504,6 +529,9 @@ public class TaskServiceImpl implements TaskService {
         try {
             Map<String, Object> schema = JSON.readValue(schemaJson, new TypeReference<>() {});
             Object questions = schema.get("questions");
+            if (!(questions instanceof List<?>)) {
+                questions = schema.get("fields");
+            }
             if (!(questions instanceof List<?> list)) return List.of();
             return list.stream()
                     .map(this::asStringObjectMap)
@@ -519,6 +547,13 @@ public class TaskServiceImpl implements TaskService {
         if (!(value instanceof Map<?, ?> raw)) return null;
         Map<String, Object> normalized = new LinkedHashMap<>();
         raw.forEach((key, item) -> normalized.put(String.valueOf(key), item));
+        if (!normalized.containsKey("stem") && normalized.containsKey("label")) {
+            normalized.put("stem", normalized.get("label"));
+        }
+        Object type = normalized.get("type");
+        if ("radio".equals(type)) normalized.put("type", "single");
+        if ("checkbox".equals(type)) normalized.put("type", "multiple");
+        if ("textarea".equals(type)) normalized.put("type", "short");
         return normalized;
     }
 
@@ -602,7 +637,7 @@ public class TaskServiceImpl implements TaskService {
     private String questionStem(Map<String, Object> question) {
         Object stem = question.get("stem");
         if (stem instanceof String text && !text.isBlank()) return text;
-        return List.of(question.get("title"), question.get("markdown")).stream()
+        return Stream.of(question.get("title"), question.get("markdown"))
                 .filter(Objects::nonNull)
                 .map(String::valueOf)
                 .filter(text -> !text.isBlank())

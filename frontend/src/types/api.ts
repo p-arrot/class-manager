@@ -315,6 +315,16 @@ export interface TaskAnalyticsVO {
   notSubmittedCount: number
   submissionRate: number
   accuracyRate: number
+  questionCount: number
+  autoQuestionCount: number
+  manualQuestionCount: number
+  selectedClassId: number | null
+  classScopes: Array<{
+    id: number
+    grade: string | null
+    name: string | null
+    studentCount: number
+  }>
   questions: QuestionAnalyticsVO[]
   submissions: StudentTaskAnswerVO[]
 }

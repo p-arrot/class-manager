@@ -70,18 +70,26 @@ function dimensionLabel(key: string) {
 <template>
   <div class="worksheet-result">
     <div v-if="autoSummary" class="auto-score">
-      自动批改：{{ autoSummary.earned }}/{{ autoSummary.total }} 分 · {{ autoSummary.correct }}/{{ autoSummary.count }} 题正确
+      <span class="auto-label">自动判题</span>
+      <strong>{{ autoSummary.earned }}/{{ autoSummary.total }} 分</strong>
+      <span>{{ autoSummary.correct }}/{{ autoSummary.count }} 题正确</span>
     </div>
     <div v-for="(question, index) in questions" :key="question.id" class="answer-row">
-      <div class="question-title">第 {{ index + 1 }} 题</div>
+      <div class="question-header">
+        <div>
+          <div class="question-title">第 {{ index + 1 }} 题</div>
+          <div class="question-type">{{ question.autoGrade ? '自动评分题' : '人工评分题' }}</div>
+        </div>
+        <NTag v-if="question.autoGrade" size="small" :type="isCorrect(question) ? 'success' : 'error'" :bordered="false">
+          {{ isCorrect(question) ? '正确' : '错误' }}
+        </NTag>
+        <NTag v-else size="small" :bordered="false">逐题评分</NTag>
+      </div>
       <MarkdownView class="question-md" :content="questionStem(question) || '未填写题干'" />
       <img v-if="question.imageUrl" :src="question.imageUrl" class="question-image" alt="题目配图" />
       <div class="answer-line">
         <span class="answer-label">学生作答</span>
         <span>{{ answerText(question) }}</span>
-        <NTag v-if="question.autoGrade" size="tiny" :type="isCorrect(question) ? 'success' : 'error'" :bordered="false">
-          {{ isCorrect(question) ? '正确' : '错误' }}
-        </NTag>
       </div>
       <div v-if="question.autoGrade" class="expected-line">参考答案：{{ expectedText(question) || '未设置' }}</div>
       <div class="question-score-grid">
@@ -108,19 +116,117 @@ function dimensionLabel(key: string) {
 </template>
 
 <style scoped>
-.worksheet-result { display: flex; flex-direction: column; gap: 12px; }
-.auto-score { padding: 10px 12px; border-radius: 8px; background: rgba(24, 160, 88, 0.1); color: var(--n-success-color); font-size: 13px; font-weight: 600; }
-.answer-row { padding: 14px 16px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-color); }
-.question-title { font-size: 14px; font-weight: 600; line-height: 1.5; }
-.question-md { margin-top: 6px; padding: 10px 12px; border-radius: 8px; background: var(--n-color-embedded); }
-.question-image { display: block; max-width: 360px; width: 100%; max-height: 220px; object-fit: contain; margin-top: 10px; border-radius: 6px; border: 1px solid var(--n-border-color); }
-.answer-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-size: 14px; }
-.answer-label { color: var(--n-text-color-3); font-size: 12px; }
-.expected-line { margin-top: 6px; color: var(--n-text-color-3); font-size: 12px; }
-.question-score-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--n-border-color); }
-.question-score-cell { display: grid; grid-template-columns: minmax(110px, 1fr) 110px 42px; align-items: center; gap: 8px; font-size: 13px; color: var(--n-text-color-2); }
-.score-max { color: var(--n-text-color-3); }
-.content-text { padding: 12px 16px; border: 1px solid var(--n-border-color); border-radius: 8px; font-size: 14px; min-height: 60px; white-space: pre-wrap; background: var(--n-color-embedded); }
+.worksheet-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auto-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  background: #fafaf9;
+  color: #44403c;
+  font-size: 13px;
+}
+.auto-label {
+  color: #78716c;
+}
+.auto-score strong {
+  color: #1d4ed8;
+  font-size: 15px;
+}
+.answer-row {
+  padding: 14px 16px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+.question-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.question-title {
+  color: #1c1917;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.question-type {
+  color: #78716c;
+  font-size: 12px;
+}
+.question-md {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  background: #fafaf9;
+}
+.question-image {
+  display: block;
+  max-width: 360px;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  margin-top: 10px;
+  border-radius: 6px;
+  border: 1px solid #e7e5e0;
+}
+.answer-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  color: #1c1917;
+  font-size: 14px;
+}
+.answer-label {
+  color: #78716c;
+  font-size: 12px;
+}
+.expected-line {
+  margin-top: 6px;
+  color: #78716c;
+  font-size: 12px;
+}
+.question-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e7e5e0;
+}
+.question-score-cell {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 110px 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fafaf9;
+  color: #44403c;
+  font-size: 13px;
+}
+.score-max {
+  color: #78716c;
+}
+.content-text {
+  padding: 12px 16px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  background: #f5f4f1;
+  font-size: 14px;
+  min-height: 60px;
+  white-space: pre-wrap;
+}
 @media (max-width: 720px) {
   .question-score-grid { grid-template-columns: 1fr; }
   .question-score-cell { grid-template-columns: 1fr; }

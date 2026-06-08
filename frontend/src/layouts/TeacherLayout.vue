@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { NSelect } from 'naive-ui'
 import {
   BarChartOutline,
@@ -16,6 +17,7 @@ import type { ClassVO } from '@/types/api'
 
 const classFilter = useClassFilterStore()
 const classes = ref<ClassVO[]>([])
+const route = useRoute()
 
 listAllClasses().then(list => { classes.value = list }).catch(() => {})
 
@@ -23,6 +25,7 @@ const selectedClassId = computed({
   get: () => classFilter.selectedClassId,
   set: (value) => classFilter.setClassId(value),
 })
+const showClassFilter = computed(() => route.path === '/teacher/courses')
 
 const menu = [
   { label: '工作台', key: '/teacher/home', icon: BarChartOutline, match: ['/teacher/home'] },
@@ -47,9 +50,10 @@ const menu = [
   <AppShell brand="课堂管理" section="教师工作台" :menu="menu">
     <template #header-left>
       <NSelect
+        v-if="showClassFilter"
         v-model:value="selectedClassId"
         :options="classes.map(c => ({ label: c.grade + '级' + c.name, value: c.id }))"
-        placeholder="筛选班级"
+        placeholder="课程班级筛选"
         clearable
         class="class-filter"
         size="small"

@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { init, use, type ECharts, type ComposeOption } from 'echarts/core'
+import { init, use, type ComposeOption, type ECharts } from 'echarts/core'
 import { BarChart, PieChart, type BarSeriesOption, type PieSeriesOption } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent, type GridComponentOption, type LegendComponentOption, type TooltipComponentOption } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { NButton, NDataTable, NEmpty, NIcon, NModal, NProgress, NSpin, NTag, useMessage } from 'naive-ui'
-import type { DataTableColumns } from 'naive-ui'
-import { ArrowBackOutline, RefreshOutline } from '@vicons/ionicons5'
-import { getTaskAnalytics } from '@/api/tasks'
+import { NButton, NDataTable, NEmpty, NIcon, NModal, NProgress, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
+import type { DataTableColumns, SelectOption } from 'naive-ui'
+import { ArrowBackOutline, CreateOutline, RefreshOutline } from '@vicons/ionicons5'
+import { listAllClasses } from '@/api/classes'
+import { getCourse } from '@/api/courses'
+import { getLesson } from '@/api/lessons'
+import { getSemester } from '@/api/semesters'
+import { getTask, getTaskAnalytics } from '@/api/tasks'
 import MarkdownView from '@/components/MarkdownView.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { useRealtime } from '@/composables/useRealtime'
 import { formatDate } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
-import type { QuestionAnalyticsVO, StudentAnswerVO, StudentTaskAnswerVO, TaskAnalyticsVO } from '@/types/api'
+import type { ClassVO, QuestionAnalyticsVO, StudentAnswerVO, StudentTaskAnswerVO, TaskAnalyticsVO, TaskDetailVO } from '@/types/api'
 
 use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
@@ -25,7 +29,12 @@ const router = useRouter()
 const message = useMessage()
 const taskId = Number(route.params.taskId)
 const loading = ref(false)
+const metaLoading = ref(false)
 const analytics = ref<TaskAnalyticsVO | null>(null)
+const task = ref<TaskDetailVO | null>(null)
+const classes = ref<ClassVO[]>([])
+const courseClassIds = ref<number[]>([])
+const selectedClassId = ref(0)
 const activeQuestion = ref<QuestionAnalyticsVO | null>(null)
 const submissionChartRef = ref<HTMLDivElement | null>(null)
 const accuracyChartRef = ref<HTMLDivElement | null>(null)
@@ -35,37 +44,76 @@ const realtime = useRealtime()
 
 const isWorksheet = computed(() => analytics.value?.type === 'worksheet')
 const questionRows = computed(() => analytics.value?.questions ?? [])
+const autoQuestions = computed(() => questionRows.value.filter(item => item.autoGradable))
+const manualQuestions = computed(() => questionRows.value.filter(item => !item.autoGradable))
+const classOptions = computed<SelectOption[]>(() => {
+  const classMap = new Map(classes.value.map(item => [item.id, item]))
+  return [
+    { label: '全部授课班级', value: 0 },
+    ...courseClassIds.value.map(id => {
+      const item = classMap.get(id)
+      return {
+        label: item ? `${item.grade}级${item.name}` : `班级 ${id}`,
+        value: id,
+      }
+    }),
+  ]
+})
+const scopeLabel = computed(() => classOptions.value.find(item => item.value === selectedClassId.value)?.label ?? '全部授课班级')
+const questionCount = computed(() => analytics.value?.questionCount ?? questionRows.value.length)
+const autoQuestionCount = computed(() => analytics.value?.autoQuestionCount ?? autoQuestions.value.length)
+const manualQuestionCount = computed(() => analytics.value?.manualQuestionCount ?? manualQuestions.value.length)
 
 const submissionColumns: DataTableColumns<StudentTaskAnswerVO> = [
-  { title: '学号', key: 'studentNo', width: 120, render: row => row.studentNo || '-' },
-  { title: '姓名', key: 'studentName', width: 120, render: row => row.studentName || '-' },
+  { title: '学号', key: 'studentNo', width: 150, render: row => row.studentNo || '-' },
+  { title: '姓名', key: 'studentName', width: 140, render: row => row.studentName || '-' },
   {
     title: '状态',
     key: 'status',
-    width: 100,
-    render: row => h(NTag, { size: 'small', bordered: false, type: row.status === 'graded' ? 'success' : 'warning' }, () => statusLabel(row.status)),
+    width: 110,
+    render: row => h(NTag, { size: 'small', bordered: false, type: statusType(row.status) }, () => statusLabel(row.status)),
   },
-  { title: '提交时间', key: 'submittedAt', width: 170, render: row => row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '-' },
+  { title: '提交时间', key: 'submittedAt', width: 180, render: row => row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '-' },
 ]
 
 const answerColumns: DataTableColumns<StudentAnswerVO> = [
-  { title: '学号', key: 'studentNo', width: 120, render: row => row.studentNo || '-' },
-  { title: '姓名', key: 'studentName', width: 120, render: row => row.studentName || '-' },
+  { title: '学号', key: 'studentNo', width: 150, render: row => row.studentNo || '-' },
+  { title: '姓名', key: 'studentName', width: 140, render: row => row.studentName || '-' },
   { title: '作答', key: 'answer', render: row => answerText(row.answer) },
   {
     title: '结果',
     key: 'correct',
-    width: 90,
+    width: 110,
     render: row => row.correct === null
-      ? h(NTag, { size: 'small', bordered: false }, () => '未自动判定')
+      ? h(NTag, { size: 'small', bordered: false }, () => '待人工评阅')
       : h(NTag, { size: 'small', bordered: false, type: row.correct ? 'success' : 'error' }, () => row.correct ? '正确' : '错误'),
   },
 ]
 
+async function loadMeta() {
+  metaLoading.value = true
+  try {
+    task.value = await getTask(taskId)
+    if (!task.value?.lessonId) return
+    const lesson = await getLesson(task.value.lessonId)
+    const semester = await getSemester(lesson.semesterId)
+    const [course, allClasses] = await Promise.all([
+      getCourse(semester.courseId),
+      listAllClasses(),
+    ])
+    courseClassIds.value = course.classIds ?? []
+    classes.value = allClasses
+  } catch (e) {
+    message.error(getErrorMessage(e, '加载任务范围失败'))
+  } finally {
+    metaLoading.value = false
+  }
+}
+
 async function loadAnalytics(showToast = false) {
   loading.value = true
   try {
-    analytics.value = await getTaskAnalytics(taskId)
+    analytics.value = await getTaskAnalytics(taskId, selectedClassId.value > 0 ? selectedClassId.value : undefined)
     renderCharts()
     if (showToast) message.success('数据已刷新')
   } catch (e) {
@@ -87,19 +135,19 @@ function renderSubmissionChart() {
   if (!submissionChartRef.value || !analytics.value) return
   if (!submissionChart) submissionChart = init(submissionChartRef.value)
   const data = [
-    { name: '已提交', value: analytics.value.submittedCount },
-    { name: '未提交', value: analytics.value.notSubmittedCount },
-    { name: '特殊处理', value: analytics.value.specialCount },
+    { name: '已提交', value: analytics.value.submittedCount, itemStyle: { color: '#1f2937' } },
+    { name: '未提交', value: analytics.value.notSubmittedCount, itemStyle: { color: '#d6d3cc' } },
+    { name: '特殊处理', value: analytics.value.specialCount, itemStyle: { color: '#a16207' } },
   ]
   const option: DashboardChartOption = {
     tooltip: { trigger: 'item' },
-    legend: { bottom: 0 },
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#57534e' } },
     series: [{
       type: 'pie',
-      radius: ['52%', '72%'],
-      center: ['50%', '44%'],
+      radius: ['58%', '74%'],
+      center: ['50%', '43%'],
       data,
-      label: { formatter: '{b}: {c}' },
+      label: { formatter: '{b} {c}', color: '#44403c' },
     }],
   }
   submissionChart.setOption(option, true)
@@ -108,25 +156,41 @@ function renderSubmissionChart() {
 function renderAccuracyChart() {
   if (!accuracyChartRef.value || !analytics.value) return
   if (!accuracyChart) accuracyChart = init(accuracyChartRef.value)
-  const rows = analytics.value.questions.filter(item => item.autoGradable)
+  const rows = autoQuestions.value
   const option: DashboardChartOption = {
     tooltip: { trigger: 'axis' },
-    grid: { left: 36, right: 16, top: 24, bottom: 36 },
-    xAxis: { type: 'category', data: rows.map(item => `第${item.index}题`) },
-    yAxis: { type: 'value', max: 100 },
+    grid: { left: 38, right: 16, top: 24, bottom: 34 },
+    xAxis: {
+      type: 'category',
+      data: rows.map(item => `第${item.index}题`),
+      axisLine: { lineStyle: { color: '#d6d3cc' } },
+      axisLabel: { color: '#57534e' },
+    },
+    yAxis: {
+      type: 'value',
+      max: 100,
+      axisLabel: { color: '#57534e', formatter: '{value}%' },
+      splitLine: { lineStyle: { color: '#e7e5e0' } },
+    },
     series: [{
       type: 'bar',
       data: rows.map(item => item.accuracyRate),
-      barMaxWidth: 28,
-      itemStyle: { color: '#2563eb', borderRadius: [4, 4, 0, 0] },
+      barMaxWidth: 30,
+      itemStyle: { color: '#2563eb', borderRadius: [5, 5, 0, 0] },
     }],
   }
   accuracyChart.setOption(option, true)
 }
 
+function statusType(status: string) {
+  if (status === 'graded') return 'success'
+  if (status === 'special') return 'warning'
+  return 'info'
+}
+
 function statusLabel(status: string) {
   if (status === 'graded') return '已评分'
-  if (status === 'special') return '特殊'
+  if (status === 'special') return '特殊处理'
   return '已提交'
 }
 
@@ -137,8 +201,23 @@ function answerText(value: unknown) {
   return String(value)
 }
 
+function questionSummary(question: QuestionAnalyticsVO) {
+  if (question.autoGradable) {
+    return `${question.correctCount}/${question.answerCount} 正确`
+  }
+  return `${question.answerCount} 份作答，批改页逐题评分`
+}
+
 function optionRows(question: QuestionAnalyticsVO) {
   return Object.entries(question.optionDistribution)
+}
+
+function openGrading() {
+  router.push(`/teacher/grading/${taskId}`)
+}
+
+function classOptionLabel(option: SelectOption) {
+  return String(option.label ?? '')
 }
 
 function handleResize() {
@@ -147,9 +226,10 @@ function handleResize() {
 }
 
 watch(analytics, renderCharts)
+watch(selectedClassId, () => loadAnalytics())
 
 onMounted(async () => {
-  await loadAnalytics()
+  await Promise.all([loadMeta(), loadAnalytics()])
   realtime.connect()
   setTimeout(() => realtime.subscribeTask(taskId, () => loadAnalytics()), 300)
   window.addEventListener('resize', handleResize)
@@ -158,47 +238,72 @@ onMounted(async () => {
 onUnmounted(() => {
   submissionChart?.dispose()
   accuracyChart?.dispose()
+  realtime.disconnect()
   window.removeEventListener('resize', handleResize)
 })
 </script>
 
 <template>
   <div class="page analytics-page">
-    <PageHeader title="任务数据看板" :hint="analytics?.title || '实时查看学生完成情况'">
+    <PageHeader title="任务数据看板" :hint="analytics?.title || task?.title || '实时查看学生完成情况'">
       <template #actions>
+        <div class="header-scope">
+          <span>统计范围</span>
+          <NSelect
+            v-model:value="selectedClassId"
+            :options="classOptions"
+            :loading="metaLoading"
+            :render-label="classOptionLabel"
+            class="class-select"
+            placeholder="选择班级"
+          />
+        </div>
         <NButton size="small" @click="router.back()">
           <template #icon><NIcon :size="14"><ArrowBackOutline /></NIcon></template>
           返回
         </NButton>
-        <NButton size="small" type="primary" :loading="loading" @click="loadAnalytics(true)">
+        <NButton size="small" :loading="loading" @click="loadAnalytics(true)">
           <template #icon><NIcon :size="14"><RefreshOutline /></NIcon></template>
           刷新
+        </NButton>
+        <NButton size="small" type="primary" @click="openGrading">
+          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>
+          去批改
         </NButton>
       </template>
     </PageHeader>
 
     <NSpin :show="loading && !analytics">
       <template v-if="analytics">
+        <section class="context-strip">
+          <span>{{ scopeLabel }}</span>
+          <b>{{ analytics.totalStudents }}</b>
+          <span>名学生</span>
+          <i />
+          <b>{{ questionCount }}</b>
+          <span>道题，其中 {{ autoQuestionCount }} 道自动判题、{{ manualQuestionCount }} 道人工评分</span>
+        </section>
+
         <section class="metric-grid">
-          <div class="metric">
+          <div class="metric primary">
             <span>提交率</span>
             <strong>{{ analytics.submissionRate }}%</strong>
-            <NProgress type="line" :percentage="analytics.submissionRate" :show-indicator="false" />
+            <NProgress type="line" :percentage="analytics.submissionRate" color="#2563eb" rail-color="#dbeafe" :show-indicator="false" />
           </div>
           <div class="metric">
-            <span>已提交</span>
+            <span>已完成</span>
             <strong>{{ analytics.submittedCount }}/{{ analytics.totalStudents }}</strong>
             <p>{{ analytics.notSubmittedCount }} 人未提交</p>
           </div>
           <div class="metric">
             <span>自动题准确率</span>
             <strong>{{ isWorksheet ? `${analytics.accuracyRate}%` : '-' }}</strong>
-            <p>{{ isWorksheet ? '按可自动判定题目统计' : '课堂作品仅统计提交率' }}</p>
+            <p>只统计可自动判定的 {{ autoQuestionCount }} 道题</p>
           </div>
           <div class="metric">
             <span>实时连接</span>
             <strong>{{ realtime.connected.value ? '在线' : '连接中' }}</strong>
-            <p>学生提交后自动刷新</p>
+            <p>学生提交后自动刷新当前范围</p>
           </div>
         </section>
 
@@ -206,31 +311,32 @@ onUnmounted(() => {
           <div class="panel">
             <div class="panel-head">
               <h3>提交构成</h3>
-              <span>已提交 / 未提交 / 特殊</span>
+              <span>已提交 / 未提交 / 特殊处理</span>
             </div>
             <div ref="submissionChartRef" class="chart" />
           </div>
           <div class="panel">
             <div class="panel-head">
-              <h3>{{ isWorksheet ? '单题准确率' : '作品提交概览' }}</h3>
-              <span>{{ isWorksheet ? '自动批改题目' : '课堂作品无题目准确率' }}</span>
+              <h3>{{ isWorksheet ? '自动判题准确率' : '作品提交概览' }}</h3>
+              <span>{{ isWorksheet ? `柱状图覆盖 ${autoQuestionCount}/${questionCount} 道题` : '课堂作品无单题准确率' }}</span>
             </div>
-            <div v-if="isWorksheet && questionRows.some(item => item.autoGradable)" ref="accuracyChartRef" class="chart" />
-            <NEmpty v-else description="暂无可展示的自动题准确率" class="empty-chart" />
+            <div v-if="isWorksheet && autoQuestions.length" ref="accuracyChartRef" class="chart" />
+            <NEmpty v-else description="暂无可自动判定的题目" class="empty-chart" />
           </div>
         </section>
 
-        <section v-if="isWorksheet" class="panel">
+        <section v-if="isWorksheet" class="panel question-panel">
           <div class="panel-head">
             <h3>题目分析</h3>
-            <span>点击单题查看学生答案</span>
+            <span>自动题看正确率，人工题看作答并去批改页评分</span>
           </div>
           <div class="question-list">
             <button v-for="question in questionRows" :key="question.questionId" class="question-row" type="button" @click="activeQuestion = question">
               <span class="question-index">第 {{ question.index }} 题</span>
-              <span class="question-title">{{ question.stem || '未命名题目' }}</span>
+              <span class="question-title">{{ question.stem || '未填写题干' }}</span>
+              <span class="question-meta">{{ questionSummary(question) }}</span>
               <NTag size="small" :bordered="false" :type="question.autoGradable ? 'success' : 'default'">
-                {{ question.autoGradable ? `${question.accuracyRate}% 正确` : '手动批改' }}
+                {{ question.autoGradable ? `${question.accuracyRate}% 正确` : '人工评分题' }}
               </NTag>
             </button>
           </div>
@@ -256,10 +362,13 @@ onUnmounted(() => {
     >
       <template v-if="activeQuestion">
         <MarkdownView :content="activeQuestion.stem" />
+        <div class="modal-hint">
+          {{ activeQuestion.autoGradable ? '此题已按参考答案自动判定；仍可进入批改页复核并按维度调整分数。' : '此题为人工评分题，分数会在批改页逐份录入，并同步到核心素养维度评分。' }}
+        </div>
         <div v-if="optionRows(activeQuestion).length" class="option-bars">
           <div v-for="[option, count] in optionRows(activeQuestion)" :key="option" class="option-bar">
             <span>{{ option }}</span>
-            <NProgress type="line" :percentage="analytics?.submittedCount ? Math.round(count * 1000 / analytics.submittedCount) / 10 : 0" :indicator-placement="'inside'" />
+            <NProgress type="line" color="#2563eb" rail-color="#e7e5e0" :percentage="analytics?.submittedCount ? Math.round(count * 1000 / analytics.submittedCount) / 10 : 0" :indicator-placement="'inside'" />
             <b>{{ count }}</b>
           </div>
         </div>
@@ -270,35 +379,210 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.analytics-page { max-width: 1120px; margin: 0 auto; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.metric { min-height: 118px; padding: 16px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-color); }
-.metric span { display: block; margin-bottom: 8px; font-size: 13px; color: var(--n-text-color-3); }
-.metric strong { display: block; margin-bottom: 8px; font-size: 28px; line-height: 1.1; font-weight: 700; }
-.metric p { margin: 0; font-size: 12px; color: var(--n-text-color-3); }
-.chart-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 16px; margin-bottom: 16px; }
-.panel { padding: 16px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-color); margin-bottom: 16px; }
-.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
-.panel-head h3 { margin: 0; font-size: 16px; }
-.panel-head span { font-size: 12px; color: var(--n-text-color-3); }
-.chart { width: 100%; height: 280px; }
-.empty-chart { height: 280px; display: flex; align-items: center; justify-content: center; }
-.question-list { display: flex; flex-direction: column; gap: 8px; }
-.question-row { width: 100%; min-height: 48px; display: grid; grid-template-columns: 86px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--n-border-color); border-radius: 8px; background: var(--n-color); color: var(--n-text-color); text-align: left; cursor: pointer; }
-.question-row:hover { background: var(--n-color-embedded); }
-.question-index { font-size: 13px; font-weight: 600; }
-.question-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.question-modal { width: min(920px, calc(100vw - 32px)); }
-.option-bars { display: grid; gap: 8px; margin: 14px 0; }
-.option-bar { display: grid; grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 32px; align-items: center; gap: 10px; font-size: 13px; }
-.option-bar b { text-align: right; }
-@media (max-width: 900px) {
+.analytics-page {
+  --surface: #ffffff;
+  --surface-muted: #f5f4f1;
+  --surface-soft: #fafaf9;
+  --border: #e7e5e0;
+  --text: #1c1917;
+  --text-muted: #78716c;
+  --accent: #2563eb;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+.header-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-scope span {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.class-select {
+  width: 220px;
+}
+.context-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.context-strip b {
+  color: var(--text);
+  font-weight: 600;
+}
+.context-strip i {
+  width: 1px;
+  height: 12px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.metric {
+  min-height: 120px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.metric.primary {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+}
+.metric span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.metric strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.metric p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.panel {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  margin-bottom: 16px;
+}
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.panel-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+.panel-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.chart {
+  width: 100%;
+  height: 280px;
+}
+.empty-chart {
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.question-row {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) minmax(140px, auto) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.question-row:hover {
+  border-color: #d6d3cc;
+  background: var(--surface-muted);
+}
+.question-index {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.question-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.question-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.question-modal {
+  width: min(920px, calc(100vw - 32px));
+}
+.modal-hint {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.option-bars {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.option-bar {
+  display: grid;
+  grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+.option-bar b {
+  text-align: right;
+}
+@media (max-width: 960px) {
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chart-grid { grid-template-columns: 1fr; }
+  .question-row { grid-template-columns: 82px minmax(0, 1fr) auto; }
+  .question-meta { grid-column: 2 / 4; }
 }
-@media (max-width: 560px) {
+@media (max-width: 620px) {
+  .header-scope { order: 3; width: 100%; }
+  .class-select { width: 100%; }
   .metric-grid { grid-template-columns: 1fr; }
   .question-row { grid-template-columns: 1fr; }
+  .question-meta { grid-column: auto; white-space: normal; }
   .option-bar { grid-template-columns: 1fr; }
 }
 </style>

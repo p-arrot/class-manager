@@ -78,18 +78,80 @@ class TaskServiceImplTest {
                 submission(12L, 102L, "{\"q1\":\"B\",\"q2\":[\"C\",\"B\"]}", "submitted")
         ));
 
-        TaskAnalyticsVO analytics = service.getTaskAnalytics(1L);
+        TaskAnalyticsVO analytics = service.getTaskAnalytics(1L, null);
 
         assertThat(analytics.getTotalStudents()).isEqualTo(2);
         assertThat(analytics.getSubmittedCount()).isEqualTo(2);
         assertThat(analytics.getSubmissionRate()).isEqualTo(100.0);
         assertThat(analytics.getAccuracyRate()).isEqualTo(75.0);
+        assertThat(analytics.getQuestionCount()).isEqualTo(2);
+        assertThat(analytics.getAutoQuestionCount()).isEqualTo(2);
+        assertThat(analytics.getManualQuestionCount()).isZero();
         assertThat(analytics.getQuestions()).hasSize(2);
         assertThat(analytics.getQuestions().get(0).getAccuracyRate()).isEqualTo(50.0);
         assertThat(analytics.getQuestions().get(0).getOptionDistribution()).containsEntry("A", 1).containsEntry("B", 1);
         assertThat(analytics.getQuestions().get(1).getAccuracyRate()).isEqualTo(100.0);
         assertThat(analytics.getQuestions().get(1).getAnswers()).extracting(TaskAnalyticsVO.StudentAnswerVO::getStudentName)
                 .containsExactly("林一", "周二");
+    }
+
+    @Test
+    void analyticsIncludesLegacyWorksheetFields() {
+        setTeacher();
+        Task task = task();
+        task.setFormSchema("""
+                {
+                  "version": 1,
+                  "fields": [
+                    {"id": "q1", "type": "radio", "label": "旧版单选题", "options": ["A", "B"]}
+                  ]
+                }
+                """);
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student(101L, "2026101", "林一")));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                submission(11L, 101L, "{\"q1\":\"A\"}", "submitted")
+        ));
+
+        TaskAnalyticsVO analytics = service.getTaskAnalytics(1L, null);
+
+        assertThat(analytics.getQuestions()).hasSize(1);
+        assertThat(analytics.getQuestions().get(0).getType()).isEqualTo("single");
+        assertThat(analytics.getQuestions().get(0).getStem()).isEqualTo("旧版单选题");
+        assertThat(analytics.getQuestions().get(0).getAnswerCount()).isEqualTo(1);
+    }
+
+    @Test
+    void analyticsToleratesQuestionWithoutStemTitleOrMarkdown() {
+        setTeacher();
+        Task task = task();
+        task.setFormSchema("""
+                {
+                  "version": 3,
+                  "questions": [
+                    {"id": "q1", "type": "short_answer", "autoGrade": false}
+                  ]
+                }
+                """);
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student(101L, "2026101", "林一")));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                submission(11L, 101L, "{\"q1\":\"answer\"}", "submitted")
+        ));
+
+        TaskAnalyticsVO analytics = service.getTaskAnalytics(1L, null);
+
+        assertThat(analytics.getQuestions()).hasSize(1);
+        assertThat(analytics.getQuestions().get(0).getStem()).isEmpty();
+        assertThat(analytics.getQuestions().get(0).getAnswerCount()).isEqualTo(1);
     }
 
     private static void setTeacher() {
