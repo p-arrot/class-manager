@@ -13,6 +13,7 @@ import com.example.edu.modules.course.mapper.*;
 import com.example.edu.modules.evaluation.dto.EvaluateDTO;
 import com.example.edu.modules.evaluation.entity.Evaluation;
 import com.example.edu.modules.evaluation.mapper.EvaluationMapper;
+import com.example.edu.modules.evaluation.mapper.SubmissionFeedbackMapper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.impl.EvaluationServiceImpl;
 import com.example.edu.modules.task.entity.Submission;
@@ -40,6 +41,7 @@ import static org.mockito.Mockito.*;
 class EvaluationServiceImplTest {
 
     @Mock private EvaluationMapper evaluationMapper;
+    @Mock private SubmissionFeedbackMapper submissionFeedbackMapper;
     @Mock private DimensionScoreService dimensionScoreService;
     @Mock private SubmissionMapper submissionMapper;
     @Mock private TaskMapper taskMapper;
@@ -201,8 +203,11 @@ class EvaluationServiceImplTest {
         l.setSemesterId(1L);
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(l));
         when(taskMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(task));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission));
 
         Evaluation e1 = new Evaluation();
+        e1.setSourceType("worksheet");
+        e1.setSourceId(1L);
         e1.setDimension("AWARENESS");
         e1.setGrade("A");
         e1.setIsSpecial(0);
@@ -212,6 +217,24 @@ class EvaluationServiceImplTest {
         assertThat(evals).hasSize(1);
         assertThat(evals.get(0).getScore()).isEqualTo(100);
         assertThat(evals.get(0).getLabel()).isEqualTo("信息意识");
+        assertThat(evals.get(0).getTaskId()).isEqualTo(10L);
+        assertThat(evals.get(0).getSubmissionId()).isEqualTo(1L);
+        assertThat(evals.get(0).getTaskStatus()).isEqualTo("submitted");
+    }
+
+    @Test
+    void getStudentEvaluationsEmptyWhenNoSemesterSubmissions() {
+        Lesson l = new Lesson();
+        l.setId(1L);
+        l.setSemesterId(1L);
+        when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(l));
+        when(taskMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(task));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+
+        var evals = evaluationService.getStudentEvaluations(100L, 1L);
+
+        assertThat(evals).isEmpty();
+        verify(evaluationMapper, never()).selectList(any(LambdaQueryWrapper.class));
     }
 
     // ── getRadar ──────────────────────────────────────────────────
@@ -223,8 +246,11 @@ class EvaluationServiceImplTest {
         l.setSemesterId(1L);
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(l));
         when(taskMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(task));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission));
 
         Evaluation e1 = new Evaluation();
+        e1.setSourceType("worksheet");
+        e1.setSourceId(1L);
         e1.setDimension("AWARENESS");
         e1.setGrade("A");
         e1.setIsSpecial(0);
@@ -254,8 +280,11 @@ class EvaluationServiceImplTest {
         l.setSemesterId(1L);
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(l));
         when(taskMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(task));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission));
 
         Evaluation e1 = new Evaluation();
+        e1.setSourceType("worksheet");
+        e1.setSourceId(1L);
         e1.setDimension("COMPUTING");
         e1.setGrade("B");
         e1.setIsSpecial(0);

@@ -21,6 +21,7 @@ import com.example.edu.modules.task.mapper.SubmissionMapper;
 import com.example.edu.modules.task.mapper.TaskMapper;
 import com.example.edu.modules.task.service.impl.TaskServiceImpl;
 import com.example.edu.modules.task.vo.TaskAnalyticsVO;
+import com.example.edu.modules.task.vo.TaskResultVO;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -36,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +56,7 @@ class TaskServiceImplTest {
     @Mock private RealtimeService realtimeService;
     @Mock private DimensionScoreService dimensionScoreService;
     @Mock private QuestionScoreHelper questionScoreHelper;
+    @Mock private TaskResultAssembler taskResultAssembler;
 
     @InjectMocks
     private TaskServiceImpl service;
@@ -81,7 +84,10 @@ class TaskServiceImplTest {
         TaskAnalyticsVO analytics = service.getTaskAnalytics(1L, null);
 
         assertThat(analytics.getTotalStudents()).isEqualTo(2);
-        assertThat(analytics.getSubmittedCount()).isEqualTo(2);
+        assertThat(analytics.getSubmittedCount()).isEqualTo(1);
+        assertThat(analytics.getGradedCount()).isEqualTo(1);
+        assertThat(analytics.getSpecialCount()).isZero();
+        assertThat(analytics.getNotSubmittedCount()).isZero();
         assertThat(analytics.getSubmissionRate()).isEqualTo(100.0);
         assertThat(analytics.getAccuracyRate()).isEqualTo(75.0);
         assertThat(analytics.getQuestionCount()).isEqualTo(2);
@@ -154,8 +160,42 @@ class TaskServiceImplTest {
         assertThat(analytics.getQuestions().get(0).getAnswerCount()).isEqualTo(1);
     }
 
+    @Test
+    void getMyResultChecksAccessAndDelegatesToAssembler() {
+        setStudent(101L);
+        Task task = task();
+        TaskResultVO expected = TaskResultVO.builder().status("graded").build();
+
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        when(taskResultAssembler.build(task, 101L)).thenReturn(expected);
+
+        TaskResultVO result = service.getMyResult(1L, 101L);
+
+        assertThat(result).isSameAs(expected);
+    }
+
+    @Test
+    void studentCannotReadAnotherStudentsSubmissionById() {
+        setStudent(102L);
+        when(submissionMapper.selectById(11L)).thenReturn(submission(11L, 101L, "{\"q1\":\"A\"}", "graded"));
+        when(taskMapper.selectById(1L)).thenReturn(task());
+
+        assertThatThrownBy(() -> service.getSubmission(11L))
+                .hasMessageContaining("无权操作该课程");
+    }
+
     private static void setTeacher() {
         LoginUser loginUser = new LoginUser(9L, "teacher01", "teacher", null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities()));
+    }
+
+    private static void setStudent(Long id) {
+        LoginUser loginUser = new LoginUser(id, "student" + id, "student", 10L);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities()));
     }
@@ -226,4 +266,5 @@ class TaskServiceImplTest {
         submission.setSubmittedAt(LocalDateTime.now());
         return submission;
     }
+
 }

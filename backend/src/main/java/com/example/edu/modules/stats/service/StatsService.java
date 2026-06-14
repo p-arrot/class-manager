@@ -2,11 +2,18 @@ package com.example.edu.modules.stats.service;
 
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.edu.common.exception.BizException;
+import com.example.edu.common.result.ErrorCode;
 import com.example.edu.modules.audit.service.AuditLogService;
 import com.example.edu.modules.course.entity.AssessmentScheme;
+import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.Lesson;
+import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
+import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
+import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.entity.DimensionScore;
 import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
 import com.example.edu.modules.exam.entity.Exam;
@@ -50,6 +57,8 @@ public class StatsService {
     private final SubmissionMapper submissionMapper;
     private final TaskMapper taskMapper;
     private final LessonMapper lessonMapper;
+    private final SemesterMapper semesterMapper;
+    private final CourseMapper courseMapper;
     private final AssessmentSchemeMapper assessmentSchemeMapper;
     private final UserMapper userMapper;
     private final SchoolClassMapper schoolClassMapper;
@@ -63,6 +72,7 @@ public class StatsService {
             Double resultScore, Double totalScore, String totalGrade, String remark) {}
 
     public List<GradeRow> calculateSemesterGrades(Long semesterId) {
+        checkSemesterAccess(semesterId);
         AssessmentScheme scheme = getScheme(semesterId);
         // 1. Collect all tasks in this semester's lessons
         List<Lesson> lessons = lessonMapper.selectList(
@@ -250,6 +260,18 @@ public class StatsService {
         scheme.setExamPercent(50);
         scheme.setProjectPercent(0);
         return scheme;
+    }
+
+    private void checkSemesterAccess(Long semesterId) {
+        Semester semester = semesterMapper.selectById(semesterId);
+        if (semester == null) {
+            throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        }
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) {
+            throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        }
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
     }
 
     private static Double calculateWeightedScore(List<Double> scores, List<Integer> percents) {

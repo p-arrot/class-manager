@@ -5,6 +5,11 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.Semester;
+import com.example.edu.modules.course.mapper.CourseMapper;
+import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
 import com.example.edu.modules.exam.entity.*;
@@ -25,6 +30,8 @@ public class ExamService {
     private final ExamMapper examMapper;
     private final ExamPaperMapper paperMapper;
     private final ExamSubmissionMapper submissionMapper;
+    private final SemesterMapper semesterMapper;
+    private final CourseMapper courseMapper;
     private final AuditLogService auditLogService;
     private final DimensionScoreService dimensionScoreService;
     private final QuestionScoreHelper questionScoreHelper;
@@ -123,18 +130,34 @@ public class ExamService {
     }
 
     public List<ExamSubmission> listSubmissions(Long examId) {
+        Exam exam = examMapper.selectById(examId);
+        if (exam == null) throw new BizException(ErrorCode.NOT_FOUND);
+        checkTeacherOwnsExam(exam);
         return submissionMapper.selectList(new LambdaQueryWrapper<ExamSubmission>()
                 .eq(ExamSubmission::getExamId, examId));
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void gradeSubmission(Long submissionId, Integer score, boolean absent) {
+    public void gradeSubmission(Long submissionId, Integer score, boolean absent, List<DimensionScoreService.ScoreInput> dimensionScores) {
         ExamSubmission sub = submissionMapper.selectById(submissionId);
         if (sub == null) throw new BizException(ErrorCode.SUBMISSION_NOT_FOUND);
+        Exam exam = examMapper.selectById(sub.getExamId());
+        if (exam == null) throw new BizException(ErrorCode.NOT_FOUND);
+        checkTeacherOwnsExam(exam);
+
         sub.setScore(absent ? 0 : score);
         sub.setStatus(absent ? "absent" : "graded");
         submissionMapper.updateById(sub);
+        if (absent) {
+            dimensionScoreService.replaceScores("exam", submissionId, sub.getStudentId(), List.of());
+        } else if (dimensionScores != null && !dimensionScores.isEmpty()) {
+            dimensionScoreService.replaceScores("exam", submissionId, sub.getStudentId(), dimensionScores);
+        }
         auditLogService.record("考试评分", "exam_submission", submissionId, String.valueOf(score));
+    }
+
+    public void gradeSubmission(Long submissionId, Integer score, boolean absent) {
+        gradeSubmission(submissionId, score, absent, List.of());
     }
 
     private void autoGradeExam(Exam exam, ExamSubmission sub) {
@@ -152,5 +175,13 @@ public class ExamService {
         } catch (Exception e) {
             log.warn("Exam auto grade skipped: examId={}, submissionId={}", exam.getId(), sub.getId(), e);
         }
+    }
+
+    private void checkTeacherOwnsExam(Exam exam) {
+        Semester semester = semesterMapper.selectById(exam.getSemesterId());
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        CoursePermissionHelper.checkTeacherOwnsCourse(course);
     }
 }

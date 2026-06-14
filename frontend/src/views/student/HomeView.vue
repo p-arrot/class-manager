@@ -60,6 +60,10 @@ function goTask(taskId: number) {
   router.push(`/student/tasks/${taskId}`)
 }
 
+function goTaskResult(taskId: number) {
+  router.push(`/student/tasks/${taskId}/result`)
+}
+
 onMounted(fetchData)
 </script>
 
@@ -83,10 +87,11 @@ onMounted(fetchData)
       <!-- Recently graded -->
       <div v-if="recentGrades.length" class="section">
         <h3 class="section-title"><NIcon :size="16"><CheckmarkCircleOutline /></NIcon> 最近评分</h3>
-        <div v-for="g in recentGrades" :key="'g'+g.id" class="row">
+        <div v-for="g in recentGrades" :key="'g'+g.id" class="row clickable-row" @click="goTaskResult(g.taskId)">
           <span class="row-title">{{ g.taskTitle }}</span>
           <span class="row-sub">{{ g.courseName }}</span>
           <NTag size="tiny" type="success" :bordered="false">已评分</NTag>
+          <NIcon :size="14"><ArrowForwardOutline /></NIcon>
         </div>
       </div>
 

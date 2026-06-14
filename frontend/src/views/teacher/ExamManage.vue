@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, h, watch } from 'vue'
-import { NCheckbox, NDatePicker, NEmpty, NButton, NDataTable, NModal, NForm, NFormItem, NInput, NRadio, NRadioGroup, NSelect, NSpace, NIcon, NPopconfirm, NTag, useMessage } from 'naive-ui'
-import { AddOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
-import { createExam, createExamPaper, deleteExam, listExamPapers, listExams, updateExam } from '@/api/exams'
+import { NAlert, NCheckbox, NDatePicker, NEmpty, NButton, NDataTable, NModal, NForm, NFormItem, NInput, NRadio, NRadioGroup, NSelect, NSpace, NIcon, NPopconfirm, NTag, useMessage } from 'naive-ui'
+import { AddOutline, CheckmarkDoneOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
+import { createExam, createExamPaper, deleteExam, gradeExamSubmission, listExamPapers, listExams, listExamSubmissions, updateExam } from '@/api/exams'
 import PageHeader from '@/components/PageHeader.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { useCourseSemesterPicker } from '@/composables/useCourseSemesterPicker'
 import { formatDate, toLocalDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
-import { CORE_DIMENSIONS, emptyQuestion, normalizeDimensionScores, questionTotalScore, type QuestionType, type TaskQuestion } from '@/types/taskSchema'
+import { CORE_DIMENSIONS, emptyQuestion, normalizeDimensionScores, parseTaskSchema, questionStem, questionTotalScore, type QuestionType, type TaskQuestion, type WorksheetAnswerMap } from '@/types/taskSchema'
 import type { DataTableColumns } from 'naive-ui'
-import type { ExamPaperVO, ExamVO } from '@/types/api'
+import type { ExamPaperVO, ExamSubmissionVO, ExamVO, QuestionDimensionScoreDTO } from '@/types/api'
 
 interface ExamForm {
   name: string
@@ -25,7 +25,15 @@ const papers = ref<ExamPaperVO[]>([])
 const loading = ref(false)
 const showModal = ref(false)
 const showPaperModal = ref(false)
+const showSubmissionModal = ref(false)
 const editingId = ref<number | null>(null)
+const activeExam = ref<ExamVO | null>(null)
+const examSubmissions = ref<ExamSubmissionVO[]>([])
+const selectedSubmissionId = ref<number | null>(null)
+const loadingSubmissions = ref(false)
+const savingGrade = ref(false)
+const markAbsent = ref(false)
+const gradeScores = ref<QuestionDimensionScoreDTO[]>([])
 const form = ref<ExamForm>({ name: '', paperId: null, timeRange: null })
 const paperTitle = ref('')
 const paperQuestions = ref<TaskQuestion[]>([emptyQuestion('single')])
@@ -40,6 +48,18 @@ const questionTypes: Array<{ label: string; value: QuestionType }> = [
   { label: '是非', value: 'true_false' },
   { label: '简答', value: 'short' },
 ]
+const selectedSubmission = computed(() => examSubmissions.value.find(item => item.id === selectedSubmissionId.value) ?? null)
+const activeQuestions = computed(() => parseTaskSchema(activeExam.value?.paperContent).questions ?? [])
+const answerMap = computed<WorksheetAnswerMap>(() => {
+  if (!selectedSubmission.value?.answers) return {}
+  try {
+    const parsed = JSON.parse(selectedSubmission.value.answers)
+    return parsed && typeof parsed === 'object' ? parsed as WorksheetAnswerMap : {}
+  } catch {
+    return {}
+  }
+})
+const manualTotalScore = computed(() => gradeScores.value.reduce((sum, item) => sum + (Number(item.earnedScore) || 0), 0))
 
 async function loadExams() {
   if (!activeSemesterId.value) {
@@ -194,6 +214,94 @@ async function handleDelete(id: number) {
   }
 }
 
+async function openSubmissions(row: ExamVO) {
+  activeExam.value = row
+  selectedSubmissionId.value = null
+  gradeScores.value = []
+  markAbsent.value = false
+  showSubmissionModal.value = true
+  await loadSubmissions(row.id)
+}
+
+async function loadSubmissions(examId = activeExam.value?.id) {
+  if (!examId) return
+  loadingSubmissions.value = true
+  try {
+    examSubmissions.value = await listExamSubmissions(examId)
+    selectedSubmissionId.value = examSubmissions.value[0]?.id ?? null
+    initGradeScores()
+  } catch (e) {
+    examSubmissions.value = []
+    message.error(getErrorMessage(e, '加载考试提交失败'))
+  } finally {
+    loadingSubmissions.value = false
+  }
+}
+
+function selectSubmission(row: ExamSubmissionVO) {
+  selectedSubmissionId.value = row.id
+  markAbsent.value = row.status === 'absent'
+  initGradeScores()
+}
+
+function initGradeScores() {
+  const questions = activeQuestions.value
+  gradeScores.value = questions.flatMap(question =>
+    normalizeDimensionScores(question.dimensionScores, question.score)
+      .filter(item => item.maxScore > 0)
+      .map(item => ({
+        questionId: question.id,
+        dimension: item.dimension,
+        earnedScore: 0,
+        maxScore: item.maxScore,
+        autoGraded: false,
+      })),
+  )
+}
+
+function answerText(question: TaskQuestion) {
+  const value = answerMap.value[question.id]
+  if (Array.isArray(value)) return value.join('、')
+  if (typeof value === 'boolean') return value ? '正确' : '错误'
+  if (value == null || value === '') return '未作答'
+  return String(value)
+}
+
+function updateScore(questionId: string, dimension: string, value: string) {
+  const target = gradeScores.value.find(item => item.questionId === questionId && item.dimension === dimension)
+  if (!target) return
+  target.earnedScore = Math.max(0, Math.min(Number(value) || 0, target.maxScore))
+}
+
+function dimensionLabel(dimension: string) {
+  return CORE_DIMENSIONS.find(item => item.key === dimension)?.label ?? dimension
+}
+
+function statusLabel(status: string) {
+  if (status === 'graded') return '已批改'
+  if (status === 'absent') return '缺考'
+  if (status === 'submitted') return '待批改'
+  return status || '-'
+}
+
+async function saveGrade() {
+  if (!selectedSubmission.value) return
+  savingGrade.value = true
+  try {
+    await gradeExamSubmission(selectedSubmission.value.id, {
+      score: markAbsent.value ? 0 : Math.round(manualTotalScore.value),
+      absent: markAbsent.value,
+      dimensionScores: markAbsent.value ? [] : gradeScores.value,
+    })
+    message.success(markAbsent.value ? '已标记缺考' : '考试批改已保存')
+    await loadSubmissions()
+  } catch (e) {
+    message.error(getErrorMessage(e, '保存考试批改失败'))
+  } finally {
+    savingGrade.value = false
+  }
+}
+
 const examColumns: DataTableColumns<ExamVO> = [
   { title: '考试名称', key: 'name' },
   { title: '开始时间', key: 'startTime', render: row => formatDate(row.startTime, 'datetime') },
@@ -204,12 +312,20 @@ const examColumns: DataTableColumns<ExamVO> = [
     width: 100,
     render: row => h(NSpace, { size: 2 }, () => [
       h(NButton, { size: 'tiny', quaternary: true, title: '编辑考试', 'aria-label': '编辑考试', onClick: () => openEdit(row) }, () => h(NIcon, { size: 14 }, () => h(CreateOutline))),
+      h(NButton, { size: 'tiny', quaternary: true, title: '提交/批改', 'aria-label': '提交/批改', onClick: () => openSubmissions(row) }, () => h(NIcon, { size: 14 }, () => h(CheckmarkDoneOutline))),
       h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
         trigger: () => h(NButton, { size: 'tiny', quaternary: true, title: '删除考试', 'aria-label': '删除考试' }, () => h(NIcon, { size: 14 }, () => h(TrashOutline))),
         default: () => '确认删除？',
       }),
     ]),
   },
+]
+
+const submissionColumns: DataTableColumns<ExamSubmissionVO> = [
+  { title: '学生', key: 'studentName', width: 92, render: row => row.studentName || '-' },
+  { title: '学号', key: 'studentNo', width: 110, render: row => row.studentNo || '-' },
+  { title: '状态', key: 'status', width: 80, render: row => h(NTag, { size: 'small', type: row.status === 'graded' ? 'success' : row.status === 'absent' ? 'error' : 'warning', bordered: false }, () => statusLabel(row.status)) },
+  { title: '分数', key: 'score', width: 70, render: row => row.score ?? '-' },
 ]
 
 watch(activeSemesterId, loadExams)
@@ -315,6 +431,81 @@ onMounted(async () => {
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showPaperModal = false">取消</NButton><NButton type="primary" @click="handlePaperSubmit">创建试卷</NButton></NSpace></template>
     </NModal>
+
+    <NModal v-model:show="showSubmissionModal" title="考试提交批改" preset="card" class="submission-modal">
+      <div class="submission-workbench">
+        <aside class="submission-list">
+          <div class="panel-title">提交列表</div>
+          <NDataTable
+            v-if="examSubmissions.length"
+            :data="examSubmissions"
+            :columns="submissionColumns"
+            :row-key="(row: ExamSubmissionVO) => row.id"
+            size="small"
+            :loading="loadingSubmissions"
+            :row-props="row => ({ class: row.id === selectedSubmissionId ? 'selected-row' : '', onClick: () => selectSubmission(row) })"
+          />
+          <NEmpty v-else description="暂无提交" class="empty-state" />
+        </aside>
+
+        <section class="grading-panel">
+          <template v-if="selectedSubmission">
+            <div class="grading-head">
+              <div>
+                <div class="student-title">{{ selectedSubmission.studentName || '未命名学生' }}</div>
+                <div class="student-meta">{{ selectedSubmission.studentNo || '-' }} · {{ statusLabel(selectedSubmission.status) }}</div>
+              </div>
+              <div class="score-total">{{ markAbsent ? 0 : Math.round(manualTotalScore) }} 分</div>
+            </div>
+
+            <NAlert type="info" :bordered="false" class="grading-note">
+              自动题和人工题都可以在这里做最终确认；保存后写入考试结果评价分。
+            </NAlert>
+
+            <NCheckbox v-model:checked="markAbsent" class="absent-check">标记为缺考，本次考试记 0 分</NCheckbox>
+
+            <div class="question-review-list" :class="{ disabled: markAbsent }">
+              <article v-for="(question, index) in activeQuestions" :key="question.id" class="review-question">
+                <div class="review-question-head">
+                  <NTag size="small" :bordered="false">第 {{ index + 1 }} 题</NTag>
+                  <span>{{ question.type }}</span>
+                  <strong>{{ questionTotalScore(question) }} 分</strong>
+                </div>
+                <p class="question-stem">{{ questionStem(question) }}</p>
+                <div class="answer-box">
+                  <span>学生答案</span>
+                  <strong>{{ answerText(question) }}</strong>
+                </div>
+                <div class="score-grid">
+                  <label
+                    v-for="score in gradeScores.filter(item => item.questionId === question.id)"
+                    :key="`${score.questionId}-${score.dimension}`"
+                    class="score-cell"
+                  >
+                    <span>{{ dimensionLabel(score.dimension) }}</span>
+                    <NInput
+                      :value="String(score.earnedScore)"
+                      size="small"
+                      :disabled="markAbsent"
+                      @update:value="value => updateScore(score.questionId, score.dimension, value)"
+                    >
+                      <template #suffix>/ {{ score.maxScore }}</template>
+                    </NInput>
+                  </label>
+                </div>
+              </article>
+            </div>
+          </template>
+          <NEmpty v-else description="请选择一名学生查看答题详情" class="empty-state" />
+        </section>
+      </div>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showSubmissionModal = false">关闭</NButton>
+          <NButton type="primary" :loading="savingGrade" :disabled="!selectedSubmission" @click="saveGrade">保存批改</NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>
 
@@ -334,9 +525,36 @@ onMounted(async () => {
 .dimension-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; border-radius: 8px; background: var(--n-color-embedded); }
 .dimension-cell { display: grid; grid-template-columns: minmax(120px, 1fr) 100px; gap: 8px; align-items: center; font-size: 13px; color: var(--n-text-color-2); }
 .add-row { margin-top: 12px; }
+.submission-modal { width: min(1180px, calc(100vw - 32px)); }
+.submission-workbench { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; min-height: 560px; }
+.submission-list { border-right: 1px solid var(--n-border-color); padding-right: 16px; }
+.panel-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--n-text-color-2); }
+.grading-panel { min-width: 0; }
+.grading-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.student-title { font-size: 18px; font-weight: 700; }
+.student-meta { font-size: 12px; color: var(--n-text-color-3); margin-top: 4px; }
+.score-total { font-size: 24px; font-weight: 800; color: var(--n-text-color-1); }
+.grading-note { margin-bottom: 12px; }
+.absent-check { margin-bottom: 12px; }
+.question-review-list { display: flex; flex-direction: column; gap: 12px; max-height: 450px; overflow: auto; padding-right: 4px; }
+.question-review-list.disabled { opacity: 0.58; }
+.review-question { border: 1px solid var(--n-border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.review-question-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--n-text-color-3); }
+.review-question-head strong { margin-left: auto; color: var(--n-text-color-2); }
+.question-stem { margin: 0; white-space: pre-wrap; line-height: 1.6; }
+.answer-box { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 8px 10px; background: var(--n-color-embedded); border-radius: 6px; font-size: 13px; }
+.answer-box span { color: var(--n-text-color-3); }
+.answer-box strong { white-space: pre-wrap; word-break: break-word; }
+.score-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.score-cell { display: grid; grid-template-columns: minmax(110px, 1fr) 120px; align-items: center; gap: 8px; font-size: 13px; color: var(--n-text-color-2); }
+:deep(.selected-row td) { background: var(--n-merged-th-color); }
 @media (max-width: 640px) {
   .toolbar-select { width: 100%; }
   .dimension-grid { grid-template-columns: 1fr; }
   .dimension-cell { grid-template-columns: 1fr; }
+  .submission-workbench { grid-template-columns: 1fr; }
+  .submission-list { border-right: 0; padding-right: 0; }
+  .score-grid { grid-template-columns: 1fr; }
+  .score-cell { grid-template-columns: 1fr; }
 }
 </style>

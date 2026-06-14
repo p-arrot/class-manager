@@ -156,6 +156,14 @@ async function handleDelete(id: number) {
 
 const typeLabel = (t: string) => t === 'worksheet' ? '学习单' : '课堂作品'
 const typeColor = (t: string) => t === 'worksheet' ? '#7C3AED' : '#F97316'
+const studentTaskPath = (taskId: number) => mySubmissions.value[taskId]?.status === 'graded'
+  ? `/student/tasks/${taskId}/result`
+  : `/student/tasks/${taskId}`
+const studentTaskAction = (taskId: number) => {
+  const status = mySubmissions.value[taskId]?.status
+  if (status === 'graded') return '详情'
+  return status ? '查看' : '作答'
+}
 
 onMounted(loadTasks)
 </script>
@@ -183,8 +191,8 @@ onMounted(loadTasks)
           <NTag v-if="readonly && mySubmissions[t.id]?.status === 'graded'" size="tiny" type="success" :bordered="false">已评分</NTag>
           <NTag v-if="readonly && !mySubmissions[t.id]" size="tiny" :bordered="false" class="muted-tag">未提交</NTag>
         </div>
-        <NButton v-if="readonly" size="tiny" :type="mySubmissions[t.id] ? 'default' : 'primary'" @click="router.push(`/student/tasks/${t.id}`)">
-          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>{{ mySubmissions[t.id] ? '查看' : '作答' }}
+        <NButton v-if="readonly" size="tiny" :type="mySubmissions[t.id] ? 'default' : 'primary'" @click="router.push(studentTaskPath(t.id))">
+          <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>{{ studentTaskAction(t.id) }}
         </NButton>
         <NSpace v-if="!readonly" :size="2">
           <NButton size="tiny" @click="router.push(`/teacher/tasks/${t.id}/analytics`)">数据</NButton>

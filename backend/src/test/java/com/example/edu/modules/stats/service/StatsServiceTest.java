@@ -1,13 +1,20 @@
 package com.example.edu.modules.stats.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.edu.common.exception.BizException;
+import com.example.edu.common.result.ErrorCode;
+import com.example.edu.common.security.LoginUser;
 import com.example.edu.modules.audit.service.AuditLogService;
 import com.example.edu.modules.classes.entity.SchoolClass;
 import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.AssessmentScheme;
+import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.Lesson;
+import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
+import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
+import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.evaluation.entity.DimensionScore;
 import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
 import com.example.edu.modules.exam.entity.Exam;
@@ -30,11 +37,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
@@ -50,6 +60,8 @@ class StatsServiceTest {
     @Mock private SubmissionMapper submissionMapper;
     @Mock private TaskMapper taskMapper;
     @Mock private LessonMapper lessonMapper;
+    @Mock private SemesterMapper semesterMapper;
+    @Mock private CourseMapper courseMapper;
     @Mock private AssessmentSchemeMapper assessmentSchemeMapper;
     @Mock private UserMapper userMapper;
     @Mock private SchoolClassMapper schoolClassMapper;
@@ -70,6 +82,7 @@ class StatsServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         student = new User();
         student.setId(STUDENT_ID);
         student.setName("测试学生");
@@ -97,8 +110,15 @@ class StatsServiceTest {
         taskSubmission.setStatus("graded");
     }
 
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void noScoresReturnsEmptyList() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
         when(examMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
         when(projectMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
@@ -108,6 +128,8 @@ class StatsServiceTest {
 
     @Test
     void processScoresCalculateDimensionAndTotal() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
         baseTaskData();
         when(dimensionScoreMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 score("process", 11L, "AWARENESS", 8, 10),
@@ -130,6 +152,8 @@ class StatsServiceTest {
 
     @Test
     void multipleExamsPoolByDimensionInsideExamBucket() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
         baseTaskData();
         when(dimensionScoreMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(
                 List.of(score("process", 11L, "COMPUTING", 10, 10)),
@@ -169,6 +193,8 @@ class StatsServiceTest {
 
     @Test
     void projectScoresAreReadFromProjectSubmissionSourceIds() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
         when(examMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
 
@@ -199,6 +225,27 @@ class StatsServiceTest {
         assertThat(row.remark()).isEmpty();
     }
 
+    @Test
+    void nonOwnerTeacherCannotPreviewSemesterGrades() {
+        setTeacher(8L);
+        semesterBelongsToTeacher(9L);
+
+        assertThatThrownBy(() -> statsService.calculateSemesterGrades(SEMESTER_ID))
+                .isInstanceOf(BizException.class)
+                .hasMessage(ErrorCode.COURSE_ACCESS_DENIED.getMsg());
+    }
+
+    @Test
+    void adminCanPreviewSemesterGradesRegardlessOfCourseTeacher() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
+        when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(examMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(projectMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(statsService.calculateSemesterGrades(SEMESTER_ID)).isEmpty();
+    }
+
     private void baseTaskData() {
         when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(lesson));
         when(taskMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(task));
@@ -208,6 +255,30 @@ class StatsServiceTest {
     private void baseUsers() {
         when(userMapper.selectBatchIds(anyCollection())).thenReturn(List.of(student));
         when(schoolClassMapper.selectBatchIds(anyCollection())).thenReturn(List.of(schoolClass));
+    }
+
+    private void semesterBelongsToTeacher(Long teacherId) {
+        Semester semester = new Semester();
+        semester.setId(SEMESTER_ID);
+        semester.setCourseId(20L);
+        when(semesterMapper.selectById(SEMESTER_ID)).thenReturn(semester);
+
+        Course course = new Course();
+        course.setId(20L);
+        course.setTeacherId(teacherId);
+        when(courseMapper.selectById(20L)).thenReturn(course);
+    }
+
+    private static void setAdmin() {
+        LoginUser loginUser = new LoginUser(1L, "admin", "admin", null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities()));
+    }
+
+    private static void setTeacher(Long id) {
+        LoginUser loginUser = new LoginUser(id, "teacher" + id, "teacher", null);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(loginUser, null, loginUser.getAuthorities()));
     }
 
     private DimensionScore score(String sourceType, Long sourceId, String dimension, int earned, int max) {

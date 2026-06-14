@@ -42,6 +42,7 @@ const menu = [
       { label: '项目管理', key: '/teacher/projects', match: ['/teacher/projects'] },
     ],
   },
+  { label: '数据分析', key: '/teacher/stats', icon: BarChartOutline, match: ['/teacher/stats'] },
   { label: '成绩导出', key: '/teacher/grade-export', icon: CloudDownloadOutline, match: ['/teacher/grade-export'] },
 ]
 </script>

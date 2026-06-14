@@ -52,6 +52,19 @@ export function createEmptyProjectForm(): ProjectFormValue {
   }
 }
 
+export function createProjectFormFromProject(project: ProjectVO): ProjectFormValue {
+  const parsed = parseProjectDescription(project)
+  return {
+    name: project.name,
+    description: parsed.text,
+    maxTeamSize: project.maxTeamSize,
+    deadline: project.deadline ? new Date(project.deadline).getTime() : null,
+    submitMode: parsed.artifact.submitMode,
+    allowedExtensions: parsed.artifact.allowedExtensions.join(', '),
+    dimensionScores: normalizeDimensionScores(parsed.rubric),
+  }
+}
+
 export function buildProjectDescription(form: ProjectFormValue) {
   const artifact = {
     submitMode: form.submitMode,

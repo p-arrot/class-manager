@@ -12,8 +12,10 @@ import com.example.edu.modules.course.mapper.*;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.dto.EvaluateDTO;
 import com.example.edu.modules.evaluation.entity.Evaluation;
+import com.example.edu.modules.evaluation.entity.SubmissionFeedback;
 import com.example.edu.modules.evaluation.enums.Grade;
 import com.example.edu.modules.evaluation.mapper.EvaluationMapper;
+import com.example.edu.modules.evaluation.mapper.SubmissionFeedbackMapper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.EvaluationService;
 import com.example.edu.modules.evaluation.vo.EvaluationVO;
@@ -24,11 +26,14 @@ import com.example.edu.modules.task.mapper.SubmissionMapper;
 import com.example.edu.modules.task.mapper.TaskMapper;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -37,6 +42,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EvaluationServiceImpl implements EvaluationService {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, Integer> GRADE_SCORES = Arrays.stream(Grade.values())
             .collect(Collectors.toUnmodifiableMap(Grade::name, Grade::getScore));
     private static final Map<String, String> DIMENSION_LABELS = Map.of(
@@ -56,6 +62,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
     private final DimensionScoreService dimensionScoreService;
+    private final SubmissionFeedbackMapper submissionFeedbackMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -70,9 +77,11 @@ public class EvaluationServiceImpl implements EvaluationService {
         boolean isSpecial = dto.getIsSpecial() != null && dto.getIsSpecial();
         boolean hasDimensions = dto.getDimensions() != null && !dto.getDimensions().isEmpty();
         boolean hasQuestionScores = dto.getQuestionScores() != null && !dto.getQuestionScores().isEmpty();
+        boolean hasFeedback = hasText(dto.getTeacherComment())
+                || (dto.getQuestionFeedback() != null && !dto.getQuestionFeedback().isEmpty());
 
         if (isSpecial) sub.setStatus("special");
-        else if (hasDimensions || hasQuestionScores) sub.setStatus("graded");
+        else if (hasDimensions || hasQuestionScores || hasFeedback) sub.setStatus("graded");
         else sub.setStatus("submitted"); // unmark: reset to submitted
         submissionMapper.updateById(sub);
 
@@ -119,6 +128,12 @@ public class EvaluationServiceImpl implements EvaluationService {
             dimensionScoreService.replaceScores("process", submissionId, sub.getStudentId(), scoreInputs);
         }
 
+        if (isSpecial || hasDimensions || hasQuestionScores || hasFeedback) {
+            saveFeedback(submissionId, dto);
+        } else {
+            submissionFeedbackMapper.deleteById(submissionId);
+        }
+
         auditLogService.record("评分", "submission", submissionId,
                 "标记=" + (isSpecial ? "特殊情况" : "已评分"));
     }
@@ -129,20 +144,44 @@ public class EvaluationServiceImpl implements EvaluationService {
         List<Task> tasks = getTasksInSemester(semesterId);
         Set<Long> taskIds = tasks.stream().map(Task::getId).collect(Collectors.toSet());
         if (taskIds.isEmpty()) return List.of();
+        Map<Long, Task> taskById = tasks.stream()
+                .collect(Collectors.toMap(Task::getId, task -> task));
+
+        List<Submission> submissions = submissionMapper.selectList(
+                new LambdaQueryWrapper<Submission>()
+                        .eq(Submission::getStudentId, studentId)
+                        .in(Submission::getTaskId, taskIds));
+        if (submissions.isEmpty()) return List.of();
+
+        Map<Long, Submission> submissionById = submissions.stream()
+                .collect(Collectors.toMap(Submission::getId, submission -> submission));
+        Set<Long> submissionIds = submissionById.keySet();
 
         List<Evaluation> evals = evaluationMapper.selectList(
                 new LambdaQueryWrapper<Evaluation>()
                         .eq(Evaluation::getStudentId, studentId)
                         .eq(Evaluation::getIsSpecial, 0)
-                        .in(Evaluation::getSourceType, List.of("worksheet", "artifact")));
+                        .in(Evaluation::getSourceType, List.of("worksheet", "artifact"))
+                        .in(Evaluation::getSourceId, submissionIds));
 
         return evals.stream()
-                .map(e -> EvaluationVO.builder()
+                .map(e -> {
+                    Submission submission = submissionById.get(e.getSourceId());
+                    Task task = submission != null ? taskById.get(submission.getTaskId()) : null;
+                    return EvaluationVO.builder()
+                        .sourceType(e.getSourceType())
+                        .sourceId(e.getSourceId())
+                        .submissionId(submission != null ? submission.getId() : null)
+                        .taskId(submission != null ? submission.getTaskId() : null)
+                        .taskTitle(task != null ? task.getTitle() : null)
+                        .taskStatus(submission != null ? submission.getStatus() : null)
                         .dimension(e.getDimension())
                         .grade(e.getGrade())
                         .score(GRADE_SCORES.getOrDefault(e.getGrade(), 0))
                         .label(DIMENSION_LABELS.getOrDefault(e.getDimension(), e.getDimension()))
-                        .build())
+                        .evaluatedAt(e.getCreatedAt())
+                        .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -276,5 +315,32 @@ public class EvaluationServiceImpl implements EvaluationService {
         Course course = courseMapper.selectById(semester.getCourseId());
         if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         CoursePermissionHelper.checkTeacherOwnsCourse(course);
+    }
+
+    private void saveFeedback(Long submissionId, EvaluateDTO dto) {
+        SubmissionFeedback feedback = new SubmissionFeedback();
+        feedback.setSubmissionId(submissionId);
+        feedback.setTeacherId(SecurityUtils.getCurrentUserId());
+        feedback.setTeacherComment(dto.getTeacherComment());
+        feedback.setQuestionFeedback(serializeQuestionFeedback(dto.getQuestionFeedback()));
+        feedback.setGradedAt(LocalDateTime.now());
+        if (submissionFeedbackMapper.selectById(submissionId) == null) {
+            submissionFeedbackMapper.insert(feedback);
+        } else {
+            submissionFeedbackMapper.updateById(feedback);
+        }
+    }
+
+    private String serializeQuestionFeedback(List<EvaluateDTO.QuestionFeedback> feedback) {
+        if (feedback == null || feedback.isEmpty()) return null;
+        try {
+            return JSON.writeValueAsString(feedback);
+        } catch (JsonProcessingException e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "逐题反馈格式不正确");
+        }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

@@ -6,6 +6,7 @@ import com.example.edu.modules.task.dto.TaskUpdateDTO;
 import com.example.edu.modules.task.vo.SubmissionVO;
 import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
+import com.example.edu.modules.task.vo.TaskResultVO;
 import com.example.edu.modules.task.vo.TaskVO;
 
 import java.util.List;
@@ -36,4 +37,6 @@ public interface TaskService {
     TaskAnalyticsVO getTaskAnalytics(Long taskId, Long classId);
 
     SubmissionVO getMySubmission(Long taskId, Long studentId);
+
+    TaskResultVO getMyResult(Long taskId, Long studentId);
 }

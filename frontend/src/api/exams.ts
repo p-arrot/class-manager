@@ -1,5 +1,5 @@
 import http from './request'
-import type { ExamPaperVO, ExamSubmitDTO, ExamVO } from '@/types/api'
+import type { ExamGradeDTO, ExamPaperVO, ExamSubmissionVO, ExamSubmitDTO, ExamVO } from '@/types/api'
 
 export function listExams(semesterId: number): Promise<ExamVO[]> {
   return http.get(`/semesters/${semesterId}/exams`)
@@ -27,4 +27,12 @@ export function deleteExam(id: number): Promise<void> {
 
 export function submitExam(id: number, data: ExamSubmitDTO): Promise<void> {
   return http.post(`/exams/${id}/submit`, data)
+}
+
+export function listExamSubmissions(id: number): Promise<ExamSubmissionVO[]> {
+  return http.get(`/exams/${id}/submissions`)
+}
+
+export function gradeExamSubmission(id: number, data: ExamGradeDTO): Promise<void> {
+  return http.put(`/exam-submissions/${id}/grade`, data)
 }

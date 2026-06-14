@@ -295,6 +295,8 @@ export interface TaskUpdateDTO {
 export interface SubmissionVO {
   id: number
   taskId: number
+  taskTitle?: string | null
+  taskType?: 'worksheet' | 'artifact' | string | null
   studentId: number
   studentName: string | null
   studentNo: string | null
@@ -302,6 +304,65 @@ export interface SubmissionVO {
   content: string
   submittedAt: string | null
   createdAt: string
+}
+
+export interface TaskResultVO {
+  task: {
+    id: number
+    title: string
+    type: 'worksheet' | 'artifact'
+    courseId: number | null
+    courseName: string | null
+    lessonId: number | null
+    lessonName: string | null
+  }
+  status: 'not_submitted' | 'submitted' | 'graded' | 'special' | string
+  submission: {
+    id: number
+    status: string
+    content: string | null
+    submittedAt: string | null
+    gradedAt: string | null
+    teacherComment: string | null
+  } | null
+  questions: TaskResultQuestionVO[]
+  answers: Record<string, unknown>
+  questionResults: TaskResultQuestionResultVO[]
+  dimensionSummary: TaskResultDimensionSummaryVO[]
+}
+
+export interface TaskResultQuestionVO {
+  id: string
+  index: number
+  type: string
+  stem: string
+  autoGrade: boolean
+  referenceAnswerVisible: boolean
+  referenceAnswer: unknown
+}
+
+export interface TaskResultQuestionResultVO {
+  questionId: string
+  correct: boolean | null
+  autoGraded: boolean
+  earnedScore: number
+  maxScore: number
+  comment: string | null
+  dimensionScores: TaskResultDimensionScoreVO[]
+}
+
+export interface TaskResultDimensionScoreVO {
+  dimension: string
+  earnedScore: number
+  maxScore: number
+}
+
+export interface TaskResultDimensionSummaryVO {
+  dimension: string
+  earnedScore: number
+  maxScore: number
+  rate: number
+  grade: string
 }
 
 export interface TaskAnalyticsVO {
@@ -419,6 +480,8 @@ export interface EvaluationDimensionDTO {
 export interface SubmissionEvaluationDTO {
   dimensions: EvaluationDimensionDTO[]
   questionScores?: QuestionDimensionScoreDTO[]
+  teacherComment?: string
+  questionFeedback?: QuestionFeedbackDTO[]
   isSpecial?: boolean
 }
 
@@ -428,6 +491,12 @@ export interface QuestionDimensionScoreDTO {
   earnedScore: number
   maxScore: number
   autoGraded?: boolean
+}
+
+export interface QuestionFeedbackDTO {
+  questionId: string
+  comment?: string
+  referenceAnswerVisible?: boolean
 }
 
 // ========== File (Phase 3b / F2) ==========
@@ -460,21 +529,36 @@ export interface RadarVO {
 }
 
 export interface EvaluationVO {
+  sourceType?: string | null
+  sourceId?: number | null
+  submissionId?: number | null
+  taskId?: number | null
+  taskTitle?: string | null
+  taskStatus?: string | null
   dimension: string
   grade: string
   score: number
   label: string
+  evaluatedAt?: string | null
 }
 
 export interface SemesterStatsPreviewRow {
   studentId: number
+  school?: string | null
+  className?: string | null
   studentNo: string
   studentName: string
+  awareness?: number | null
+  computing?: number | null
+  digitalLearn?: number | null
+  responsibility?: number | null
   processScore: number | null
   examScore: number | null
   projectScore: number | null
+  resultScore?: number | null
   totalScore: number | null
   totalGrade: string | null
+  remark?: string | null
 }
 
 export interface AssessmentSchemeVO {
@@ -513,6 +597,25 @@ export interface ExamPaperVO {
 
 export interface ExamSubmitDTO {
   answers: string
+}
+
+export interface ExamSubmissionVO {
+  id: number
+  examId: number
+  studentId: number
+  studentName: string | null
+  studentNo: string | null
+  answers: string | null
+  score: number | null
+  status: string
+  submittedAt: string | null
+  createdAt: string
+}
+
+export interface ExamGradeDTO {
+  score?: number | null
+  absent?: boolean
+  dimensionScores?: QuestionDimensionScoreDTO[]
 }
 
 export interface ProjectVO {

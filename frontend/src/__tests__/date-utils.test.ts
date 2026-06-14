@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toLocalDateTime } from '@/utils/date'
+import { formatDate, toLocalDateTime } from '@/utils/date'
 
 describe('date utilities', () => {
   it('serializes date picker timestamps without UTC conversion', () => {
@@ -11,5 +11,10 @@ describe('date utilities', () => {
   it('returns undefined for empty picker values', () => {
     expect(toLocalDateTime(null)).toBeUndefined()
     expect(toLocalDateTime(undefined)).toBeUndefined()
+  })
+
+  it('formats backend local datetime strings without timezone conversion', () => {
+    expect(formatDate('2026-06-13T19:38:42', 'datetime')).toBe('2026-06-13 19:38:42')
+    expect(formatDate('2026-06-13 19:38:42', 'datetime')).toBe('2026-06-13 19:38:42')
   })
 })

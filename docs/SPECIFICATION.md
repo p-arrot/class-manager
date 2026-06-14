@@ -266,6 +266,7 @@ modules/xxx
 - 参加考试
 - 提交项目化学习作品
 - 查看自己的评分结果
+- 查看本人任务的批改详情，包括逐题得分、维度拆分、教师总评和逐题评语
 - 查看自己的学期能力雷达图
 - 查看自己的进步雷达图
 - 使用个人网盘上传、下载、预览和管理文件
@@ -734,6 +735,25 @@ special
 
 后续再增强草稿功能。
 
+学生查看批改详情时使用任务维度入口，而不是提交 ID：
+
+```text
+GET /api/tasks/{taskId}/my-result
+```
+
+状态约定：
+
+- `not_submitted`：仅用于接口包装层，表示当前学生没有该任务提交，不写入 `submissions.status`。
+- `submitted`：已提交，等待教师批改。
+- `graded`：已完成批改，可展示总分、逐题得分、维度汇总和教师评语。
+- `special`：特殊处理，不计入评价统计，页面展示原因或总评。
+
+安全规则：
+
+- 学生只能查看自己的批改详情，不能通过 `submissionId` 枚举同学提交。
+- 教师查看提交详情时必须校验课程/班级归属。
+- 批改详情页不得在 403/404/接口失败时渲染任何提交内容。
+
 默认规则：
 
 - 学生可以在截止时间前提交或修改
@@ -822,6 +842,23 @@ auto_graded：是否自动批改
 ```
 
 自动批改题根据正确答案写入 `earned_score/max_score`。手动批改题由教师按题目、按维度输入得分。
+
+教师文字反馈不写入 `dimension_scores`，单独保存到 `submission_feedback`：
+
+```text
+submission_id：对应 submissions.id
+teacher_id：最后批改教师
+teacher_comment：整份任务总评语
+question_feedback：逐题评语 JSON，包含 questionId/comment/referenceAnswerVisible
+graded_at：批改完成时间
+```
+
+保存批改时：
+
+- 自动题和人工题数值得分写入/覆盖 `dimension_scores`。
+- 整体评语、逐题评语和参考答案可见性写入/覆盖 `submission_feedback`。
+- `submissions.status` 从 `submitted` 变为 `graded`，特殊处理时变为 `special`。
+- 重新保存同一份提交时必须覆盖旧评分，不产生重复脏数据。
 
 每个核心素养维度最终按百分比折算：该维度学生得分 / 该维度总分。四个维度各自折算为 0-100 分，可用于雷达图和学期总评。
 
@@ -1528,6 +1565,16 @@ created_at
 | created_at, updated_at | TIMESTAMP | |
 | deleted | SMALLINT | |
 
+**submission_feedback** — 提交批改反馈（Phase 8）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| submission_id | BIGINT PK FK→submissions | 对应学生提交 |
+| teacher_id | BIGINT FK→users | 最后批改教师 |
+| teacher_comment | TEXT | 整份任务总评语 |
+| question_feedback | TEXT | 逐题反馈 JSON，含 questionId/comment/referenceAnswerVisible |
+| graded_at | TIMESTAMP | 批改完成时间 |
+| created_at, updated_at | TIMESTAMP | |
+
 **exam_papers** — 试卷（Phase 6a）
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -1847,7 +1894,10 @@ PUT    /api/tasks/{id}                       编辑任务
 DELETE /api/tasks/{id}                       删除任务
 POST   /api/tasks/{id}/submit               学生提交（学习单答案/作品附件）
 GET    /api/tasks/{id}/submissions           教师查看提交列表
+GET    /api/tasks/{id}/my-submission         学生查看本人提交
+GET    /api/tasks/{id}/my-result             学生查看本人批改详情
 GET    /api/submissions/{id}                 查看单个提交详情
+POST   /api/submissions/{id}/evaluate        教师批改提交（维度得分 + 教师反馈）
 ```
 
 **评价（Phase 5）**
@@ -1922,13 +1972,25 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
   /teacher/home                   教师工作台（仪表板）
   /teacher/courses                课程列表
   /teacher/courses/:id            课程详情
-  /teacher/courses/:id/resources  课程资源管理（Phase F2）
-  /teacher/...                    考试管理、项目管理、数据分析、成绩导出（后续阶段）
+  /teacher/courses/:id/resources  课程资源管理
+  /teacher/tasks                  作业与评分工作台
+  /teacher/tasks/:taskId/analytics 任务数据看板
+  /teacher/grading/:taskId        教师批改页
+  /teacher/exams                  考试管理与提交批改
+  /teacher/projects               项目管理与提交批改
+  /teacher/stats                  班级数据分析
+  /teacher/grade-export           学期总评导出
 
 /student                          学生布局（侧边栏导航）
   /student/home                   我的课程
   /student/courses/:id            课程详情
-  /student/...                    考试、项目、评价、网盘（后续阶段）
+  /student/courses/:id/resources  课程资源浏览
+  /student/tasks/:taskId          学习单/作品提交
+  /student/tasks/:taskId/result   批改详情
+  /student/exams                  考试列表与答题
+  /student/projects               项目列表、组队与作品提交
+  /student/evaluation             学习评价
+  /student/drive                  我的网盘
 ```
 
 ### 布局设计

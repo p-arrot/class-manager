@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NEmpty, NIcon, NModal, NSpace, NSpin, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NTag, useMessage } from 'naive-ui'
 import {
   ArrowBackOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
   PersonOutline,
+  SaveOutline,
 } from '@vicons/ionicons5'
 import { getLesson } from '@/api/lessons'
 import { getDrivePreview, getDriveRaw } from '@/api/drive'
@@ -32,6 +33,13 @@ const submissions = ref<SubmissionVO[]>([])
 const task = ref<TaskDetailVO | null>(null)
 const currentIdx = ref(0)
 const questionScores = ref<Record<number, Record<string, Record<string, number>>>>({})
+const scoreTouched = ref<Record<number, Record<string, Record<string, boolean>>>>({})
+const questionComments = ref<Record<number, Record<string, string>>>({})
+const referenceAnswerVisible = ref<Record<number, Record<string, boolean>>>({})
+const teacherComments = ref<Record<number, string>>({})
+const validationErrors = ref<Record<string, string>>({})
+const submitting = ref(false)
+const specialLoading = ref(false)
 const semesterId = ref<number | null>(null)
 const profileStudentId = ref<number | null>(null)
 const profileStudentName = ref('')
@@ -53,6 +61,28 @@ const parsedContent = computed<ParsedSubmissionContent>(() => {
 const artifactFiles = computed(() => {
   const files = parsedContent.value.files
   return Array.isArray(files) ? files.filter(isArtifactFile) : []
+})
+const manualQuestions = computed(() => (schema.value.questions ?? []).filter(question => {
+  return !question.autoGrade && normalizeDimensionScores(question.dimensionScores).some(item => item.maxScore > 0)
+}))
+const autoQuestions = computed(() => (schema.value.questions ?? []).filter(question => question.autoGrade))
+const manualProgress = computed(() => {
+  const sub = current.value
+  if (!sub) return { completed: 0, total: 0 }
+  const total = manualQuestions.value.length
+  const completed = manualQuestions.value.filter(question => isManualQuestionComplete(sub.id, question)).length
+  return { completed, total }
+})
+const autoProgress = computed(() => ({ completed: autoQuestions.value.length, total: autoQuestions.value.length }))
+const currentTeacherComment = computed({
+  get() {
+    const sub = current.value
+    return sub ? teacherComments.value[sub.id] ?? '' : ''
+  },
+  set(value: string) {
+    const sub = current.value
+    if (sub) teacherComments.value[sub.id] = value
+  },
 })
 
 async function loadSubmissions() {
@@ -79,42 +109,71 @@ function openProfile(studentId: number, name: string) {
 async function submitGrade() {
   const sub = current.value
   if (!sub) return
+  validationErrors.value = {}
+  if (!validateManualScores(sub.id)) {
+    message.warning('请先完成所有人工题评分')
+    await scrollToFirstInvalidQuestion()
+    return
+  }
   const scoreRows = buildQuestionScoreRows(sub.id)
   if (!scoreRows.length) {
     message.warning('请至少填写一个题目的维度得分')
     return
   }
+  submitting.value = true
   try {
-    await evaluateSubmission(sub.id, { dimensions: [], questionScores: scoreRows })
+    await evaluateSubmission(sub.id, {
+      dimensions: [],
+      questionScores: scoreRows,
+      teacherComment: currentTeacherComment.value.trim(),
+      questionFeedback: buildQuestionFeedbackRows(sub.id),
+    })
     message.success('评分成功')
     sub.status = 'graded'
     if (currentIdx.value < submissions.value.length - 1) currentIdx.value++
   } catch (e) {
     message.error(getErrorMessage(e, '评分失败'))
+  } finally {
+    submitting.value = false
   }
 }
 
 async function markSpecial() {
   const sub = current.value
   if (!sub) return
+  if (!currentTeacherComment.value.trim()) {
+    message.warning('请先填写特殊处理原因')
+    return
+  }
+  specialLoading.value = true
   try {
-    await evaluateSubmission(sub.id, { isSpecial: true, dimensions: [] })
+    await evaluateSubmission(sub.id, {
+      isSpecial: true,
+      dimensions: [],
+      teacherComment: currentTeacherComment.value.trim(),
+      questionFeedback: buildQuestionFeedbackRows(sub.id),
+    })
     sub.status = 'special'
     message.success('已标记特殊情况')
   } catch (e) {
     message.error(getErrorMessage(e, '操作失败'))
+  } finally {
+    specialLoading.value = false
   }
 }
 
 async function unmarkSpecial() {
   const sub = current.value
   if (!sub) return
+  specialLoading.value = true
   try {
     await evaluateSubmission(sub.id, { isSpecial: false, dimensions: [] })
     sub.status = 'submitted'
     message.success('已取消标记')
   } catch (e) {
     message.error(getErrorMessage(e, '操作失败'))
+  } finally {
+    specialLoading.value = false
   }
 }
 
@@ -122,15 +181,40 @@ function getQuestionScore(subId: number, questionId: string, dimension: string) 
   const existing = questionScores.value[subId]?.[questionId]?.[dimension]
   if (typeof existing === 'number') return existing
   const question = schema.value.questions?.find(item => item.id === questionId)
-  return question?.autoGrade && isCorrect(question)
-    ? normalizeDimensionScores(question.dimensionScores).find(item => item.dimension === dimension)?.maxScore ?? 0
-    : 0
+  if (question?.autoGrade) {
+    return isCorrect(question)
+      ? normalizeDimensionScores(question.dimensionScores).find(item => item.dimension === dimension)?.maxScore ?? 0
+      : 0
+  }
+  return null
 }
 
 function setQuestionScore(subId: number, questionId: string, dimension: string, value: number | null) {
   if (!questionScores.value[subId]) questionScores.value[subId] = {}
   if (!questionScores.value[subId][questionId]) questionScores.value[subId][questionId] = {}
+  if (!scoreTouched.value[subId]) scoreTouched.value[subId] = {}
+  if (!scoreTouched.value[subId][questionId]) scoreTouched.value[subId][questionId] = {}
   questionScores.value[subId][questionId][dimension] = Math.max(0, Number(value ?? 0))
+  scoreTouched.value[subId][questionId][dimension] = true
+  if (validationErrors.value[questionId]) delete validationErrors.value[questionId]
+}
+
+function getQuestionComment(subId: number, questionId: string) {
+  return questionComments.value[subId]?.[questionId] ?? ''
+}
+
+function setQuestionComment(subId: number, questionId: string, value: string) {
+  if (!questionComments.value[subId]) questionComments.value[subId] = {}
+  questionComments.value[subId][questionId] = value
+}
+
+function getReferenceVisible(subId: number, questionId: string) {
+  return referenceAnswerVisible.value[subId]?.[questionId] ?? false
+}
+
+function setReferenceVisible(subId: number, questionId: string, value: boolean) {
+  if (!referenceAnswerVisible.value[subId]) referenceAnswerVisible.value[subId] = {}
+  referenceAnswerVisible.value[subId][questionId] = value
 }
 
 function buildQuestionScoreRows(subId: number) {
@@ -139,11 +223,42 @@ function buildQuestionScoreRows(subId: number) {
     return dims.map(dim => ({
       questionId: question.id,
       dimension: dim.dimension,
-      earnedScore: getQuestionScore(subId, question.id, dim.dimension),
+      earnedScore: getQuestionScore(subId, question.id, dim.dimension) ?? 0,
       maxScore: dim.maxScore,
       autoGraded: Boolean(question.autoGrade),
     }))
   })
+}
+
+function buildQuestionFeedbackRows(subId: number) {
+  return (schema.value.questions ?? []).map(question => ({
+    questionId: question.id,
+    comment: getQuestionComment(subId, question.id).trim(),
+    referenceAnswerVisible: getReferenceVisible(subId, question.id),
+  }))
+}
+
+function isManualQuestionComplete(subId: number, question: TaskQuestion) {
+  const dims = normalizeDimensionScores(question.dimensionScores).filter(item => item.maxScore > 0)
+  return dims.every(dim => scoreTouched.value[subId]?.[question.id]?.[dim.dimension])
+}
+
+function validateManualScores(subId: number) {
+  const errors: Record<string, string> = {}
+  for (const question of manualQuestions.value) {
+    if (!isManualQuestionComplete(subId, question)) {
+      errors[question.id] = '人工题需要填写每个评分维度，0 分也请明确输入。'
+    }
+  }
+  validationErrors.value = errors
+  return !Object.keys(errors).length
+}
+
+async function scrollToFirstInvalidQuestion() {
+  await nextTick()
+  const firstId = Object.keys(validationErrors.value)[0]
+  if (!firstId) return
+  document.querySelector(`[data-question-id="${CSS.escape(firstId)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
 
 function isCorrect(question: TaskQuestion) {
@@ -215,6 +330,9 @@ onMounted(loadSubmissions)
             <span class="student-name">{{ current.studentName || '学生' }}</span>
             <span class="student-no">{{ current.studentNo }}</span>
           </div>
+          <div class="progress-pill">
+            自动题 {{ autoProgress.completed }}/{{ autoProgress.total }} · 人工题 {{ manualProgress.completed }}/{{ manualProgress.total }}
+          </div>
           <NTag size="small" :type="statusType(current.status)" :bordered="false">
             {{ statusLabel(current.status) }}
           </NTag>
@@ -227,8 +345,11 @@ onMounted(loadSubmissions)
         <div class="content-preview">
           <div class="content-label">
             <span>提交内容</span>
-            <small>每题按核心素养维度评分，提交后同步到学生评价数据。</small>
+            <small>自动题显示预评分，人工题需要逐维度确认后才能保存。</small>
           </div>
+          <NAlert v-if="Object.keys(validationErrors).length" type="error" :bordered="false" class="validation-summary">
+            还有 {{ Object.keys(validationErrors).length }} 道人工题未完成评分。请补齐后再保存批改。
+          </NAlert>
 
           <WorksheetSubmissionPanel
             v-if="task?.type === 'worksheet'"
@@ -237,7 +358,12 @@ onMounted(loadSubmissions)
             :submission-id="current.id"
             :fallback-content="current.content"
             :get-score="getQuestionScore"
+            :get-comment="getQuestionComment"
+            :get-reference-visible="getReferenceVisible"
+            :validation-errors="validationErrors"
             @score-change="setQuestionScore"
+            @feedback-change="setQuestionComment"
+            @reference-visible-change="setReferenceVisible"
           />
 
           <ArtifactSubmissionPanel
@@ -250,19 +376,34 @@ onMounted(loadSubmissions)
           />
         </div>
 
-        <NSpace justify="center" :size="12" class="actions">
-          <NButton :disabled="currentIdx === 0" @click="currentIdx--">
+        <section class="teacher-comment-section" aria-label="整份任务总评">
+          <label class="teacher-comment-label" for="teacher-comment">总评 / 特殊处理原因</label>
+          <NInput
+            id="teacher-comment"
+            v-model:value="currentTeacherComment"
+            type="textarea"
+            placeholder="写给学生的整份任务反馈；标记特殊处理时这里作为原因。"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+          />
+        </section>
+
+        <div class="actions">
+          <NButton :disabled="currentIdx === 0 || submitting || specialLoading" @click="currentIdx--">
             <template #icon><NIcon><ChevronBackOutline /></NIcon></template>
             上一个
           </NButton>
-          <NButton type="primary" @click="submitGrade">提交评分</NButton>
-          <NButton v-if="current.status !== 'special'" type="warning" @click="markSpecial">特殊标记</NButton>
-          <NButton v-else @click="unmarkSpecial">取消标记</NButton>
-          <NButton :disabled="currentIdx >= submissions.length - 1" @click="currentIdx++">
+          <NButton type="primary" :loading="submitting" :disabled="specialLoading" @click="submitGrade">
+            <template #icon><NIcon><SaveOutline /></NIcon></template>
+            保存批改
+          </NButton>
+          <NButton v-if="current.status !== 'special'" type="warning" :loading="specialLoading" :disabled="submitting" @click="markSpecial">特殊处理</NButton>
+          <NButton v-else :loading="specialLoading" :disabled="submitting" @click="unmarkSpecial">取消特殊处理</NButton>
+          <NButton :disabled="submitting || specialLoading" @click="router.push(`/teacher/tasks/${taskId}/analytics`)">返回数据看板</NButton>
+          <NButton :disabled="currentIdx >= submissions.length - 1 || submitting || specialLoading" @click="currentIdx++">
             下一个
             <template #icon><NIcon><ChevronForwardOutline /></NIcon></template>
           </NButton>
-        </NSpace>
+        </div>
       </div>
       <NEmpty v-else description="暂无提交需要评分">
         <template #extra><NButton size="small" @click="router.back()">返回</NButton></template>
@@ -291,6 +432,7 @@ onMounted(loadSubmissions)
 .grading-page {
   max-width: 980px;
   margin: 0 auto;
+  padding-bottom: 104px;
 }
 .back-button {
   margin-bottom: 8px;
@@ -322,6 +464,14 @@ onMounted(loadSubmissions)
   color: #78716c;
   font-size: 13px;
 }
+.progress-pill {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f5f4f1;
+  color: #57534e;
+  font-size: 12px;
+  white-space: nowrap;
+}
 .profile-btn {
   margin-left: auto;
 }
@@ -344,8 +494,38 @@ onMounted(loadSubmissions)
   color: #78716c;
   font-size: 12px;
 }
+.validation-summary {
+  margin-bottom: 12px;
+}
+.teacher-comment-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+.teacher-comment-label {
+  color: #44403c;
+  font-size: 13px;
+  font-weight: 600;
+}
 .actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid #e7e5e0;
+  border-radius: 8px 8px 0 0;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
 }
 .preview-modal {
   width: 90vw;
@@ -373,12 +553,21 @@ onMounted(loadSubmissions)
     align-items: flex-start;
     flex-direction: column;
   }
+  .progress-pill {
+    white-space: normal;
+  }
   .profile-btn {
     margin-left: 0;
   }
   .content-label {
     flex-direction: column;
     gap: 4px;
+  }
+  .actions {
+    justify-content: stretch;
+  }
+  .actions :deep(.n-button) {
+    flex: 1 1 140px;
   }
 }
 </style>

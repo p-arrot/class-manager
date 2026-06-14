@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 public class SubmissionVO {
     @Schema(description = "提交ID") private Long id;
     @Schema(description = "任务ID") private Long taskId;
+    @Schema(description = "任务标题") private String taskTitle;
+    @Schema(description = "任务类型: worksheet/artifact") private String taskType;
     @Schema(description = "学生ID") private Long studentId;
     @Schema(description = "学生姓名") private String studentName;
     @Schema(description = "学号") private String studentNo;

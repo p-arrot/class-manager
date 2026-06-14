@@ -33,6 +33,7 @@ function render() {
   const isDark = theme.isDark
   const textColor = isDark ? '#8a8a84' : '#4a4a44'
   const axisColor = isDark ? '#272725' : '#eae8e4'
+  const isCompact = chartRef.value.clientWidth < 420
 
   const indicator = props.current.map(d => ({ name: d.label, max: 100 }))
   const currentData = { name: '本学期', value: props.current.map(d => d.avgScore), lineStyle: { color: '#7C3AED', width: 2 }, areaStyle: { color: 'rgba(124,58,237,0.06)' }, itemStyle: { color: '#7C3AED' } }
@@ -50,9 +51,9 @@ function render() {
     radar: {
       indicator,
       center: ['50%', '54%'],
-      radius: '55%',
-      nameGap: 8,
-      axisName: { color: textColor, fontSize: 13, overflow: 'truncate', width: 70 },
+      radius: isCompact ? '38%' : '55%',
+      nameGap: isCompact ? 6 : 8,
+      axisName: { color: textColor, fontSize: isCompact ? 12 : 13, overflow: 'truncate', width: isCompact ? 58 : 70 },
       splitArea: { areaStyle: { color: [isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)', 'transparent'] } },
       axisLine: { lineStyle: { color: axisColor } },
       splitLine: { lineStyle: { color: axisColor } },
@@ -69,7 +70,10 @@ watch(() => props.current, render, { deep: true })
 onMounted(render)
 onUnmounted(() => { chart?.dispose(); chart = null })
 
-function handleResize() { chart?.resize() }
+function handleResize() {
+  chart?.resize()
+  render()
+}
 onMounted(() => window.addEventListener('resize', handleResize))
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 </script>

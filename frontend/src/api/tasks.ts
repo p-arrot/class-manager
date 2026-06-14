@@ -1,5 +1,5 @@
 import http from './request'
-import type { TaskAnalyticsVO, TaskVO, TaskDetailVO, TaskCreateDTO, TaskUpdateDTO, SubmissionVO, SubmissionDTO, SubmissionEvaluationDTO } from '@/types/api'
+import type { TaskAnalyticsVO, TaskVO, TaskDetailVO, TaskCreateDTO, TaskUpdateDTO, SubmissionVO, SubmissionDTO, SubmissionEvaluationDTO, TaskResultVO } from '@/types/api'
 
 export function listTasks(lessonId: number): Promise<TaskVO[]> {
   return http.get(`/lessons/${lessonId}/tasks`)
@@ -35,4 +35,8 @@ export function getTaskAnalytics(taskId: number, classId?: number): Promise<Task
 
 export function evaluateSubmission(submissionId: number, data: SubmissionEvaluationDTO): Promise<void> {
   return http.post(`/submissions/${submissionId}/evaluate`, data)
+}
+
+export function getMyTaskResult(taskId: number): Promise<TaskResultVO> {
+  return http.get(`/tasks/${taskId}/my-result`)
 }

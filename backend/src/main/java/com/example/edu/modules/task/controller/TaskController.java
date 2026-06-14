@@ -8,6 +8,7 @@ import com.example.edu.modules.task.service.TaskService;
 import com.example.edu.modules.task.vo.SubmissionVO;
 import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
+import com.example.edu.modules.task.vo.TaskResultVO;
 import com.example.edu.modules.task.vo.TaskVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -77,6 +78,14 @@ public class TaskController {
     public R<SubmissionVO> getMySubmission(@PathVariable Long taskId) {
         Long studentId = com.example.edu.common.security.SecurityUtils.getCurrentUserId();
         return R.ok(taskService.getMySubmission(taskId, studentId));
+    }
+
+    @Operation(summary = "学生查看自己的任务批改详情")
+    @GetMapping("/api/tasks/{taskId}/my-result")
+    @PreAuthorize("hasRole('STUDENT')")
+    public R<TaskResultVO> getMyResult(@PathVariable Long taskId) {
+        Long studentId = com.example.edu.common.security.SecurityUtils.getCurrentUserId();
+        return R.ok(taskService.getMyResult(taskId, studentId));
     }
 
     @Operation(summary = "查看单个提交详情")

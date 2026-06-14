@@ -1,6 +1,7 @@
 package com.example.edu.modules.exam.controller;
 
 import com.example.edu.common.result.R;
+import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.exam.entity.*;
 import com.example.edu.modules.exam.service.ExamService;
 import com.example.edu.modules.exam.vo.*;
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -109,8 +112,36 @@ public class ExamController {
     public R<Void> grade(@PathVariable Long id, @RequestBody Map<String,Object> body) {
         Object scoreObj = body.get("score");
         Integer score = scoreObj instanceof Number n ? n.intValue() : null;
-        examService.gradeSubmission(id, score, Boolean.TRUE.equals(body.get("absent")));
+        examService.gradeSubmission(id, score, Boolean.TRUE.equals(body.get("absent")), parseDimensionScores(body.get("dimensionScores")));
         return R.ok();
+    }
+
+    private List<DimensionScoreService.ScoreInput> parseDimensionScores(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<DimensionScoreService.ScoreInput> scores = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) continue;
+            Object questionId = map.get("questionId");
+            Object dimension = map.get("dimension");
+            Object earnedScore = map.get("earnedScore");
+            Object maxScore = map.get("maxScore");
+            Object autoGraded = map.get("autoGraded");
+            if (!(dimension instanceof String dim)) continue;
+            scores.add(new DimensionScoreService.ScoreInput(
+                    questionId != null ? String.valueOf(questionId) : null,
+                    dim,
+                    toBigDecimal(earnedScore),
+                    toBigDecimal(maxScore),
+                    Boolean.TRUE.equals(autoGraded)));
+        }
+        return scores;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return BigDecimal.valueOf(number.doubleValue());
+        if (value instanceof String text && !text.isBlank()) return new BigDecimal(text);
+        return BigDecimal.ZERO;
     }
 
     private ExamVO toExamVO(Exam exam, ExamPaper paper) {

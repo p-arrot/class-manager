@@ -46,6 +46,11 @@ const isWorksheet = computed(() => analytics.value?.type === 'worksheet')
 const questionRows = computed(() => analytics.value?.questions ?? [])
 const autoQuestions = computed(() => questionRows.value.filter(item => item.autoGradable))
 const manualQuestions = computed(() => questionRows.value.filter(item => !item.autoGradable))
+const completedCount = computed(() => {
+  const data = analytics.value
+  if (!data) return 0
+  return data.submittedCount + data.gradedCount + data.specialCount
+})
 const classOptions = computed<SelectOption[]>(() => {
   const classMap = new Map(classes.value.map(item => [item.id, item]))
   return [
@@ -53,7 +58,7 @@ const classOptions = computed<SelectOption[]>(() => {
     ...courseClassIds.value.map(id => {
       const item = classMap.get(id)
       return {
-        label: item ? `${item.grade}级${item.name}` : `班级 ${id}`,
+        label: item ? `${item.grade}级 ${item.name}` : `班级 ${id}`,
         value: id,
       }
     }),
@@ -83,9 +88,9 @@ const answerColumns: DataTableColumns<StudentAnswerVO> = [
   {
     title: '结果',
     key: 'correct',
-    width: 110,
+    width: 120,
     render: row => row.correct === null
-      ? h(NTag, { size: 'small', bordered: false }, () => '待人工评阅')
+      ? h(NTag, { size: 'small', bordered: false }, () => '待人工评分')
       : h(NTag, { size: 'small', bordered: false, type: row.correct ? 'success' : 'error' }, () => row.correct ? '正确' : '错误'),
   },
 ]
@@ -135,7 +140,8 @@ function renderSubmissionChart() {
   if (!submissionChartRef.value || !analytics.value) return
   if (!submissionChart) submissionChart = init(submissionChartRef.value)
   const data = [
-    { name: '已提交', value: analytics.value.submittedCount, itemStyle: { color: '#1f2937' } },
+    { name: '待批改', value: analytics.value.submittedCount, itemStyle: { color: '#2563eb' } },
+    { name: '已批改', value: analytics.value.gradedCount, itemStyle: { color: '#16a34a' } },
     { name: '未提交', value: analytics.value.notSubmittedCount, itemStyle: { color: '#d6d3cc' } },
     { name: '特殊处理', value: analytics.value.specialCount, itemStyle: { color: '#a16207' } },
   ]
@@ -162,7 +168,7 @@ function renderAccuracyChart() {
     grid: { left: 38, right: 16, top: 24, bottom: 34 },
     xAxis: {
       type: 'category',
-      data: rows.map(item => `第${item.index}题`),
+      data: rows.map(item => `第 ${item.index} 题`),
       axisLine: { lineStyle: { color: '#d6d3cc' } },
       axisLabel: { color: '#57534e' },
     },
@@ -184,14 +190,16 @@ function renderAccuracyChart() {
 
 function statusType(status: string) {
   if (status === 'graded') return 'success'
+  if (status === 'submitted') return 'info'
   if (status === 'special') return 'warning'
-  return 'info'
+  return 'default'
 }
 
 function statusLabel(status: string) {
-  if (status === 'graded') return '已评分'
+  if (status === 'graded') return '已批改'
+  if (status === 'submitted') return '待批改'
   if (status === 'special') return '特殊处理'
-  return '已提交'
+  return status || '未知'
 }
 
 function answerText(value: unknown) {
@@ -281,7 +289,7 @@ onUnmounted(() => {
           <span>名学生</span>
           <i />
           <b>{{ questionCount }}</b>
-          <span>道题，其中 {{ autoQuestionCount }} 道自动判题、{{ manualQuestionCount }} 道人工评分</span>
+          <span>道题，其中 {{ autoQuestionCount }} 道自动题、{{ manualQuestionCount }} 道人工题</span>
         </section>
 
         <section class="metric-grid">
@@ -291,19 +299,19 @@ onUnmounted(() => {
             <NProgress type="line" :percentage="analytics.submissionRate" color="#2563eb" rail-color="#dbeafe" :show-indicator="false" />
           </div>
           <div class="metric">
-            <span>已完成</span>
-            <strong>{{ analytics.submittedCount }}/{{ analytics.totalStudents }}</strong>
-            <p>{{ analytics.notSubmittedCount }} 人未提交</p>
+            <span>待批改</span>
+            <strong>{{ analytics.submittedCount }}</strong>
+            <p>{{ completedCount }}/{{ analytics.totalStudents }} 人已提交，{{ analytics.notSubmittedCount }} 人未提交</p>
+          </div>
+          <div class="metric">
+            <span>已批改</span>
+            <strong>{{ analytics.gradedCount }}</strong>
+            <p>{{ analytics.specialCount }} 人特殊处理</p>
           </div>
           <div class="metric">
             <span>自动题准确率</span>
             <strong>{{ isWorksheet ? `${analytics.accuracyRate}%` : '-' }}</strong>
             <p>只统计可自动判定的 {{ autoQuestionCount }} 道题</p>
-          </div>
-          <div class="metric">
-            <span>实时连接</span>
-            <strong>{{ realtime.connected.value ? '在线' : '连接中' }}</strong>
-            <p>学生提交后自动刷新当前范围</p>
           </div>
         </section>
 
@@ -311,14 +319,14 @@ onUnmounted(() => {
           <div class="panel">
             <div class="panel-head">
               <h3>提交构成</h3>
-              <span>已提交 / 未提交 / 特殊处理</span>
+              <span>待批改 / 已批改 / 未提交 / 特殊处理</span>
             </div>
             <div ref="submissionChartRef" class="chart" />
           </div>
           <div class="panel">
             <div class="panel-head">
-              <h3>{{ isWorksheet ? '自动判题准确率' : '作品提交概览' }}</h3>
-              <span>{{ isWorksheet ? `柱状图覆盖 ${autoQuestionCount}/${questionCount} 道题` : '课堂作品无单题准确率' }}</span>
+              <h3>{{ isWorksheet ? '自动题准确率' : '作品提交概览' }}</h3>
+              <span>{{ isWorksheet ? `覆盖 ${autoQuestionCount}/${questionCount} 道题` : '课堂作品无单题准确率' }}</span>
             </div>
             <div v-if="isWorksheet && autoQuestions.length" ref="accuracyChartRef" class="chart" />
             <NEmpty v-else description="暂无可自动判定的题目" class="empty-chart" />
@@ -328,7 +336,7 @@ onUnmounted(() => {
         <section v-if="isWorksheet" class="panel question-panel">
           <div class="panel-head">
             <h3>题目分析</h3>
-            <span>自动题看正确率，人工题看作答并去批改页评分</span>
+            <span>自动题看正确率，人工题进入批改页逐题评分</span>
           </div>
           <div class="question-list">
             <button v-for="question in questionRows" :key="question.questionId" class="question-row" type="button" @click="activeQuestion = question">
@@ -368,7 +376,7 @@ onUnmounted(() => {
         <div v-if="optionRows(activeQuestion).length" class="option-bars">
           <div v-for="[option, count] in optionRows(activeQuestion)" :key="option" class="option-bar">
             <span>{{ option }}</span>
-            <NProgress type="line" color="#2563eb" rail-color="#e7e5e0" :percentage="analytics?.submittedCount ? Math.round(count * 1000 / analytics.submittedCount) / 10 : 0" :indicator-placement="'inside'" />
+            <NProgress type="line" color="#2563eb" rail-color="#e7e5e0" :percentage="completedCount ? Math.round(count * 1000 / completedCount) / 10 : 0" :indicator-placement="'inside'" />
             <b>{{ count }}</b>
           </div>
         </div>

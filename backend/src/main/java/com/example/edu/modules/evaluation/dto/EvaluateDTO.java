@@ -16,6 +16,12 @@ public class EvaluateDTO {
     @Schema(description = "逐题各维度数值得分")
     private List<QuestionDimensionScore> questionScores;
 
+    @Schema(description = "整份任务总评语")
+    private String teacherComment;
+
+    @Schema(description = "逐题文字反馈")
+    private List<QuestionFeedback> questionFeedback;
+
     @Data
     @Schema(description = "单维度评分")
     public static class DimensionGrade {
@@ -38,6 +44,17 @@ public class EvaluateDTO {
         private BigDecimal maxScore;
         @Schema(description = "是否自动批改")
         private Boolean autoGraded;
+    }
+
+    @Data
+    @Schema(description = "单题文字反馈")
+    public static class QuestionFeedback {
+        @Schema(description = "题目ID")
+        private String questionId;
+        @Schema(description = "教师评语")
+        private String comment;
+        @Schema(description = "是否向学生展示参考答案")
+        private Boolean referenceAnswerVisible;
     }
 
     @Schema(description = "标记为特殊情况")

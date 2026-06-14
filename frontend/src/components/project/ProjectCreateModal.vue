@@ -6,6 +6,12 @@ import type { ProjectFormValue } from '@/types/project'
 const show = defineModel<boolean>('show', { required: true })
 const form = defineModel<ProjectFormValue>('form', { required: true })
 
+withDefaults(defineProps<{
+  title?: string
+}>(), {
+  title: '创建项目',
+})
+
 const emit = defineEmits<{
   submit: []
 }>()
@@ -17,7 +23,7 @@ const submitModeOptions = [
 </script>
 
 <template>
-  <NModal v-model:show="show" title="创建项目" preset="card" class="project-modal">
+  <NModal v-model:show="show" :title="title" preset="card" class="project-modal">
     <NForm label-placement="left" label-width="92">
       <NFormItem label="名称">
         <NInput v-model:value="form.name" />

@@ -27,11 +27,13 @@ import com.example.edu.modules.task.entity.Submission;
 import com.example.edu.modules.task.entity.Task;
 import com.example.edu.modules.task.mapper.SubmissionMapper;
 import com.example.edu.modules.task.mapper.TaskMapper;
+import com.example.edu.modules.task.service.TaskResultAssembler;
 import com.example.edu.modules.task.service.TaskService;
 import com.example.edu.modules.realtime.service.RealtimeService;
 import com.example.edu.modules.task.vo.SubmissionVO;
 import com.example.edu.modules.task.vo.TaskAnalyticsVO;
 import com.example.edu.modules.task.vo.TaskDetailVO;
+import com.example.edu.modules.task.vo.TaskResultVO;
 import com.example.edu.modules.task.vo.TaskVO;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
@@ -40,8 +42,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.format.DateTimeParseException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -65,6 +67,7 @@ public class TaskServiceImpl implements TaskService {
     private final RealtimeService realtimeService;
     private final DimensionScoreService dimensionScoreService;
     private final QuestionScoreHelper questionScoreHelper;
+    private final TaskResultAssembler taskResultAssembler;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -249,7 +252,15 @@ public class TaskServiceImpl implements TaskService {
         if (sub == null) throw new BizException(ErrorCode.SUBMISSION_NOT_FOUND);
         Task task = taskMapper.selectById(sub.getTaskId());
         if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
-        checkTaskAccess(task);
+        String role = SecurityUtils.getCurrentUserRole();
+        if ("student".equals(role)) {
+            if (!Objects.equals(sub.getStudentId(), SecurityUtils.getCurrentUserId())) {
+                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+            }
+            checkTaskAccess(task);
+        } else {
+            checkTaskOwner(task);
+        }
         return toSubmissionVO(sub);
     }
 
@@ -272,12 +283,17 @@ public class TaskServiceImpl implements TaskService {
                 new LambdaQueryWrapper<Task>().in(Task::getLessonId, lessonIds));
         List<Long> taskIds = tasks.stream().map(Task::getId).toList();
         if (taskIds.isEmpty()) return List.of();
+        Map<Long, Task> taskById = tasks.stream()
+                .collect(Collectors.toMap(Task::getId, task -> task));
 
         List<Submission> subs = submissionMapper.selectList(
                 new LambdaQueryWrapper<Submission>()
                         .eq(Submission::getStudentId, studentId)
                         .in(Submission::getTaskId, taskIds));
-        return subs.stream().map(this::toSubmissionVO).toList();
+        User student = userMapper.selectById(studentId);
+        return subs.stream()
+                .map(sub -> toSubmissionVO(sub, student, taskById.get(sub.getTaskId())))
+                .toList();
     }
 
     @Override
@@ -347,7 +363,7 @@ public class TaskServiceImpl implements TaskService {
                 .title(task.getTitle())
                 .type(task.getType())
                 .totalStudents(total)
-                .submittedCount(completed)
+                .submittedCount(Math.toIntExact(submitted))
                 .gradedCount(Math.toIntExact(graded))
                 .specialCount(Math.toIntExact(special))
                 .notSubmittedCount(Math.max(total - completed, 0))
@@ -380,6 +396,14 @@ public class TaskServiceImpl implements TaskService {
                 .eq(Submission::getTaskId, taskId)
                 .eq(Submission::getStudentId, studentId));
         return sub != null ? toSubmissionVO(sub) : null;
+    }
+
+    @Override
+    public TaskResultVO getMyResult(Long taskId, Long studentId) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
+        checkTaskAccess(task);
+        return taskResultAssembler.build(task, studentId);
     }
 
     // ========== private helpers ==========
@@ -463,9 +487,15 @@ public class TaskServiceImpl implements TaskService {
     }
 
     private SubmissionVO toSubmissionVO(Submission sub, User student) {
+        return toSubmissionVO(sub, student, null);
+    }
+
+    private SubmissionVO toSubmissionVO(Submission sub, User student, Task task) {
         return SubmissionVO.builder()
                 .id(sub.getId())
                 .taskId(sub.getTaskId())
+                .taskTitle(task != null ? task.getTitle() : null)
+                .taskType(task != null ? task.getType() : null)
                 .studentId(sub.getStudentId())
                 .studentName(student != null ? student.getName() : null)
                 .studentNo(student != null ? student.getStudentNo() : null)

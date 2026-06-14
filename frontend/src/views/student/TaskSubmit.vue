@@ -142,7 +142,8 @@ onMounted(loadTask)
           <p>{{ task?.type === 'worksheet' ? '练习已提交' : '作品已提交' }}，请等待教师查看和评分。</p>
           <NSpace justify="center">
             <NButton @click="router.back()">返回</NButton>
-            <NButton type="primary" @click="router.push('/student/home')">回到首页</NButton>
+            <NButton @click="router.push('/student/home')">回到首页</NButton>
+            <NButton type="primary" @click="router.push(`/student/tasks/${taskId}/result`)">查看提交状态</NButton>
           </NSpace>
         </NCard>
       </div>

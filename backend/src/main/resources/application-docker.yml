@@ -1,18 +1,18 @@
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://postgres:5432/edu
-    username: edu
-    password: edu123
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:edu}
+    username: ${DB_USERNAME:edu}
+    password: ${DB_PASSWORD:edu123}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
   data:
     redis:
-      host: redis
-      port: 6379
-      password:
-      database: 0
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
       lettuce:
         pool:
           max-active: 20
@@ -24,15 +24,15 @@ jwt:
   expiration: 86400000
 
 minio:
-  endpoint: http://minio:9000
-  access-key: minioadmin
-  secret-key: minioadmin
-  bucket: edu
+  endpoint: ${MINIO_ENDPOINT:http://minio:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:edu}
 
 kkfileview:
-  base-url: http://localhost:8012
+  base-url: ${KKFILEVIEW_BASE_URL:http://localhost:8012}
 
 logging:
   level:
-    com.example.edu: debug
-    org.springframework.security: debug
+    com.example.edu: ${APP_LOG_LEVEL:info}
+    org.springframework.security: ${SECURITY_LOG_LEVEL:warn}

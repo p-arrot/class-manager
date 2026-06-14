@@ -9,23 +9,21 @@ import {
   NPopconfirm,
   NSelect,
   NSpace,
-  NSpin,
   NTag,
+  NSpin,
   useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { AddOutline, EyeOutline, TrashOutline } from '@vicons/ionicons5'
-import { getDrivePreview, getDriveRaw } from '@/api/drive'
 import { listSemesters } from '@/api/semesters'
-import { createProject, deleteProject, listProjectSubmissions, listProjects, scoreProjectSubmission } from '@/api/projects'
+import { createProject, deleteProject, listProjects } from '@/api/projects'
 import { formatDate, toLocalDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
+import { useProjectSubmissionScoring } from '@/composables/useProjectSubmissionScoring'
 import ProjectCreateModal from '@/components/project/ProjectCreateModal.vue'
 import ProjectSubmissionModal from '@/components/project/ProjectSubmissionModal.vue'
-import { buildProjectDescription, createEmptyProjectForm, parseProjectDescription, parseProjectSubmissionContent } from '@/types/project'
-import type { ArtifactFile } from '@/types/grading'
-import type { ProjectSubmissionVO, ProjectVO, SemesterVO } from '@/types/api'
-import type { ProjectSubmissionRow } from '@/types/project'
+import { buildProjectDescription, createEmptyProjectForm, parseProjectDescription } from '@/types/project'
+import type { ProjectVO, SemesterVO } from '@/types/api'
 
 const props = defineProps<{ courseId: number; semesterId?: number | null }>()
 const message = useMessage()
@@ -33,14 +31,23 @@ const semesters = ref<SemesterVO[]>([])
 const activeSemesterId = ref<number | null>(null)
 const projects = ref<ProjectVO[]>([])
 const showModal = ref(false)
-const showSubmissions = ref(false)
-const submissions = ref<ProjectSubmissionVO[]>([])
-const activeProject = ref<ProjectVO | null>(null)
-const previewUrl = ref('')
-const previewTitle = ref('')
-const previewLoading = ref(false)
-const projectScores = ref<Record<number, Record<string, number>>>({})
 const form = ref(createEmptyProjectForm())
+const {
+  showSubmissions,
+  submissionRows,
+  activeProjectRubric,
+  submissionModalTitle,
+  previewUrl,
+  previewTitle,
+  previewLoading,
+  openSubmissions,
+  previewFile,
+  downloadFile,
+  closePreview,
+  getProjectScore,
+  setProjectScore,
+  saveProjectScore,
+} = useProjectSubmissionScoring()
 
 const columns: DataTableColumns<ProjectVO> = [
   { title: '名称', key: 'name' },
@@ -73,14 +80,6 @@ const columns: DataTableColumns<ProjectVO> = [
   },
 ]
 
-const submissionRows = computed(() => submissions.value.map(sub => ({
-  ...sub,
-  parsed: parseProjectSubmissionContent(sub.content),
-})))
-
-const activeProjectRubric = computed(() => parseProjectDescription(activeProject.value).rubric)
-
-const submissionModalTitle = computed(() => activeProject.value ? `${activeProject.value.name} · 提交情况` : '提交情况')
 const semesterOptions = computed(() => semesters.value.map(semester => ({
   label: semester.name,
   value: semester.id,
@@ -154,72 +153,6 @@ async function handleDelete(id: number) {
   }
 }
 
-async function openSubmissions(project: ProjectVO) {
-  activeProject.value = project
-  showSubmissions.value = true
-  try {
-    submissions.value = await listProjectSubmissions(project.id)
-  } catch (e) {
-    submissions.value = []
-    message.error(getErrorMessage(e, '加载提交失败'))
-  }
-}
-
-async function previewFile(file: ArtifactFile) {
-  previewLoading.value = true
-  previewTitle.value = file.name
-  previewUrl.value = ''
-  try {
-    const data = await getDrivePreview(file.id)
-    previewUrl.value = data.url
-  } catch (e) {
-    message.error(getErrorMessage(e, '预览失败'))
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-async function downloadFile(file: ArtifactFile) {
-  try {
-    const blob = await getDriveRaw(file.id)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.name
-    link.click()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    message.error(getErrorMessage(e, '下载失败'))
-  }
-}
-
-function getProjectScore(submissionId: number, dimension: string) {
-  return projectScores.value[submissionId]?.[dimension] ?? 0
-}
-
-function setProjectScore(submissionId: number, dimension: string, value: number | null) {
-  if (!projectScores.value[submissionId]) projectScores.value[submissionId] = {}
-  projectScores.value[submissionId][dimension] = Math.max(0, Number(value ?? 0))
-}
-
-async function saveProjectScore(row: ProjectSubmissionVO | ProjectSubmissionRow) {
-  const rubric = activeProjectRubric.value.filter(item => item.maxScore > 0)
-  if (!rubric.length) {
-    message.warning('项目未设置评分维度')
-    return
-  }
-  try {
-    await scoreProjectSubmission(row.id, rubric.map(item => ({
-      questionId: 'project',
-      dimension: item.dimension,
-      earnedScore: getProjectScore(row.id, item.dimension),
-      maxScore: item.maxScore,
-    })))
-    message.success('评分已保存')
-  } catch (e) {
-    message.error(getErrorMessage(e, '评分失败'))
-  }
-}
 </script>
 
 <template>
@@ -255,7 +188,7 @@ async function saveProjectScore(row: ProjectSubmissionVO | ProjectSubmissionRow)
       :title="previewTitle"
       class="preview-modal"
       :bordered="false"
-      @update:show="v => { if (!v) { previewTitle = ''; previewUrl = '' } }"
+      @update:show="v => { if (!v) closePreview() }"
     >
       <div class="preview-body">
         <NSpin v-if="previewLoading" />
