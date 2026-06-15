@@ -926,6 +926,40 @@ GET /api/files/{resourceId}/preview
 | 文件类型 | 仅允许：doc/docx/ppt/pptx/pdf/xls/xlsx/txt/html/htm/jpg/jpeg/png/gif/bmp/mp3/mp4/zip/rar（40006 FILE_TYPE_NOT_ALLOWED） |
 | 对象命名 | `{courseId}/{yyyy-MM}/{uuid8}_{fileName}` — 服务端生成，消除冲突 |
 
+##### 10.4.4 上传课程封面
+
+课程封面不进入课程资源树，上传后返回稳定只读地址，前端写入课程 `coverUrl`。
+
+```
+POST /api/files/course-cover/upload
+Content-Type: multipart/form-data
+```
+
+权限：`ADMIN` / `TEACHER`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| file | file | 是 | 图片文件，支持 jpg/png/webp/gif，最大 5MB |
+
+**响应示例**
+```json
+{
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "url": "/api/files/course-cover/Y291cnNlLWNvdmVycy8yMDI2LTA2L2FiY19jb3Zlci5wbmc"
+  }
+}
+```
+
+封面读取：
+
+```
+GET /api/files/course-cover/{token}
+```
+
+该接口公开只读，用于课程卡片 `<img>` 直接加载。
+
 ##### 资源树中的文件
 
 获取资源树（10.1）时，FILE 类型节点包含文件元数据：
@@ -1161,6 +1195,10 @@ GET    /api/tasks/{taskId}/analytics     教师任务数据看板
 
 - `GET /api/submissions/{id}` 已收紧：学生角色只能读取本人提交；教师角色只能读取自己负责班级/课程下的提交。
 - 教师数据看板使用 `GET /api/tasks/{taskId}/analytics`。当前约定：`submittedCount` 表示“已提交待批改”人数，`gradedCount` 表示“已评分”人数，`specialCount` 表示特殊处理人数，`notSubmittedCount` 表示未提交人数；`submissionRate` 按 `(submittedCount + gradedCount + specialCount) / totalStudents` 计算。
+- `TaskAnalyticsVO.submissions` 是教师批改收件箱行，不再只是已提交记录。每个应完成学生都会返回一行：
+  - 已提交/已批改/特殊处理：`submissionId/status/content/submittedAt` 来自 `submissions` 表。
+  - 未提交：`submissionId=null`、`status=not_submitted`、`content=null`、`submittedAt=null`。
+  - 每行包含 `studentId/studentName/studentNo/classId/className`，前端按班级展示并决定是否允许进入批改。
 - 评分接口持久化 `gradedAt`、`teacherComment`、逐题 `comment`，供学生批改详情展示。
 - 时间字段统一约定：后端 `LocalDateTime` 返回 `yyyy-MM-dd'T'HH:mm:ss`，语义为 `Asia/Shanghai` 课堂本地时间；前端统一通过 `formatDate` 展示无时区字符串，不做浏览器时区隐式换算。
 
@@ -1222,6 +1260,13 @@ PUT    /api/exam-submissions/{id}/grade 考试评分
 
 考试列表会返回关联试卷的 `paperContent`，学生答题页按同一套 `version: 3` 题目 schema 渲染。选择、是非等自动批改题提交后写入 `dimension_scores`。
 
+`GET /api/exams/{id}/submissions` 返回教师批改收件箱，不再只是已提交记录：
+
+- 接口会按 `Exam -> Semester -> Course` 校验课程归属，再读取课程绑定班级下的所有学生。
+- 已提交、已批改、缺考学生返回真实 `id/submissionId/answers/submittedAt/score/status`。
+- 未提交学生也返回一行，`id/submissionId/answers/submittedAt/score` 为空，`status=not_submitted`。
+- 每行包含 `studentId/studentName/studentNo/classId/className`，前端据此按班级展示并禁止未提交行保存批改。
+
 `PUT /api/exam-submissions/{id}/grade` 请求体：
 
 ```json
@@ -1268,6 +1313,14 @@ GET    /api/projects/{id}/scores        旧项目评分查询（兼容路由，�
 - 学生创建队伍、加入队伍、提交项目时，必须属于项目所在课程绑定班级。
 - 教师查看提交和逐维度评分时，必须是项目所在课程创建教师；管理员保留管理权限。
 - 旧 `/api/projects/{id}/scores` 不再写入 `project_scores`，应改用 `/api/project-submissions/{id}/score` 写入 `dimension_scores(source_type='project')`。
+
+`GET /api/projects/{id}/submissions` 返回教师项目批改收件箱：
+
+- 接口按 `Project -> Semester -> Course` 校验课程归属，再读取课程绑定班级下的所有学生。
+- 已提交学生返回真实 `id/submissionId/content/submittedAt`；未提交学生也返回一行，`id/submissionId/content/submittedAt/score` 为空。
+- 每行包含 `studentId/studentName/studentNo/classId/className/status/score`。
+- `status=not_submitted` 表示未提交，`status=submitted` 表示已提交待评分，`status=graded` 表示已有 `dimension_scores(source_type='project', source_id=submissionId)`。
+- `score` 为该项目提交已保存维度得分的 `earnedScore` 汇总，前端只用于展示状态和复核参考，最终评分仍通过 `POST /api/project-submissions/{id}/score` 保存。
 
 项目说明当前以 JSON 文本保存扩展配置，例如提交方式、允许文件后缀和项目评分维度：
 

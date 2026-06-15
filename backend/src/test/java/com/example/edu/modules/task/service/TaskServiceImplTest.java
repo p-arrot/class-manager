@@ -3,6 +3,8 @@ package com.example.edu.modules.task.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.edu.common.security.LoginUser;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.classes.entity.SchoolClass;
+import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.classes.mapper.TeacherClassMapper;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,6 +42,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,6 +56,7 @@ class TaskServiceImplTest {
     @Mock private CourseMapper courseMapper;
     @Mock private TeacherClassMapper teacherClassMapper;
     @Mock private CourseClassMapper courseClassMapper;
+    @Mock private SchoolClassMapper schoolClassMapper;
     @Mock private UserMapper userMapper;
     @Mock private AuditLogService auditLogService;
     @Mock private RealtimeService realtimeService;
@@ -132,6 +138,39 @@ class TaskServiceImplTest {
     }
 
     @Test
+    void analyticsIncludesNotSubmittedStudentsInInboxRows() {
+        setTeacher();
+        Task task = task();
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                student(101L, "2026101", "林一"),
+                student(102L, "2026102", "周二")
+        ));
+        when(schoolClassMapper.selectBatchIds(any())).thenReturn(List.of(schoolClass(10L)));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                submission(11L, 101L, "{\"q1\":\"A\"}", "submitted")
+        ));
+
+        TaskAnalyticsVO analytics = service.getTaskAnalytics(1L, null);
+
+        assertThat(analytics.getTotalStudents()).isEqualTo(2);
+        assertThat(analytics.getSubmittedCount()).isEqualTo(1);
+        assertThat(analytics.getNotSubmittedCount()).isEqualTo(1);
+        assertThat(analytics.getSubmissions()).hasSize(2);
+        assertThat(analytics.getSubmissions()).extracting(TaskAnalyticsVO.StudentTaskAnswerVO::getStatus)
+                .containsExactly("submitted", "not_submitted");
+        assertThat(analytics.getSubmissions()).extracting(TaskAnalyticsVO.StudentTaskAnswerVO::getClassName)
+                .containsExactly("2026级1班", "2026级1班");
+        assertThat(analytics.getSubmissions().get(1).getSubmissionId()).isNull();
+        assertThat(analytics.getClassScopes()).hasSize(1);
+        assertThat(analytics.getClassScopes().get(0).getStudentCount()).isEqualTo(2);
+    }
+
+    @Test
     void analyticsToleratesQuestionWithoutStemTitleOrMarkdown() {
         setTeacher();
         Task task = task();
@@ -179,6 +218,54 @@ class TaskServiceImplTest {
     }
 
     @Test
+    void submitKeepsWorksheetSubmittedWhenManualQuestionsRemain() {
+        setStudent(101L);
+        Task task = taskWithManualQuestion();
+        Submission existing = submission(11L, 101L, "{\"q1\":\"A\"}", "submitted");
+
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        when(submissionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
+        when(questionScoreHelper.autoGrade(any(), any())).thenReturn(List.of(
+                new DimensionScoreService.ScoreInput("q1", "COMPUTING", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, true)
+        ));
+
+        service.submit(1L, submissionDto("{\"q1\":\"A\",\"q2\":\"需要老师看\"}"));
+
+        ArgumentCaptor<Submission> captor = ArgumentCaptor.forClass(Submission.class);
+        verify(submissionMapper, atLeastOnce()).updateById(captor.capture());
+        assertThat(captor.getAllValues()).extracting(Submission::getStatus)
+                .containsOnly("submitted");
+    }
+
+    @Test
+    void submitMarksWorksheetGradedWhenAllQuestionsAreAutoGradable() {
+        setStudent(101L);
+        Task task = task();
+        Submission existing = submission(11L, 101L, "{\"q1\":\"A\"}", "submitted");
+
+        when(taskMapper.selectById(1L)).thenReturn(task);
+        when(lessonMapper.selectById(2L)).thenReturn(lesson());
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course());
+        when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        when(submissionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
+        when(questionScoreHelper.autoGrade(any(), any())).thenReturn(List.of(
+                new DimensionScoreService.ScoreInput("q1", "COMPUTING", java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, true)
+        ));
+
+        service.submit(1L, submissionDto("{\"q1\":\"A\",\"q2\":[\"B\",\"C\"]}"));
+
+        ArgumentCaptor<Submission> captor = ArgumentCaptor.forClass(Submission.class);
+        verify(submissionMapper, atLeastOnce()).updateById(captor.capture());
+        assertThat(captor.getAllValues()).extracting(Submission::getStatus)
+                .contains("graded");
+    }
+
+    @Test
     void studentCannotReadAnotherStudentsSubmissionById() {
         setStudent(102L);
         when(submissionMapper.selectById(11L)).thenReturn(submission(11L, 101L, "{\"q1\":\"A\"}", "graded"));
@@ -212,6 +299,20 @@ class TaskServiceImplTest {
                   "questions": [
                     {"id": "q1", "type": "single", "stem": "选择 A", "autoGrade": true, "answer": "A", "options": ["A", "B"]},
                     {"id": "q2", "type": "multiple", "stem": "选择 B 和 C", "autoGrade": true, "answer": ["B", "C"], "options": ["A", "B", "C"]}
+                  ]
+                }
+                """);
+        return task;
+    }
+
+    private static Task taskWithManualQuestion() {
+        Task task = task();
+        task.setFormSchema("""
+                {
+                  "version": 3,
+                  "questions": [
+                    {"id": "q1", "type": "single", "stem": "选择 A", "autoGrade": true, "answer": "A", "options": ["A", "B"]},
+                    {"id": "q2", "type": "short", "stem": "说明原因", "autoGrade": false}
                   ]
                 }
                 """);
@@ -256,6 +357,14 @@ class TaskServiceImplTest {
         return user;
     }
 
+    private static SchoolClass schoolClass(Long id) {
+        SchoolClass schoolClass = new SchoolClass();
+        schoolClass.setId(id);
+        schoolClass.setGrade("2026");
+        schoolClass.setName("1班");
+        return schoolClass;
+    }
+
     private static Submission submission(Long id, Long studentId, String content, String status) {
         Submission submission = new Submission();
         submission.setId(id);
@@ -265,6 +374,12 @@ class TaskServiceImplTest {
         submission.setStatus(status);
         submission.setSubmittedAt(LocalDateTime.now());
         return submission;
+    }
+
+    private static com.example.edu.modules.task.dto.SubmissionDTO submissionDto(String content) {
+        com.example.edu.modules.task.dto.SubmissionDTO dto = new com.example.edu.modules.task.dto.SubmissionDTO();
+        dto.setContent(content);
+        return dto;
     }
 
 }

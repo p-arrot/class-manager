@@ -25,7 +25,11 @@ const selectedClassId = computed({
   get: () => classFilter.selectedClassId,
   set: (value) => classFilter.setClassId(value),
 })
-const showClassFilter = computed(() => route.path === '/teacher/courses')
+const showClassFilter = computed(() =>
+  route.path === '/teacher/courses'
+  || route.path === '/teacher/stats'
+  || route.path.startsWith('/teacher/tasks'),
+)
 
 const menu = [
   { label: '工作台', key: '/teacher/home', icon: BarChartOutline, match: ['/teacher/home'] },
@@ -54,7 +58,7 @@ const menu = [
         v-if="showClassFilter"
         v-model:value="selectedClassId"
         :options="classes.map(c => ({ label: c.grade + '级' + c.name, value: c.id }))"
-        placeholder="课程班级筛选"
+        placeholder="当前班级"
         clearable
         class="class-filter"
         size="small"

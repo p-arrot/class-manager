@@ -29,7 +29,7 @@ const showSubmissionModal = ref(false)
 const editingId = ref<number | null>(null)
 const activeExam = ref<ExamVO | null>(null)
 const examSubmissions = ref<ExamSubmissionVO[]>([])
-const selectedSubmissionId = ref<number | null>(null)
+const selectedStudentId = ref<number | null>(null)
 const loadingSubmissions = ref(false)
 const savingGrade = ref(false)
 const markAbsent = ref(false)
@@ -48,7 +48,8 @@ const questionTypes: Array<{ label: string; value: QuestionType }> = [
   { label: '是非', value: 'true_false' },
   { label: '简答', value: 'short' },
 ]
-const selectedSubmission = computed(() => examSubmissions.value.find(item => item.id === selectedSubmissionId.value) ?? null)
+const selectedSubmission = computed(() => examSubmissions.value.find(item => item.studentId === selectedStudentId.value) ?? null)
+const canGradeSelectedSubmission = computed(() => Boolean(selectedSubmission.value?.submissionId))
 const activeQuestions = computed(() => parseTaskSchema(activeExam.value?.paperContent).questions ?? [])
 const answerMap = computed<WorksheetAnswerMap>(() => {
   if (!selectedSubmission.value?.answers) return {}
@@ -216,7 +217,7 @@ async function handleDelete(id: number) {
 
 async function openSubmissions(row: ExamVO) {
   activeExam.value = row
-  selectedSubmissionId.value = null
+  selectedStudentId.value = null
   gradeScores.value = []
   markAbsent.value = false
   showSubmissionModal.value = true
@@ -228,7 +229,7 @@ async function loadSubmissions(examId = activeExam.value?.id) {
   loadingSubmissions.value = true
   try {
     examSubmissions.value = await listExamSubmissions(examId)
-    selectedSubmissionId.value = examSubmissions.value[0]?.id ?? null
+    selectedStudentId.value = examSubmissions.value[0]?.studentId ?? null
     initGradeScores()
   } catch (e) {
     examSubmissions.value = []
@@ -239,7 +240,7 @@ async function loadSubmissions(examId = activeExam.value?.id) {
 }
 
 function selectSubmission(row: ExamSubmissionVO) {
-  selectedSubmissionId.value = row.id
+  selectedStudentId.value = row.studentId
   markAbsent.value = row.status === 'absent'
   initGradeScores()
 }
@@ -281,20 +282,27 @@ function statusLabel(status: string) {
   if (status === 'graded') return '已批改'
   if (status === 'absent') return '缺考'
   if (status === 'submitted') return '待批改'
+  if (status === 'not_submitted') return '未提交'
   return status || '-'
 }
 
 async function saveGrade() {
-  if (!selectedSubmission.value) return
+  const selected = selectedSubmission.value
+  if (!selected?.submissionId) {
+    message.warning('该学生尚未提交考试，不能批改')
+    return
+  }
   savingGrade.value = true
   try {
-    await gradeExamSubmission(selectedSubmission.value.id, {
+    const currentStudentId = selected.studentId
+    await gradeExamSubmission(selected.submissionId, {
       score: markAbsent.value ? 0 : Math.round(manualTotalScore.value),
       absent: markAbsent.value,
       dimensionScores: markAbsent.value ? [] : gradeScores.value,
     })
     message.success(markAbsent.value ? '已标记缺考' : '考试批改已保存')
     await loadSubmissions()
+    selectedStudentId.value = currentStudentId
   } catch (e) {
     message.error(getErrorMessage(e, '保存考试批改失败'))
   } finally {
@@ -322,9 +330,20 @@ const examColumns: DataTableColumns<ExamVO> = [
 ]
 
 const submissionColumns: DataTableColumns<ExamSubmissionVO> = [
+  { title: '班级', key: 'className', width: 100, render: row => row.className || '-' },
   { title: '学生', key: 'studentName', width: 92, render: row => row.studentName || '-' },
   { title: '学号', key: 'studentNo', width: 110, render: row => row.studentNo || '-' },
-  { title: '状态', key: 'status', width: 80, render: row => h(NTag, { size: 'small', type: row.status === 'graded' ? 'success' : row.status === 'absent' ? 'error' : 'warning', bordered: false }, () => statusLabel(row.status)) },
+  {
+    title: '状态',
+    key: 'status',
+    width: 86,
+    render: row => h(NTag, {
+      size: 'small',
+      type: row.status === 'graded' ? 'success' : row.status === 'absent' ? 'error' : row.status === 'not_submitted' ? 'default' : 'warning',
+      bordered: false,
+    }, () => statusLabel(row.status)),
+  },
+  { title: '提交时间', key: 'submittedAt', width: 132, render: row => row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '尚未提交' },
   { title: '分数', key: 'score', width: 70, render: row => row.score ?? '-' },
 ]
 
@@ -435,17 +454,17 @@ onMounted(async () => {
     <NModal v-model:show="showSubmissionModal" title="考试提交批改" preset="card" class="submission-modal">
       <div class="submission-workbench">
         <aside class="submission-list">
-          <div class="panel-title">提交列表</div>
+          <div class="panel-title">批改收件箱</div>
           <NDataTable
             v-if="examSubmissions.length"
             :data="examSubmissions"
             :columns="submissionColumns"
-            :row-key="(row: ExamSubmissionVO) => row.id"
+            :row-key="(row: ExamSubmissionVO) => row.studentId"
             size="small"
             :loading="loadingSubmissions"
-            :row-props="row => ({ class: row.id === selectedSubmissionId ? 'selected-row' : '', onClick: () => selectSubmission(row) })"
+            :row-props="row => ({ class: row.studentId === selectedStudentId ? 'selected-row' : '', onClick: () => selectSubmission(row) })"
           />
-          <NEmpty v-else description="暂无提交" class="empty-state" />
+          <NEmpty v-else description="暂无应完成学生" class="empty-state" />
         </aside>
 
         <section class="grading-panel">
@@ -455,46 +474,52 @@ onMounted(async () => {
                 <div class="student-title">{{ selectedSubmission.studentName || '未命名学生' }}</div>
                 <div class="student-meta">{{ selectedSubmission.studentNo || '-' }} · {{ statusLabel(selectedSubmission.status) }}</div>
               </div>
-              <div class="score-total">{{ markAbsent ? 0 : Math.round(manualTotalScore) }} 分</div>
+              <div v-if="canGradeSelectedSubmission" class="score-total">{{ markAbsent ? 0 : Math.round(manualTotalScore) }} 分</div>
             </div>
 
-            <NAlert type="info" :bordered="false" class="grading-note">
+            <NAlert v-if="!canGradeSelectedSubmission" type="warning" :bordered="false" class="grading-note">
+              该学生尚未提交考试，当前只能查看状态，不能保存批改。
+            </NAlert>
+
+            <NAlert v-else type="info" :bordered="false" class="grading-note">
               自动题和人工题都可以在这里做最终确认；保存后写入考试结果评价分。
             </NAlert>
 
-            <NCheckbox v-model:checked="markAbsent" class="absent-check">标记为缺考，本次考试记 0 分</NCheckbox>
+            <template v-if="canGradeSelectedSubmission">
+              <NCheckbox v-model:checked="markAbsent" class="absent-check">标记为缺考，本次考试记 0 分</NCheckbox>
 
-            <div class="question-review-list" :class="{ disabled: markAbsent }">
-              <article v-for="(question, index) in activeQuestions" :key="question.id" class="review-question">
-                <div class="review-question-head">
-                  <NTag size="small" :bordered="false">第 {{ index + 1 }} 题</NTag>
-                  <span>{{ question.type }}</span>
-                  <strong>{{ questionTotalScore(question) }} 分</strong>
-                </div>
-                <p class="question-stem">{{ questionStem(question) }}</p>
-                <div class="answer-box">
-                  <span>学生答案</span>
-                  <strong>{{ answerText(question) }}</strong>
-                </div>
-                <div class="score-grid">
-                  <label
-                    v-for="score in gradeScores.filter(item => item.questionId === question.id)"
-                    :key="`${score.questionId}-${score.dimension}`"
-                    class="score-cell"
-                  >
-                    <span>{{ dimensionLabel(score.dimension) }}</span>
-                    <NInput
-                      :value="String(score.earnedScore)"
-                      size="small"
-                      :disabled="markAbsent"
-                      @update:value="value => updateScore(score.questionId, score.dimension, value)"
+              <div class="question-review-list" :class="{ disabled: markAbsent }">
+                <article v-for="(question, index) in activeQuestions" :key="question.id" class="review-question">
+                  <div class="review-question-head">
+                    <NTag size="small" :bordered="false">第 {{ index + 1 }} 题</NTag>
+                    <span>{{ question.type }}</span>
+                    <strong>{{ questionTotalScore(question) }} 分</strong>
+                  </div>
+                  <p class="question-stem">{{ questionStem(question) }}</p>
+                  <div class="answer-box">
+                    <span>学生答案</span>
+                    <strong>{{ answerText(question) }}</strong>
+                  </div>
+                  <div class="score-grid">
+                    <label
+                      v-for="score in gradeScores.filter(item => item.questionId === question.id)"
+                      :key="`${score.questionId}-${score.dimension}`"
+                      class="score-cell"
                     >
-                      <template #suffix>/ {{ score.maxScore }}</template>
-                    </NInput>
-                  </label>
-                </div>
-              </article>
-            </div>
+                      <span>{{ dimensionLabel(score.dimension) }}</span>
+                      <NInput
+                        :value="String(score.earnedScore)"
+                        size="small"
+                        :disabled="markAbsent"
+                        @update:value="value => updateScore(score.questionId, score.dimension, value)"
+                      >
+                        <template #suffix>/ {{ score.maxScore }}</template>
+                      </NInput>
+                    </label>
+                  </div>
+                </article>
+              </div>
+            </template>
           </template>
           <NEmpty v-else description="请选择一名学生查看答题详情" class="empty-state" />
         </section>
@@ -502,7 +527,7 @@ onMounted(async () => {
       <template #footer>
         <NSpace justify="end">
           <NButton @click="showSubmissionModal = false">关闭</NButton>
-          <NButton type="primary" :loading="savingGrade" :disabled="!selectedSubmission" @click="saveGrade">保存批改</NButton>
+          <NButton type="primary" :loading="savingGrade" :disabled="!canGradeSelectedSubmission" @click="saveGrade">保存批改</NButton>
         </NSpace>
       </template>
     </NModal>

@@ -50,29 +50,19 @@ function Initialize-Env {
     Write-Host "Created backend/.env. Edit DB_PASSWORD, MINIO_ROOT_PASSWORD, and JWT_SECRET before starting."
 }
 
-function Build-BackendJar {
-    if ($SkipBuild) {
-        return
-    }
-    Assert-Command "mvn"
-    Push-Location $BackendDir
-    try {
-        mvn -q -DskipTests package
-    } finally {
-        Pop-Location
-    }
-}
-
 function Compose-Up {
     Assert-Command "docker"
     if (-not (Test-Path -LiteralPath $EnvFile)) {
         Initialize-Env
         throw "Edit backend/.env passwords and SERVER_IP, then run start again."
     }
-    Build-BackendJar
     Push-Location $BackendDir
     try {
-        docker compose up -d --build
+        if ($SkipBuild) {
+            docker compose up -d
+        } else {
+            docker compose up -d --build
+        }
     } finally {
         Pop-Location
     }

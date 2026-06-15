@@ -52,6 +52,23 @@ public class FileController {
         return R.ok(fileService.directUpload(dto, file));
     }
 
+    @Operation(summary = "上传课程封面图片")
+    @PostMapping("/course-cover/upload")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<FileUploadVO> uploadCourseCover(@RequestParam("file") MultipartFile file) {
+        return R.ok(fileService.uploadCourseCover(file));
+    }
+
+    @Operation(summary = "读取课程封面图片")
+    @GetMapping("/course-cover/{token}")
+    public ResponseEntity<InputStreamResource> getCourseCover(@PathVariable String token) {
+        FileRawDTO raw = fileService.getCourseCoverRaw(token);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        raw.getContentType() != null ? raw.getContentType() : "image/jpeg"))
+                .body(new InputStreamResource(raw.getInputStream()));
+    }
+
     @Operation(summary = "获取文件下载 URL")
     @GetMapping("/{resourceId}/download")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")

@@ -7,6 +7,8 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.classes.entity.SchoolClass;
+import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
@@ -62,6 +64,7 @@ public class TaskServiceImpl implements TaskService {
     private final CourseMapper courseMapper;
     private final TeacherClassMapper teacherClassMapper;
     private final CourseClassMapper courseClassMapper;
+    private final SchoolClassMapper schoolClassMapper;
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
     private final RealtimeService realtimeService;
@@ -373,20 +376,9 @@ public class TaskServiceImpl implements TaskService {
                 .autoQuestionCount(autoQuestionCount)
                 .manualQuestionCount(questions.size() - autoQuestionCount)
                 .selectedClassId(classId)
-                .classScopes(List.of())
+                .classScopes(buildClassScopes(students))
                 .questions(questions)
-                .submissions(subs.stream().map(sub -> {
-                    User student = studentMap.get(sub.getStudentId());
-                    return TaskAnalyticsVO.StudentTaskAnswerVO.builder()
-                            .submissionId(sub.getId())
-                            .studentId(sub.getStudentId())
-                            .studentName(student != null ? student.getName() : null)
-                            .studentNo(student != null ? student.getStudentNo() : null)
-                            .status(sub.getStatus())
-                            .content(sub.getContent())
-                            .submittedAt(sub.getSubmittedAt())
-                            .build();
-                }).toList())
+                .submissions(buildStudentStatusRows(students, subs))
                 .build();
     }
 
@@ -520,12 +512,21 @@ public class TaskServiceImpl implements TaskService {
             List<DimensionScoreService.ScoreInput> scores = questionScoreHelper.autoGrade(task.getFormSchema(), sub.getContent());
             if (scores.isEmpty()) return;
             dimensionScoreService.replaceAutoScores("process", sub.getId(), sub.getStudentId(), scores);
-            sub.setStatus("graded");
-            submissionMapper.updateById(sub);
+            if (isFullyAutoGradableWorksheet(task.getFormSchema())) {
+                sub.setStatus("graded");
+                submissionMapper.updateById(sub);
+            }
             log.debug("Auto graded worksheet: taskId={}, submissionId={}, scoreRows={}", task.getId(), sub.getId(), scores.size());
         } catch (Exception e) {
             log.warn("Worksheet auto grade skipped: taskId={}, submissionId={}", task.getId(), sub.getId(), e);
         }
+    }
+
+    private boolean isFullyAutoGradableWorksheet(String schemaJson) {
+        List<Map<String, Object>> questions = parseQuestions(schemaJson);
+        if (questions.isEmpty()) return false;
+        return questions.stream()
+                .allMatch(question -> Boolean.TRUE.equals(question.get("autoGrade")) && question.get("answer") != null);
     }
 
     private List<User> getCourseStudents(Task task) {
@@ -552,6 +553,65 @@ public class TaskServiceImpl implements TaskService {
         return userMapper.selectList(new LambdaQueryWrapper<User>()
                 .eq(User::getRole, "student")
                 .in(User::getClassId, classIds));
+    }
+
+    private List<TaskAnalyticsVO.ClassScopeVO> buildClassScopes(List<User> students) {
+        Map<Long, SchoolClass> classMap = loadClassMap(students);
+        return students.stream()
+                .filter(student -> student.getClassId() != null)
+                .collect(Collectors.groupingBy(User::getClassId, LinkedHashMap::new, Collectors.counting()))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    SchoolClass schoolClass = classMap.get(entry.getKey());
+                    return TaskAnalyticsVO.ClassScopeVO.builder()
+                            .id(entry.getKey())
+                            .grade(schoolClass != null ? schoolClass.getGrade() : null)
+                            .name(schoolClass != null ? schoolClass.getName() : null)
+                            .studentCount(Math.toIntExact(entry.getValue()))
+                            .build();
+                })
+                .toList();
+    }
+
+    private List<TaskAnalyticsVO.StudentTaskAnswerVO> buildStudentStatusRows(List<User> students, List<Submission> submissions) {
+        Map<Long, Submission> submissionMap = submissions.stream()
+                .collect(Collectors.toMap(Submission::getStudentId, sub -> sub, (left, right) -> left));
+        Map<Long, SchoolClass> classMap = loadClassMap(students);
+        return students.stream()
+                .map(student -> {
+                    Submission sub = submissionMap.get(student.getId());
+                    SchoolClass schoolClass = student.getClassId() != null ? classMap.get(student.getClassId()) : null;
+                    return TaskAnalyticsVO.StudentTaskAnswerVO.builder()
+                            .submissionId(sub != null ? sub.getId() : null)
+                            .studentId(student.getId())
+                            .studentName(student.getName())
+                            .studentNo(student.getStudentNo())
+                            .classId(student.getClassId())
+                            .className(formatClassName(schoolClass))
+                            .status(sub != null ? sub.getStatus() : "not_submitted")
+                            .content(sub != null ? sub.getContent() : null)
+                            .submittedAt(sub != null ? sub.getSubmittedAt() : null)
+                            .build();
+                })
+                .toList();
+    }
+
+    private Map<Long, SchoolClass> loadClassMap(List<User> students) {
+        Set<Long> classIds = students.stream()
+                .map(User::getClassId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (classIds.isEmpty()) return Map.of();
+        return Optional.ofNullable(schoolClassMapper.selectBatchIds(classIds)).orElse(List.of()).stream()
+                .collect(Collectors.toMap(SchoolClass::getId, schoolClass -> schoolClass));
+    }
+
+    private String formatClassName(SchoolClass schoolClass) {
+        if (schoolClass == null) return null;
+        return Optional.ofNullable(schoolClass.getGrade()).orElse("")
+                + "级"
+                + Optional.ofNullable(schoolClass.getName()).orElse("");
     }
 
     private List<Map<String, Object>> parseQuestions(String schemaJson) {
@@ -694,6 +754,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     private boolean answersEqual(Object expected, Object actual) {
+        if (expected == null || actual == null) return false;
         if (expected instanceof Collection<?> || actual instanceof Collection<?>) {
             Collection<?> left = expected instanceof Collection<?> collection ? collection : List.of(expected);
             Collection<?> right = actual instanceof Collection<?> collection ? collection : List.of(actual);

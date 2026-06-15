@@ -18,6 +18,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { useRealtime } from '@/composables/useRealtime'
 import { formatDate } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
+import { useClassFilterStore } from '@/stores/classFilter'
 import type { ClassVO, QuestionAnalyticsVO, StudentAnswerVO, StudentTaskAnswerVO, TaskAnalyticsVO, TaskDetailVO } from '@/types/api'
 
 use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -27,6 +28,7 @@ type DashboardChartOption = ComposeOption<GridComponentOption | LegendComponentO
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const classFilter = useClassFilterStore()
 const taskId = Number(route.params.taskId)
 const loading = ref(false)
 const metaLoading = ref(false)
@@ -41,6 +43,7 @@ const accuracyChartRef = ref<HTMLDivElement | null>(null)
 let submissionChart: ECharts | null = null
 let accuracyChart: ECharts | null = null
 const realtime = useRealtime()
+let syncingClassFromStore = false
 
 const isWorksheet = computed(() => analytics.value?.type === 'worksheet')
 const questionRows = computed(() => analytics.value?.questions ?? [])
@@ -70,8 +73,9 @@ const autoQuestionCount = computed(() => analytics.value?.autoQuestionCount ?? a
 const manualQuestionCount = computed(() => analytics.value?.manualQuestionCount ?? manualQuestions.value.length)
 
 const submissionColumns: DataTableColumns<StudentTaskAnswerVO> = [
-  { title: '学号', key: 'studentNo', width: 150, render: row => row.studentNo || '-' },
-  { title: '姓名', key: 'studentName', width: 140, render: row => row.studentName || '-' },
+  { title: '班级', key: 'className', width: 130, render: row => row.className || '-' },
+  { title: '学号', key: 'studentNo', width: 130, render: row => row.studentNo || '-' },
+  { title: '姓名', key: 'studentName', width: 120, render: row => row.studentName || '-' },
   {
     title: '状态',
     key: 'status',
@@ -79,6 +83,23 @@ const submissionColumns: DataTableColumns<StudentTaskAnswerVO> = [
     render: row => h(NTag, { size: 'small', bordered: false, type: statusType(row.status) }, () => statusLabel(row.status)),
   },
   { title: '提交时间', key: 'submittedAt', width: 180, render: row => row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '-' },
+  { title: '内容摘要', key: 'content', minWidth: 180, render: row => submissionSummary(row) },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 120,
+    fixed: 'right',
+    render: row => h(
+      NButton,
+      {
+        size: 'small',
+        type: row.status === 'submitted' ? 'primary' : 'default',
+        disabled: !row.submissionId,
+        onClick: () => openSubmission(row),
+      },
+      () => row.status === 'graded' || row.status === 'special' ? '查看/复核' : row.submissionId ? '去批改' : '未提交',
+    ),
+  },
 ]
 
 const answerColumns: DataTableColumns<StudentAnswerVO> = [
@@ -108,11 +129,23 @@ async function loadMeta() {
     ])
     courseClassIds.value = course.classIds ?? []
     classes.value = allClasses
+    applyGlobalClassFilter()
   } catch (e) {
     message.error(getErrorMessage(e, '加载任务范围失败'))
   } finally {
     metaLoading.value = false
   }
+}
+
+function applyGlobalClassFilter() {
+  syncingClassFromStore = true
+  const globalClassId = classFilter.selectedClassId
+  selectedClassId.value = globalClassId && courseClassIds.value.includes(globalClassId)
+    ? globalClassId
+    : 0
+  queueMicrotask(() => {
+    syncingClassFromStore = false
+  })
 }
 
 async function loadAnalytics(showToast = false) {
@@ -192,6 +225,7 @@ function statusType(status: string) {
   if (status === 'graded') return 'success'
   if (status === 'submitted') return 'info'
   if (status === 'special') return 'warning'
+  if (status === 'not_submitted') return 'default'
   return 'default'
 }
 
@@ -199,6 +233,7 @@ function statusLabel(status: string) {
   if (status === 'graded') return '已批改'
   if (status === 'submitted') return '待批改'
   if (status === 'special') return '特殊处理'
+  if (status === 'not_submitted') return '未提交'
   return status || '未知'
 }
 
@@ -224,6 +259,23 @@ function openGrading() {
   router.push(`/teacher/grading/${taskId}`)
 }
 
+function openSubmission(row: StudentTaskAnswerVO) {
+  if (!row.submissionId) return
+  router.push(`/teacher/grading/${taskId}?submissionId=${row.submissionId}`)
+}
+
+function submissionSummary(row: StudentTaskAnswerVO) {
+  if (!row.content) return row.status === 'not_submitted' ? '尚未提交' : '-'
+  try {
+    const parsed = JSON.parse(row.content) as Record<string, unknown>
+    if (typeof parsed.note === 'string' && parsed.note.trim()) return parsed.note.trim()
+    const answered = Object.values(parsed).filter(value => value !== null && value !== '' && !(Array.isArray(value) && !value.length)).length
+    return answered ? `${answered} 项作答` : '已提交'
+  } catch {
+    return row.content.length > 32 ? `${row.content.slice(0, 32)}...` : row.content
+  }
+}
+
 function classOptionLabel(option: SelectOption) {
   return String(option.label ?? '')
 }
@@ -234,7 +286,16 @@ function handleResize() {
 }
 
 watch(analytics, renderCharts)
-watch(selectedClassId, () => loadAnalytics())
+watch(selectedClassId, (value) => {
+  loadAnalytics()
+  if (syncingClassFromStore) return
+  if (value > 0) {
+    classFilter.setClassId(value)
+  } else {
+    classFilter.clearFilter()
+  }
+})
+watch(() => classFilter.selectedClassId, applyGlobalClassFilter)
 
 onMounted(async () => {
   await Promise.all([loadMeta(), loadAnalytics()])
@@ -352,10 +413,10 @@ onUnmounted(() => {
 
         <section class="panel">
           <div class="panel-head">
-            <h3>{{ isWorksheet ? '提交明细' : '作品提交明细' }}</h3>
-            <span>{{ analytics.submissions.length }} 条提交记录</span>
+            <h3>批改收件箱</h3>
+            <span>{{ analytics.submissions.length }} 名应完成学生</span>
           </div>
-          <NDataTable :data="analytics.submissions" :columns="submissionColumns" size="small" :row-key="row => row.submissionId" />
+          <NDataTable :data="analytics.submissions" :columns="submissionColumns" size="small" :row-key="row => row.studentId" :scroll-x="860" />
         </section>
       </template>
       <NEmpty v-else description="暂无任务数据" />

@@ -89,6 +89,11 @@ async function loadSubmissions() {
   loading.value = true
   try {
     submissions.value = await listSubmissions(taskId) || []
+    const targetSubmissionId = Number(route.query.submissionId)
+    if (targetSubmissionId) {
+      const index = submissions.value.findIndex(item => item.id === targetSubmissionId)
+      if (index >= 0) currentIdx.value = index
+    }
     task.value = await getTask(taskId)
     if (task.value?.lessonId) {
       const lesson = await getLesson(task.value.lessonId)
@@ -406,7 +411,7 @@ onMounted(loadSubmissions)
         </div>
       </div>
       <NEmpty v-else description="暂无提交需要评分">
-        <template #extra><NButton size="small" @click="router.back()">返回</NButton></template>
+        <template #extra><NButton size="small" @click="router.push(`/teacher/tasks/${taskId}/analytics`)">返回批改收件箱</NButton></template>
       </NEmpty>
     </NSpin>
 

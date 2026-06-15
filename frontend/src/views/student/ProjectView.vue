@@ -7,7 +7,7 @@ import { useStudentContext } from '@/composables/useStudentContext'
 import { uploadDriveFile } from '@/api/drive'
 import { formatDate } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
-import { createProjectTeam, listProjects, submitProject } from '@/api/projects'
+import { listProjects, submitProject } from '@/api/projects'
 import { defaultProjectArtifact, parseProjectDescription } from '@/types/project'
 import type { DriveItemVO, ProjectVO, SemesterVO } from '@/types/api'
 
@@ -23,8 +23,6 @@ const uploadedItems = ref<DriveItemVO[]>([])
 const uploadLoading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
-const showTeam = ref(false)
-const teamName = ref('')
 
 const activeConfig = computed(() => activeProject.value ? parseProjectDescription(activeProject.value).artifact : defaultProjectArtifact)
 const extensionLabel = computed(() => activeConfig.value.allowedExtensions.length ? activeConfig.value.allowedExtensions.map((ext: string) => `.${ext}`).join('、') : '不限格式')
@@ -69,12 +67,6 @@ function openSubmit(project: ProjectVO) {
   submitNote.value = ''
   uploadedItems.value = []
   showSubmit.value = true
-}
-
-function openTeamModal(project: ProjectVO) {
-  activeProject.value = project
-  teamName.value = ''
-  showTeam.value = true
 }
 
 function fileAllowed(file: File) {
@@ -135,25 +127,11 @@ async function handleSubmit() {
   }
 }
 
-async function handleJoinTeam() {
-  if (!activeProject.value) return
-  if (!teamName.value.trim()) {
-    message.warning('请输入队伍名称')
-    return
-  }
-  try {
-    await createProjectTeam(activeProject.value.id, teamName.value.trim())
-    message.success('组队成功')
-    showTeam.value = false
-  } catch (e) {
-    message.error(getErrorMessage(e, '组队失败'))
-  }
-}
 </script>
 
 <template>
   <div class="page">
-    <PageHeader title="项目化学习" subtitle="参与项目、组队并提交作品" />
+    <PageHeader title="项目化学习" subtitle="按个人提交作品；如有协作成员，请在备注中写清" />
     <NSpin :show="ctxLoading">
       <div class="filters">
         <NSelect v-model:value="activeCourseId" :options="courseOptions" placeholder="选择课程" class="filter-select" />
@@ -164,10 +142,9 @@ async function handleJoinTeam() {
           <div class="info">
             <span class="name">{{ p.name }}</span>
             <span v-if="projectDescription(p)" class="desc">{{ projectDescription(p) }}</span>
-            <span class="meta">组队上限 {{ p.maxTeamSize }} 人 · 截止 {{ p.deadline ? formatDate(p.deadline, 'datetime') : '未设置' }}</span>
+            <span class="meta">个人提交 · 截止 {{ p.deadline ? formatDate(p.deadline, 'datetime') : '未设置' }}</span>
           </div>
           <NSpace :size="8" class="card-actions">
-            <NButton size="small" @click="openTeamModal(p)">创建队伍</NButton>
             <NButton size="small" type="primary" @click="openSubmit(p)">提交作品</NButton>
           </NSpace>
         </div>
@@ -175,14 +152,9 @@ async function handleJoinTeam() {
       <NEmpty v-else-if="activeSemesterId" description="暂无项目" />
     </NSpin>
 
-    <NModal v-model:show="showTeam" title="创建队伍" preset="card" class="project-modal">
-      <NInput v-model:value="teamName" placeholder="输入队伍名称" />
-      <template #footer><NSpace justify="end"><NButton @click="showTeam = false">取消</NButton><NButton type="primary" @click="handleJoinTeam">创建</NButton></NSpace></template>
-    </NModal>
-
     <NModal v-model:show="showSubmit" :title="activeProject ? `提交作品 · ${activeProject.name}` : '提交作品'" preset="card" class="project-modal">
       <NAlert type="info" :bordered="false" class="submit-hint">
-        提交方式：{{ activeConfig.submitMode === 'folder' ? '文件夹' : '文件' }}；文件格式：{{ extensionLabel }}
+        提交方式：{{ activeConfig.submitMode === 'folder' ? '文件夹' : '文件' }}；文件格式：{{ extensionLabel }}。如有组员，请在备注中写清姓名或学号。
       </NAlert>
       <div class="upload-actions">
         <NButton :loading="uploadLoading" @click="fileInput?.click()">
@@ -202,7 +174,16 @@ async function handleJoinTeam() {
           <NTag size="tiny" :bordered="false">已上传</NTag>
         </div>
       </div>
-      <NInput v-model:value="submitNote" type="textarea" placeholder="作品说明、链接或补充信息" :autosize="{ minRows: 3, maxRows: 8 }" />
+      <label class="note-field">
+        <span>备注 / 组员说明</span>
+        <NInput
+          v-model:value="submitNote"
+          type="textarea"
+          placeholder="例如：组员张三 20240102、李四 20240103；作品链接或补充说明也可以写在这里"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+        />
+        <small>教师会根据这里的信息手动找到对应学生并分别评分。</small>
+      </label>
       <template #footer><NSpace justify="end"><NButton @click="showSubmit = false">取消</NButton><NButton type="primary" @click="handleSubmit">提交</NButton></NSpace></template>
     </NModal>
   </div>
@@ -224,6 +205,9 @@ async function handleJoinTeam() {
 .hidden-input { display: none; }
 .uploaded-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .uploaded-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 6px; background: var(--n-color-embedded); font-size: 13px; }
+.note-field { display: grid; gap: 6px; font-size: 13px; color: var(--n-text-color-2); }
+.note-field > span { font-weight: 600; color: var(--n-text-color-1); }
+.note-field small { color: var(--n-text-color-3); line-height: 1.5; }
 @media (max-width: 640px) {
   .filter-select { width: 100%; }
   .card { align-items: stretch; flex-direction: column; }

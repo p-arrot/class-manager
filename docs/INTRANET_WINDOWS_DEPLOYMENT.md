@@ -36,9 +36,7 @@
 
 1. Git
 2. Docker Desktop 或 Docker Engine，确保支持 `docker compose`
-3. JDK 21
-4. Maven 3.9+
-5. Node.js 22 仅本地开发需要；生产 Docker 构建前端时会在容器内安装依赖
+3. Node.js 22、JDK 21、Maven 3.9+ 仅本地开发需要；生产部署构建前端和后端时都会在 Docker 容器内完成
 
 安装后在 PowerShell 中确认：
 
@@ -46,8 +44,6 @@
 git --version
 docker --version
 docker compose version
-java -version
-mvn -version
 ```
 
 ## 4. 首次部署
@@ -63,7 +59,7 @@ cd C:\deploy\class-manager
 初始化内网环境变量文件：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 init -ServerIp 192.168.1.100
+.\deploy.ps1 init -ServerIp 192.168.1.100
 ```
 
 打开 `backend\.env`，至少修改这些值：
@@ -79,7 +75,7 @@ KKFILEVIEW_BASE_URL=http://192.168.1.100:8012
 启动服务：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 start
+.\deploy.ps1 start
 ```
 
 启动成功后访问：
@@ -116,31 +112,31 @@ New-NetFirewallRule -DisplayName "Class Manager Preview" -Direction Inbound -Pro
 查看状态：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 status
+.\deploy.ps1 status
 ```
 
 查看日志：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 logs
+.\deploy.ps1 logs
 ```
 
 重启：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 restart
+.\deploy.ps1 restart
 ```
 
 停止：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 stop
+.\deploy.ps1 stop
 ```
 
 更新代码并重新部署：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 update
+.\deploy.ps1 update
 ```
 
 ## 7. 备份
@@ -148,7 +144,7 @@ New-NetFirewallRule -DisplayName "Class Manager Preview" -Direction Inbound -Pro
 执行：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 backup
+.\deploy.ps1 backup
 ```
 
 备份会生成到：
@@ -171,7 +167,15 @@ C:\deploy\class-manager\backups\yyyyMMdd-HHmmss
 确认重新构建过前端镜像。当前 Nginx 已配置 `client_max_body_size 220m`，匹配系统 200 MB 单文件限制。
 
 ```powershell
-.\scripts\intranet-deploy.ps1 restart
+.\deploy.ps1 restart
+```
+
+### 已经构建过，只想快速重启服务
+
+可以跳过镜像重建：
+
+```powershell
+.\deploy.ps1 restart -SkipBuild
 ```
 
 ### 文件预览打不开
@@ -214,7 +218,7 @@ KKFILEVIEW_BASE_URL=http://新的IP:8012
 然后重启：
 
 ```powershell
-.\scripts\intranet-deploy.ps1 restart
+.\deploy.ps1 restart
 ```
 
 ## 9. 不建议的做法

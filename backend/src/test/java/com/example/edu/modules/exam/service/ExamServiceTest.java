@@ -5,9 +5,13 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.LoginUser;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.classes.entity.SchoolClass;
+import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseMapper;
+import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
@@ -16,6 +20,9 @@ import com.example.edu.modules.exam.entity.ExamSubmission;
 import com.example.edu.modules.exam.mapper.ExamMapper;
 import com.example.edu.modules.exam.mapper.ExamPaperMapper;
 import com.example.edu.modules.exam.mapper.ExamSubmissionMapper;
+import com.example.edu.modules.exam.vo.ExamSubmissionVO;
+import com.example.edu.modules.user.entity.User;
+import com.example.edu.modules.user.mapper.UserMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +51,9 @@ class ExamServiceTest {
     @Mock private ExamSubmissionMapper submissionMapper;
     @Mock private SemesterMapper semesterMapper;
     @Mock private CourseMapper courseMapper;
+    @Mock private CourseClassMapper courseClassMapper;
+    @Mock private SchoolClassMapper schoolClassMapper;
+    @Mock private UserMapper userMapper;
     @Mock private AuditLogService auditLogService;
     @Mock private DimensionScoreService dimensionScoreService;
     @Mock private QuestionScoreHelper questionScoreHelper;
@@ -77,6 +87,37 @@ class ExamServiceTest {
         List<ExamSubmission> submissions = examService.listSubmissions(1L);
 
         assertThat(submissions).containsExactly(submission);
+    }
+
+    @Test
+    void ownerTeacherCanListExamSubmissionInboxWithNotSubmittedStudents() {
+        setTeacher(9L);
+        examBelongsToTeacher(9L);
+        CourseClass binding = new CourseClass();
+        binding.setCourseId(4L);
+        binding.setClassId(10L);
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(binding));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                student(102L, "20260002", "周二"),
+                student(101L, "20260001", "林一")
+        ));
+        when(schoolClassMapper.selectBatchIds(any())).thenReturn(List.of(schoolClass(10L)));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission()));
+
+        List<ExamSubmissionVO> inbox = examService.listSubmissionInbox(1L);
+
+        assertThat(inbox).hasSize(2);
+        ExamSubmissionVO submitted = inbox.stream().filter(row -> row.getStudentId().equals(101L)).findFirst().orElseThrow();
+        assertThat(submitted.getId()).isEqualTo(31L);
+        assertThat(submitted.getSubmissionId()).isEqualTo(31L);
+        assertThat(submitted.getStatus()).isEqualTo("submitted");
+        assertThat(submitted.getClassName()).isEqualTo("2026级1班");
+
+        ExamSubmissionVO notSubmitted = inbox.stream().filter(row -> row.getStudentId().equals(102L)).findFirst().orElseThrow();
+        assertThat(notSubmitted.getId()).isNull();
+        assertThat(notSubmitted.getSubmissionId()).isNull();
+        assertThat(notSubmitted.getStatus()).isEqualTo("not_submitted");
+        assertThat(notSubmitted.getClassName()).isEqualTo("2026级1班");
     }
 
     @Test
@@ -153,6 +194,24 @@ class ExamServiceTest {
         submission.setAnswers("{}");
         submission.setStatus("submitted");
         return submission;
+    }
+
+    private static User student(Long id, String studentNo, String name) {
+        User user = new User();
+        user.setId(id);
+        user.setRole("student");
+        user.setStudentNo(studentNo);
+        user.setName(name);
+        user.setClassId(10L);
+        return user;
+    }
+
+    private static SchoolClass schoolClass(Long id) {
+        SchoolClass schoolClass = new SchoolClass();
+        schoolClass.setId(id);
+        schoolClass.setGrade("2026");
+        schoolClass.setName("1班");
+        return schoolClass;
     }
 
     private static void setTeacher(Long id) {

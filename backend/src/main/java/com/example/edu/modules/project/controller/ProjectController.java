@@ -79,10 +79,7 @@ public class ProjectController {
     @GetMapping("/api/projects/{projectId}/submissions")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<List<ProjectSubmissionVO>> listSubmissions(@PathVariable Long projectId) {
-        List<ProjectSubmission> subs = projectService.listSubmissions(projectId);
-        Set<Long> sids = subs.stream().map(ProjectSubmission::getStudentId).collect(Collectors.toSet());
-        Map<Long,User> um = sids.isEmpty() ? Map.of() : userMapper.selectBatchIds(sids).stream().collect(Collectors.toMap(User::getId,u->u));
-        return R.ok(subs.stream().map(s -> toSubmissionVO(s, um.get(s.getStudentId()))).toList());
+        return R.ok(projectService.listSubmissionInbox(projectId));
     }
 
     @PostMapping("/api/project-submissions/{submissionId}/score")
@@ -124,12 +121,14 @@ public class ProjectController {
     private ProjectSubmissionVO toSubmissionVO(ProjectSubmission sub, User user) {
         return ProjectSubmissionVO.builder()
                 .id(sub.getId())
+                .submissionId(sub.getId())
                 .projectId(sub.getProjectId())
                 .teamId(sub.getTeamId())
                 .studentId(sub.getStudentId())
                 .studentName(user != null ? user.getName() : null)
                 .studentNo(user != null ? user.getStudentNo() : null)
                 .content(sub.getContent())
+                .status("submitted")
                 .submittedAt(sub.getSubmittedAt())
                 .createdAt(sub.getCreatedAt())
                 .build();

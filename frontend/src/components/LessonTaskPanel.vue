@@ -195,8 +195,7 @@ onMounted(loadTasks)
           <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>{{ studentTaskAction(t.id) }}
         </NButton>
         <NSpace v-if="!readonly" :size="2">
-          <NButton size="tiny" @click="router.push(`/teacher/tasks/${t.id}/analytics`)">数据</NButton>
-          <NButton size="tiny" @click="router.push(`/teacher/grading/${t.id}`)">评分</NButton>
+          <NButton size="tiny" type="primary" @click="router.push(`/teacher/tasks/${t.id}/analytics`)">批改收件箱</NButton>
           <NButton size="tiny" quaternary title="编辑任务" aria-label="编辑任务" @click="openEdit(t)">
             <template #icon><NIcon :size="14"><CreateOutline /></NIcon></template>
           </NButton>

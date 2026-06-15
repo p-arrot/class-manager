@@ -74,6 +74,8 @@ public class TaskAnalyticsVO {
         private Long studentId;
         private String studentName;
         private String studentNo;
+        private Long classId;
+        private String className;
         private String status;
         private String content;
         private LocalDateTime submittedAt;

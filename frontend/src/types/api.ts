@@ -415,10 +415,12 @@ export interface StudentAnswerVO {
 }
 
 export interface StudentTaskAnswerVO {
-  submissionId: number
+  submissionId: number | null
   studentId: number
   studentName: string | null
   studentNo: string | null
+  classId: number | null
+  className: string | null
   status: string
   content: string | null
   submittedAt: string | null
@@ -511,7 +513,8 @@ export interface FileUploadDTO {
 
 export interface FileUploadVO {
   presignedUrl?: string
-  resourceId: number
+  resourceId?: number
+  url?: string
 }
 
 // ========== Evaluation / Stats ==========
@@ -600,11 +603,14 @@ export interface ExamSubmitDTO {
 }
 
 export interface ExamSubmissionVO {
-  id: number
+  id: number | null
+  submissionId: number | null
   examId: number
   studentId: number
   studentName: string | null
   studentNo: string | null
+  classId: number | null
+  className: string | null
   answers: string | null
   score: number | null
   status: string
@@ -633,15 +639,20 @@ export interface ProjectSubmitDTO {
 }
 
 export interface ProjectSubmissionVO {
-  id: number
+  id: number | null
+  submissionId: number | null
   projectId: number
   teamId: number | null
   studentId: number
   studentName: string | null
   studentNo: string | null
+  classId: number | null
+  className: string | null
   content: string | null
+  status: string
+  score: number | null
   submittedAt: string | null
-  createdAt: string
+  createdAt: string | null
 }
 
 // ========== Drive ==========

@@ -11,6 +11,8 @@ public interface FileService {
 
     FileUploadVO directUpload(FileUploadDTO dto, MultipartFile file);
 
+    FileUploadVO uploadCourseCover(MultipartFile file);
+
     String getDownloadUrl(Long resourceId);
 
     String getPreviewUrl(Long resourceId);
@@ -18,4 +20,6 @@ public interface FileService {
     String getStreamUrl(Long resourceId);
 
     FileRawDTO getRawFile(Long resourceId);
+
+    FileRawDTO getCourseCoverRaw(String token);
 }

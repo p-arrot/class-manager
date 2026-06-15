@@ -70,26 +70,33 @@ export function useProjectSubmissionScoring() {
     previewUrl.value = ''
   }
 
-  function getProjectScore(submissionId: number, dimension: string) {
+  function getProjectScore(submissionId: number | null, dimension: string) {
+    if (!submissionId) return 0
     return projectScores.value[submissionId]?.[dimension] ?? 0
   }
 
-  function setProjectScore(submissionId: number, dimension: string, value: number | null) {
+  function setProjectScore(submissionId: number | null, dimension: string, value: number | null) {
+    if (!submissionId) return
     if (!projectScores.value[submissionId]) projectScores.value[submissionId] = {}
     projectScores.value[submissionId][dimension] = Math.max(0, Number(value ?? 0))
   }
 
   async function saveProjectScore(row: ProjectSubmissionRow) {
+    const submissionId = row.submissionId ?? row.id
+    if (!submissionId) {
+      message.warning('该学生尚未提交项目作品，不能评分')
+      return
+    }
     const rubric = activeProjectRubric.value.filter(item => item.maxScore > 0)
     if (!rubric.length) {
       message.warning('项目未设置评分维度')
       return
     }
     try {
-      await scoreProjectSubmission(row.id, rubric.map(item => ({
+      await scoreProjectSubmission(submissionId, rubric.map(item => ({
         questionId: 'project',
         dimension: item.dimension,
-        earnedScore: getProjectScore(row.id, item.dimension),
+        earnedScore: getProjectScore(submissionId, item.dimension),
         maxScore: item.maxScore,
       })))
       message.success('评分已保存')

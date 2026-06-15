@@ -13,6 +13,7 @@
 | `backend/.env.intranet.example` | Windows Server / 校园内网部署环境变量模板 |
 | `backend/src/main/resources/application-docker.yml` | 后端 docker profile 下的数据库、Redis、MinIO、JWT、日志配置 |
 | `frontend/nginx.conf` | 前端 Nginx 静态文件、API 代理、WebSocket 代理配置 |
+| `deploy.ps1` | 根目录部署入口，转调 `scripts/intranet-deploy.ps1` |
 
 ## 服务总览
 
@@ -20,9 +21,9 @@
 | --- | --- | --- | --- | --- | --- |
 | PostgreSQL | `edu-postgres` | `postgres:16.6-alpine` | `127.0.0.1:5432` | `edu` | `edu123` |
 | Redis | `edu-redis` | `redis:7.4-alpine` | `127.0.0.1:6379` | 无 | 空 |
-| MinIO | `edu-minio` | `minio/minio:latest` | `127.0.0.1:9000`, `127.0.0.1:9001` | `minioadmin` | `minioadmin` |
-| kkFileView | `edu-kkfileview` | `keking/kkfileview:latest` | `8012` | 无 | 无 |
-| Backend | `edu-backend` | 本地 `backend/Dockerfile` | `127.0.0.1:8080` | 不适用 | 不适用 |
+| MinIO | `edu-minio` | `minio/minio:RELEASE.2025-04-22T22-12-26Z` | `127.0.0.1:9000`, `127.0.0.1:9001` | `minioadmin` | `minioadmin` |
+| kkFileView | `edu-kkfileview` | `keking/kkfileview:4.1.0` | `8012` | 无 | 无 |
+| Backend | `edu-backend` | 本地 `backend/Dockerfile` 多阶段构建 | `127.0.0.1:8080` | 不适用 | 不适用 |
 | Frontend | `edu-frontend` | 本地 `frontend/Dockerfile` | `80` | 不适用 | 不适用 |
 
 ## PostgreSQL
@@ -86,13 +87,13 @@ Compose 配置：
 | --- | --- | --- |
 | `REDIS_HOST` | `redis` | 后端容器内访问 Redis 的主机名 |
 | `REDIS_PORT` | `6379` | Redis 端口 |
-| `REDIS_PASSWORD` | 空 | 当前 compose 未给 Redis 容器设置 requirepass |
+| `REDIS_PASSWORD` | 空 | 为空则 Redis 无密码；设置后 compose 会启用 `requirepass` |
 | `REDIS_DATABASE` | `0` | Redis database index |
 
 生产建议：
 
 - 当前 Redis 默认无密码，并且只绑定 `127.0.0.1`。不要把 Redis 端口暴露给校园网。
-- 如果未来要启用 Redis 密码，需要同步修改 Redis 启动命令和后端 `REDIS_PASSWORD`。
+- 如设置 `REDIS_PASSWORD`，compose 会使用 `redis-server --requirepass` 启动 Redis，健康检查和后端连接也会同步使用该密码。
 
 ## MinIO
 
@@ -102,7 +103,7 @@ Compose 配置：
 
 | 项 | 值 |
 | --- | --- |
-| 镜像 | `minio/minio:latest` |
+| 镜像 | `${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}` |
 | 容器名 | `edu-minio` |
 | 启动命令 | `server /data --console-address ":9001"` |
 | API 端口 | `127.0.0.1:${MINIO_API_PORT:-9000}:9000` |
@@ -119,6 +120,7 @@ Compose 配置：
 | `MINIO_BUCKET` | `edu` | 后端使用的 bucket |
 | `MINIO_API_PORT` | `9000` | API 端口 |
 | `MINIO_CONSOLE_PORT` | `9001` | 控制台端口 |
+| `MINIO_IMAGE` | `minio/minio:RELEASE.2025-04-22T22-12-26Z` | MinIO 镜像版本，默认固定版本 |
 
 后端连接配置：
 
@@ -143,7 +145,7 @@ Compose 配置：
 
 | 项 | 值 |
 | --- | --- |
-| 镜像 | `keking/kkfileview:latest` |
+| 镜像 | `${KKFILEVIEW_IMAGE:-keking/kkfileview:4.1.0}` |
 | 容器名 | `edu-kkfileview` |
 | 端口 | `${KKFILEVIEW_PORT:-8012}:8012` |
 | 默认账号密码 | 当前项目未配置 |
@@ -154,6 +156,7 @@ Compose 配置：
 | --- | --- | --- |
 | `KKFILEVIEW_PORT` | `8012` | 主机侧访问端口 |
 | `KKFILEVIEW_BASE_URL` | `http://localhost:8012` | 后端返回给浏览器的预览服务地址 |
+| `KKFILEVIEW_IMAGE` | `keking/kkfileview:4.1.0` | kkFileView 镜像版本，默认固定版本 |
 
 内网部署建议：
 
@@ -174,6 +177,7 @@ Compose 配置：
 | 主机绑定 | `127.0.0.1:${BACKEND_PORT:-8080}:8080` |
 | 数据卷 | `backend_data:/app/data` |
 | Profile | `docker` |
+| 构建方式 | Maven 多阶段构建，生产服务器不需要本机安装 JDK/Maven |
 
 关键环境变量：
 

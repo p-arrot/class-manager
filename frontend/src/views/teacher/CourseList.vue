@@ -2,10 +2,10 @@
 import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NGrid, NGi, NModal, NForm, NFormItem, NInput, NSelect, NSpace, NIcon, NEmpty, NPagination, useMessage, useDialog } from 'naive-ui'
-import { AddOutline, CreateOutline, TrashOutline, ArrowForwardOutline } from '@vicons/ionicons5'
+import { AddOutline, CreateOutline, TrashOutline, ArrowForwardOutline, CloudUploadOutline, CloseCircleOutline } from '@vicons/ionicons5'
 import CourseCard from '@/components/CourseCard.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { listCourses, getCourse, createCourse, updateCourse, deleteCourse } from '@/api/courses'
+import { listCourses, getCourse, createCourse, updateCourse, deleteCourse, uploadCourseCover } from '@/api/courses'
 import { listAllClasses } from '@/api/classes'
 import { useClassFilterStore } from '@/stores/classFilter'
 import { getErrorMessage } from '@/utils/error'
@@ -32,6 +32,8 @@ const showModal = ref(false)
 const modalTitle = ref('创建课程')
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInst | null>(null)
+const coverInput = ref<HTMLInputElement | null>(null)
+const coverUploading = ref(false)
 const formValue = reactive<CourseCreateDTO>({ name: '', description: '', coverUrl: '', classIds: [] })
 const rules: FormRules = { name: { required: true, message: '请输入课程名称', trigger: 'blur' } }
 
@@ -120,6 +122,39 @@ function handleDelete(row: CourseVO) {
 
 function goDetail(id: number) { router.push(`/teacher/courses/${id}`) }
 
+async function handleCoverSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    message.warning('请选择图片文件')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    message.warning('封面图片不能超过 5MB')
+    return
+  }
+  coverUploading.value = true
+  try {
+    const result = await uploadCourseCover(file)
+    if (!result.url) {
+      message.error('封面上传失败：服务端未返回图片地址')
+      return
+    }
+    formValue.coverUrl = result.url
+    message.success('封面已上传')
+  } catch (e) {
+    message.error(getErrorMessage(e, '封面上传失败'))
+  } finally {
+    coverUploading.value = false
+  }
+}
+
+function clearCover() {
+  formValue.coverUrl = ''
+}
+
 onMounted(async () => {
   if (classFilter.selectedClassId) query.classId = classFilter.selectedClassId ?? undefined
   fetchData()
@@ -169,6 +204,28 @@ watch(() => classFilter.selectedClassId, (v) => {
 
     <NModal v-model:show="showModal" :title="modalTitle" preset="card" class="course-modal">
       <NForm ref="formRef" :model="formValue" :rules="rules" label-placement="left" label-width="72">
+        <NFormItem label="课程封面">
+          <div class="cover-field">
+            <div class="cover-preview">
+              <img v-if="formValue.coverUrl" :src="formValue.coverUrl" alt="课程封面预览">
+              <span v-else>{{ formValue.name?.charAt(0) || '课' }}</span>
+            </div>
+            <div class="cover-actions">
+              <NSpace :size="8">
+                <NButton size="small" :loading="coverUploading" @click="coverInput?.click()">
+                  <template #icon><NIcon :size="14"><CloudUploadOutline /></NIcon></template>
+                  上传封面
+                </NButton>
+                <NButton v-if="formValue.coverUrl" size="small" quaternary @click="clearCover">
+                  <template #icon><NIcon :size="14"><CloseCircleOutline /></NIcon></template>
+                  清除
+                </NButton>
+              </NSpace>
+              <input ref="coverInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="cover-input" @change="handleCoverSelected">
+              <div class="cover-hint">支持 jpg、png、webp、gif，最大 5MB。</div>
+            </div>
+          </div>
+        </NFormItem>
         <NFormItem label="课程名称" path="name"><NInput v-model:value="formValue.name" placeholder="如：Python编程基础" /></NFormItem>
         <NFormItem label="课程介绍"><NInput v-model:value="formValue.description" type="textarea" placeholder="选填" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
         <NFormItem label="授课班级">
@@ -187,4 +244,13 @@ watch(() => classFilter.selectedClassId, (v) => {
 .pagination-wrap { display: flex; justify-content: center; padding-top: 16px; }
 .empty-wrap { padding: 80px 0; }
 .course-modal { width: min(480px, calc(100vw - 32px)); }
+.cover-field { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; }
+.cover-preview { width: 72px; height: 72px; border-radius: 8px; flex: 0 0 auto; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid var(--n-border-color); background: var(--n-color-embedded); color: var(--n-text-color-3); font-size: 22px; font-weight: 700; }
+.cover-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-actions { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cover-input { display: none; }
+.cover-hint { color: var(--n-text-color-3); font-size: 12px; line-height: 1.4; }
+@media (max-width: 640px) {
+  .cover-field { align-items: flex-start; flex-direction: column; }
+}
 </style>

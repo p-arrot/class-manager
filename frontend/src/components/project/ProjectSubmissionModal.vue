@@ -13,32 +13,51 @@ defineProps<{
   title: string
   rows: ProjectSubmissionRow[]
   rubric: DimensionScoreConfig[]
-  getScore: (submissionId: number, dimension: string) => number
+  getScore: (submissionId: number | null, dimension: string) => number
 }>()
 
 const emit = defineEmits<{
   preview: [file: ArtifactFile]
   download: [file: ArtifactFile]
-  scoreChange: [submissionId: number, dimension: string, value: number | null]
+  scoreChange: [submissionId: number | null, dimension: string, value: number | null]
   saveScore: [row: ProjectSubmissionRow]
 }>()
 
 function dimensionLabel(key: string) {
   return CORE_DIMENSIONS.find(item => item.key === key)?.label ?? key
 }
+
+function statusLabel(status: string) {
+  if (status === 'graded') return '已评分'
+  if (status === 'submitted') return '待评分'
+  if (status === 'not_submitted') return '未提交'
+  return status || '-'
+}
+
+function canScore(row: ProjectSubmissionRow) {
+  return Boolean(row.submissionId ?? row.id)
+}
 </script>
 
 <template>
   <NModal v-model:show="show" :title="title" preset="card" class="submissions-modal">
     <div v-if="rows.length" class="submission-list">
-      <div v-for="row in rows" :key="row.id" class="submission-row">
+      <div v-for="row in rows" :key="row.studentId" class="submission-row" :class="{ muted: !canScore(row) }">
         <div class="sub-head">
+          <span class="sub-class">{{ row.className || '-' }}</span>
           <span class="sub-name">{{ row.studentName || '学生' }}</span>
           <span class="sub-no">{{ row.studentNo }}</span>
-          <span class="sub-time">{{ row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '-' }}</span>
+          <span class="sub-status">{{ statusLabel(row.status) }}</span>
+          <span class="sub-time">{{ row.submittedAt ? formatDate(row.submittedAt, 'datetime') : '尚未提交' }}</span>
         </div>
-        <div v-if="row.parsed.note" class="sub-note">{{ row.parsed.note }}</div>
-        <div v-if="row.parsed.files.length" class="sub-files">
+        <div v-if="!canScore(row)" class="sub-missing">
+          尚未提交项目作品，不能评分。学生提交后会在这里显示作品、备注和评分入口。
+        </div>
+        <div v-if="canScore(row) && row.parsed.note" class="sub-note">
+          <span>学生备注 / 组员说明</span>
+          <p>{{ row.parsed.note }}</p>
+        </div>
+        <div v-if="canScore(row) && row.parsed.files.length" class="sub-files">
           <div v-for="file in row.parsed.files" :key="file.id" class="sub-file">
             <span>{{ file.name }}</span>
             <NSpace :size="4">
@@ -53,13 +72,13 @@ function dimensionLabel(key: string) {
             </NSpace>
           </div>
         </div>
-        <div class="submission-score-grid">
+        <div v-if="canScore(row)" class="submission-score-grid">
           <label v-for="dim in rubric.filter(item => item.maxScore > 0)" :key="dim.dimension" class="submission-score-cell">
             <span>{{ dimensionLabel(dim.dimension) }}</span>
             <NInput
-              :value="String(getScore(row.id, dim.dimension))"
+              :value="String(getScore(row.submissionId ?? row.id, dim.dimension))"
               size="small"
-              @update:value="value => emit('scoreChange', row.id, dim.dimension, Number(value) || 0)"
+              @update:value="value => emit('scoreChange', row.submissionId ?? row.id, dim.dimension, Number(value) || 0)"
             >
               <template #suffix>/ {{ dim.maxScore }}</template>
             </NInput>
@@ -78,10 +97,15 @@ function dimensionLabel(key: string) {
 }
 .submission-list { display: flex; flex-direction: column; gap: 10px; }
 .submission-row { padding: 12px 14px; border: 1px solid var(--n-border-color); border-radius: 8px; }
+.submission-row.muted { background: var(--n-color-embedded); }
 .sub-head { display: flex; align-items: center; gap: 8px; }
 .sub-name { font-weight: 600; }
+.sub-class, .sub-status { padding: 2px 6px; border-radius: 999px; background: var(--n-color-embedded); color: var(--n-text-color-2); font-size: 12px; }
 .sub-no, .sub-time { color: var(--n-text-color-3); font-size: 12px; }
-.sub-note { margin-top: 8px; white-space: pre-wrap; color: var(--n-text-color-2); font-size: 13px; }
+.sub-missing { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: var(--n-color); color: var(--n-text-color-3); font-size: 13px; }
+.sub-note { display: grid; gap: 4px; margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: var(--n-color-embedded); color: var(--n-text-color-2); font-size: 13px; }
+.sub-note span { font-weight: 600; color: var(--n-text-color-1); }
+.sub-note p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
 .sub-files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .sub-file { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 6px; background: var(--n-color-embedded); font-size: 13px; }
 .submission-score-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--n-border-color); }

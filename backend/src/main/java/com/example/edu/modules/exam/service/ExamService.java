@@ -5,22 +5,30 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.classes.entity.SchoolClass;
+import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseMapper;
+import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
 import com.example.edu.modules.exam.entity.*;
 import com.example.edu.modules.exam.mapper.*;
+import com.example.edu.modules.exam.vo.ExamSubmissionVO;
+import com.example.edu.modules.user.entity.User;
+import com.example.edu.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -32,6 +40,9 @@ public class ExamService {
     private final ExamSubmissionMapper submissionMapper;
     private final SemesterMapper semesterMapper;
     private final CourseMapper courseMapper;
+    private final CourseClassMapper courseClassMapper;
+    private final SchoolClassMapper schoolClassMapper;
+    private final UserMapper userMapper;
     private final AuditLogService auditLogService;
     private final DimensionScoreService dimensionScoreService;
     private final QuestionScoreHelper questionScoreHelper;
@@ -137,6 +148,16 @@ public class ExamService {
                 .eq(ExamSubmission::getExamId, examId));
     }
 
+    public List<ExamSubmissionVO> listSubmissionInbox(Long examId) {
+        Exam exam = examMapper.selectById(examId);
+        if (exam == null) throw new BizException(ErrorCode.NOT_FOUND);
+        Course course = checkTeacherOwnsExam(exam);
+        List<User> students = getCourseStudents(course.getId());
+        List<ExamSubmission> submissions = submissionMapper.selectList(new LambdaQueryWrapper<ExamSubmission>()
+                .eq(ExamSubmission::getExamId, examId));
+        return buildSubmissionInbox(examId, students, submissions);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void gradeSubmission(Long submissionId, Integer score, boolean absent, List<DimensionScoreService.ScoreInput> dimensionScores) {
         ExamSubmission sub = submissionMapper.selectById(submissionId);
@@ -177,11 +198,70 @@ public class ExamService {
         }
     }
 
-    private void checkTeacherOwnsExam(Exam exam) {
+    private Course checkTeacherOwnsExam(Exam exam) {
         Semester semester = semesterMapper.selectById(exam.getSemesterId());
         if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
         Course course = courseMapper.selectById(semester.getCourseId());
         if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         CoursePermissionHelper.checkTeacherOwnsCourse(course);
+        return course;
+    }
+
+    private List<User> getCourseStudents(Long courseId) {
+        List<CourseClass> bindings = courseClassMapper.selectList(
+                new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, courseId));
+        Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(Collectors.toCollection(LinkedHashSet::new));
+        if (classIds.isEmpty()) return List.of();
+        return userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "student")
+                .in(User::getClassId, classIds));
+    }
+
+    private List<ExamSubmissionVO> buildSubmissionInbox(Long examId, List<User> students, List<ExamSubmission> submissions) {
+        Map<Long, ExamSubmission> submissionMap = submissions.stream()
+                .collect(Collectors.toMap(ExamSubmission::getStudentId, sub -> sub, (left, right) -> left));
+        Map<Long, SchoolClass> classMap = loadClassMap(students);
+        return students.stream()
+                .sorted(Comparator
+                        .comparing((User user) -> Optional.ofNullable(formatClassName(classMap.get(user.getClassId()))).orElse(""))
+                        .thenComparing(user -> Optional.ofNullable(user.getStudentNo()).orElse(""))
+                        .thenComparing(user -> Optional.ofNullable(user.getName()).orElse("")))
+                .map(student -> {
+                    ExamSubmission submission = submissionMap.get(student.getId());
+                    SchoolClass schoolClass = student.getClassId() != null ? classMap.get(student.getClassId()) : null;
+                    return ExamSubmissionVO.builder()
+                            .id(submission != null ? submission.getId() : null)
+                            .submissionId(submission != null ? submission.getId() : null)
+                            .examId(examId)
+                            .studentId(student.getId())
+                            .studentName(student.getName())
+                            .studentNo(student.getStudentNo())
+                            .classId(student.getClassId())
+                            .className(formatClassName(schoolClass))
+                            .answers(submission != null ? submission.getAnswers() : null)
+                            .score(submission != null ? submission.getScore() : null)
+                            .status(submission != null ? submission.getStatus() : "not_submitted")
+                            .submittedAt(submission != null ? submission.getSubmittedAt() : null)
+                            .createdAt(submission != null ? submission.getCreatedAt() : null)
+                            .build();
+                })
+                .toList();
+    }
+
+    private Map<Long, SchoolClass> loadClassMap(List<User> students) {
+        Set<Long> classIds = students.stream()
+                .map(User::getClassId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (classIds.isEmpty()) return Map.of();
+        return Optional.ofNullable(schoolClassMapper.selectBatchIds(classIds)).orElse(List.of()).stream()
+                .collect(Collectors.toMap(SchoolClass::getId, schoolClass -> schoolClass));
+    }
+
+    private String formatClassName(SchoolClass schoolClass) {
+        if (schoolClass == null) return null;
+        return Optional.ofNullable(schoolClass.getGrade()).orElse("")
+                + "级"
+                + Optional.ofNullable(schoolClass.getName()).orElse("");
     }
 }

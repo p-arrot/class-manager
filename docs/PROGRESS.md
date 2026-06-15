@@ -232,7 +232,7 @@
 9. [x] 教师数据看板：修正提交构成口径，`submitted` 仅表示待批改，`graded/special/not_submitted` 单独展示。
 10. [x] 教师批改页：自动题预评分文案、人工题必填校验、底部固定保存栏、逐题评语输入。
 11. [x] 前端测试：补学生结果页专用状态测试，覆盖 `not_submitted/submitted/graded/special/403`。
-12. [ ] 总体质量 review：所有计划任务收尾后，统一检查重复 schema 解析、硬编码状态散落、跨角色数据泄露、时间格式不一致。
+12. [x] 总体质量 review：所有计划任务收尾后，统一检查重复 schema 解析、硬编码状态散落、跨角色数据泄露、时间格式不一致。
 
 ### Phase 8 开发记录
 
@@ -305,7 +305,7 @@
   - 已核对 `API.md`、`SPECIFICATION.md`、`FRONTEND_PLAN.md`、`BACKEND_PLAN.md` 中学生批改详情、教师批改页、教师任务数据看板、时间格式和考试权限的描述。
   - 批改详情链路已写全：学生首页、课时任务列表、提交成功页、学习评价页都进入 `/student/tasks/:taskId/result`；结果页覆盖未提交、待批改、已批改、特殊处理、权限失败和网络失败。
   - 教师链路已写全：发布任务后进入数据看板，数据看板按待批改/已批改/未提交/特殊处理拆分，批改页支持自动题预评分、人工题必填校验、逐题评语、参考答案可见性和返回数据看板。
-  - 当时仍保留为后续开发的待办包括项目队伍评分页面和班级分析；其中班级分析基础页已在后续 2026-06-14 记录中完成，项目队伍同分/独立队伍页仍需先确认业务规则。
+  - 当时仍保留为后续开发的待办包括项目队伍评分页面和班级分析；其中班级分析基础页已在后续 2026-06-14 记录中完成，项目后续已调整为个人提交 + 备注说明组员，队伍同分/独立队伍页暂不开发。
 
 - 2026-06-14：锁定项目提交/评分课程归属权限。
   - 复查 `ProjectService` 后确认项目模块已复用 `CoursePermissionHelper`，权限链路为 `Project -> Semester -> Course`，没有新建第二套权限逻辑。
@@ -333,14 +333,14 @@
 - 2026-06-14：复盘项目评分实现边界，校准后续计划。
   - 确认用户记忆正确：项目评分并非完全未实现，`ProjectPanel.vue` 已有项目提交列表、作品文件预览/下载、rubric 评分和 `scoreProjectSubmission` 保存能力。
   - 后端项目提交/评分权限和新评分模型已在 `ProjectServiceTest` 中锁定，旧 `/api/projects/{id}/scores` 继续停用。
-  - 当前真实缺口是独立教师项目管理页 `ProjectManage.vue` 还没有复用这套提交/批改能力，早期规划的 `/teacher/projects/:id/teams` 队伍视角页面也尚未拆出。
+  - 当时真实缺口是独立教师项目管理页 `ProjectManage.vue` 还没有复用这套提交/批改能力，早期规划的 `/teacher/projects/:id/teams` 队伍视角页面也尚未拆出；后续已按个人提交评分口径完成复用和收件箱增强。
   - 已更新 `FRONTEND_PLAN.md`：下一步不从零重写项目评分，而是先抽取项目提交评分复用层，再同时服务 `ProjectPanel.vue` 和 `ProjectManage.vue`，避免堆出第二套相似逻辑。
 - 2026-06-14：独立教师项目管理页接入已有项目提交批改能力。
   - 新增 `useProjectSubmissionScoring.ts`，统一封装项目提交列表、作品预览/下载、rubric 维度分输入和保存评分逻辑。
   - `ProjectPanel.vue` 已改为复用该 composable，继续保留课程详情内的项目列表、创建和删除能力。
   - `ProjectManage.vue` 表格操作列新增“查看提交和批改”，复用 `ProjectSubmissionModal` 和同一套文件预览弹窗；没有新建第二套评分 UI。
   - `ProjectManage.vue` 创建/编辑项目改用 `ProjectCreateModal`，支持提交方式、允许文件后缀和项目 rubric，避免独立页创建出的项目缺少评分配置。
-  - 仍未实现队伍同分同步和独立 `/teacher/projects/:id/teams` 页面；这两项需要先确认评分按个人提交还是按队伍统一评分。
+  - 队伍同分同步和独立 `/teacher/projects/:id/teams` 页面按最新产品口径暂不开发；项目当前按个人提交和个人评分闭环。
   - 验证：`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
 - 2026-06-14：补齐教师班级数据分析基础页面。
   - 新增 `ClassStats.vue` 和 `/teacher/stats` 路由，教师侧边栏新增“数据分析”入口。
@@ -348,3 +348,64 @@
   - 支持课程/学期/班级筛选，展示学生数、完整总评、缺失数据、平均总评、优秀率、合格率、班级维度雷达、班级对比表和学生明细表。
   - 仍保留为后续增强：跨学期趋势对比、图表/表格导出、从班级聚合行下钻到学生画像。
   - 验证：`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
+- 2026-06-14：完成课程封面图片上传。
+  - 后端新增课程封面上传和稳定图片读取接口，封面独立写入 MinIO `course-covers/yyyy-MM/...`，不进入课程资源树。
+  - 上传权限限制为管理员/教师，文件限制为常见图片类型且最大 5MB；读取接口返回稳定相对地址，避免把会过期的预签名 URL 写进课程资料。
+  - 前端课程创建/编辑弹窗增加封面预览、上传、清除和失败提示；课程卡片优先展示封面图片，加载失败时回退首字母占位。
+  - 验证：Docker Maven 缓存脚本定向测试 `FileServiceImplTest` 4 个测试通过；`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
+- 2026-06-14：完成教师端 `useSemesterStore` 全局学期状态。
+  - 新增 Pinia `useSemesterStore`，统一管理教师端课程/学期列表、当前课程、当前学期和加载状态。
+  - `useCourseSemesterPicker` 改为 store 适配层，现有总评导出、考试管理、项目管理和班级数据分析页面共享同一组课程/学期选择。
+  - 切换课程时统一加载学期，优先保留仍存在的学期，否则选择当前日期所在学期并兜底第一个学期。
+  - 验证：`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
+- 2026-06-14：完成教师端 `useClassFilterStore` 主要页面联动。
+  - 顶部班级选择器从课程列表扩展到任务数据看板和班级数据分析页，作为教师端当前班级上下文。
+  - 任务数据看板按全局班级自动应用已有后端 `classId` 参数，并与页面内班级选择双向同步。
+  - 班级数据分析通过教师班级列表将全局 `classId` 映射到总评预览 `className`，不新增重复统计接口。
+  - 教师首页、成绩导出暂未接入，因为当前接口没有班级查询参数；后续应先扩展后端查询能力。
+  - 验证：`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
+- 2026-06-14：项目口径调整为个人提交，备注说明组员。
+  - 学生端项目页隐藏创建队伍入口，项目卡片和页面副标题改为个人提交口径，避免误解为系统会自动做队伍同分。
+  - 学生提交弹窗新增显式“备注 / 组员说明”字段；如有组员，学生在备注里写姓名/学号，教师据此手动查找并评分。
+  - 教师端项目提交批改弹窗将备注展示为“学生备注 / 组员说明”只读信息块，靠近学生提交信息，便于批改时查看。
+  - 未改后端表结构和接口，继续复用 `project_submissions.content` 中的 `note` JSON 字段。
+  - 验证：`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建。
+- 2026-06-14：完成总体质量 review。
+  - 复查本轮新增/改动链路：课程封面上传、教师端课程/学期全局状态、班级全局筛选、项目个人提交备注。
+  - 重复逻辑：项目提交批改继续复用 `useProjectSubmissionScoring` 和 `ProjectSubmissionModal`；项目备注复用 `ProjectSubmissionContent.note`，未新增第二套 DTO/表结构；课程/学期选择通过 `useSemesterStore` 收敛。
+  - 状态与文档口径：修正文档中过期的项目评分 `PUT` 说法为实际 `POST`；项目队伍页明确暂不开发，项目按个人提交 + 备注说明组员。
+  - 权限边界：课程封面上传仅 `ADMIN/TEACHER` 可写，封面读取为公开只读；任务看板继续使用已有 `classId` 后端过滤；项目评分继续沿用已有课程归属校验。
+  - 时间格式：本轮没有新增时间序列化路径，前端继续使用 `formatDate` 展示提交/截止时间。
+  - 验证：Docker Maven 缓存脚本定向测试 `FileServiceImplTest` 4 个测试通过；`npm run check` 通过质量门、类型检查、7 个前端测试文件 28 个测试和生产构建；`git diff --check` 无实际格式错误。
+- 2026-06-14：完成课堂任务批改收件箱第一版。
+  - 后端 `TaskAnalyticsVO.submissions` 从“已有提交列表”升级为“应完成学生状态列表”，未提交学生也返回一行，便于教师按班级追踪缺交。
+  - `StudentTaskAnswerVO` 新增 `classId/className`，前端任务看板展示班级、学号、姓名、状态、提交时间、内容摘要和操作。
+  - `TaskAnalytics.vue` 的提交明细升级为“批改收件箱”；教师点击待批改或已批改学生进入 `/teacher/grading/:taskId?submissionId=...`，批改页定位到对应提交，未提交学生禁用批改操作。
+  - `LessonTaskPanel.vue` 教师任务操作改为“批改收件箱”，不再从课时面板直接进入批改页。
+  - 修复自动题漏答时 `answersEqual` 对空答案触发 NPE 的问题，漏答稳定判错。
+  - 当时考试/项目暂未完整接入收件箱，因为接口只返回已提交记录；后续考试和项目都已补“应完成学生状态聚合”接口。
+  - 验证：Docker Maven 缓存脚本定向测试 `TaskServiceImplTest` 6 个测试通过；`npm run check` 通过质量门、类型检查、8 个前端测试文件 30 个测试和生产构建。
+- 2026-06-14：补齐课堂任务批改收件箱测试覆盖。
+  - 后端 `TaskServiceImplTest` 新增断言：批改收件箱返回未提交学生行、`submissionId=null`、班级名和班级 scope 学生数。
+  - 前端新增 `task-analytics-inbox.test.ts`，覆盖 `TaskAnalytics.vue` 渲染所有应完成学生、未提交行禁用操作、点击待批改学生进入指定 `submissionId` 的批改页。
+  - 验证：`npm run test -- task-analytics-inbox` 1 个测试文件 2 个测试通过；Docker Maven 缓存脚本定向测试 `TaskServiceImplTest` 6 个测试通过；`npm run check` 8 个前端测试文件 30 个测试通过并完成生产构建。
+- 2026-06-14：完成考试批改收件箱增强，避免重复开发批改页。
+  - 复查后确认考试基础批改工作台已存在，真实缺口不是“重做考试批改页”，而是提交列表只返回已提交学生。
+  - 后端 `GET /api/exams/{examId}/submissions` 已升级为收件箱：按课程绑定班级返回所有应完成学生，未提交学生返回 `status=not_submitted` 且 `id/submissionId` 为空。
+  - `ExamSubmissionVO` 新增 `submissionId/classId/className`，前端继续复用原有 `PUT /api/exam-submissions/{id}/grade`、试卷 schema 解析和逐维度评分逻辑。
+  - `ExamManage.vue` 左侧列表改为“批改收件箱”，补班级和提交时间；未提交学生可查看状态但不能保存批改，避免生成不存在的提交评分。
+  - 新增 `exam-manage-inbox.test.ts`，覆盖考试收件箱展示应完成学生、未提交行提示和保存按钮禁用。
+  - 验证：Docker Maven 缓存脚本定向测试 `ExamServiceTest` 6 个测试通过；`npm run test -- exam-manage-inbox` 1 个测试通过；`npm run check` 通过质量门、类型检查、9 个前端测试文件 31 个测试和生产构建。
+- 2026-06-14：完成项目批改收件箱增强，继续复用现有项目评分组件。
+  - 复查后确认项目提交/批改能力已经存在，真实缺口不是“重做项目评分页”，而是提交列表只返回已提交学生且缺少待评分/已评分状态。
+  - 后端 `GET /api/projects/{projectId}/submissions` 已升级为收件箱：按课程绑定班级返回所有应完成学生，未提交学生返回 `status=not_submitted` 且 `id/submissionId` 为空。
+  - `ProjectSubmissionVO` 新增 `submissionId/classId/className/status/score`；已评分状态从 `dimension_scores(source_type='project', source_id=submissionId)` 汇总判断，不新增项目提交状态字段。
+  - 前端继续复用 `useProjectSubmissionScoring` 和 `ProjectSubmissionModal`；未提交学生显示“尚未提交项目作品”，不渲染文件预览和评分控件。
+  - 新增 `project-submission-modal-inbox.test.ts`，覆盖项目收件箱展示已提交/未提交学生、备注/文件和未提交行不出现保存评分。
+  - 验证：Docker Maven 缓存脚本定向测试 `ProjectServiceTest` 8 个测试通过；`npm run test -- project-submission-modal-inbox` 1 个测试通过；`npm run check` 通过质量门、类型检查、10 个前端测试文件 32 个测试和生产构建。
+- 2026-06-14：完成本轮代码质量 review。
+  - 复查文档待办后确认：课堂任务、考试、项目的教师批改收件箱均已完成当前产品口径；项目队伍同分和独立队伍页按用户最新口径暂不开发。
+  - 代码复用情况：考试继续复用 `ExamManage.vue` 原双栏批改工作台；项目继续复用 `useProjectSubmissionScoring` 和 `ProjectSubmissionModal`；任务批改继续复用 `TaskAnalytics.vue` + `GradingView.vue`，没有新建重复页面。
+  - 数据落点：项目已评分状态复用 `dimension_scores(source_type='project')`，项目备注复用 `ProjectSubmissionContent.note`，未新增数据库字段或第二套 DTO。
+  - 可选后续重构：任务、考试、项目服务里都存在小段“课程绑定班级学生 + 班级名格式化”聚合逻辑；当前测试覆盖且规模可控，后续若继续扩展收件箱字段，可抽取共享 helper，避免重复增长。
+  - 验证：Docker Maven 缓存脚本定向测试 `TaskServiceImplTest,ExamServiceTest,ProjectServiceTest` 共 20 个测试通过；`npm run check` 通过质量门、类型检查、10 个前端测试文件 32 个测试和生产构建；`git diff --check` 无实际格式错误，仅 CRLF/LF 提示。

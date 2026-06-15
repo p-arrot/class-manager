@@ -5,10 +5,12 @@ import type { DataTableColumns } from 'naive-ui'
 import { RefreshOutline } from '@vicons/ionicons5'
 import PageHeader from '@/components/PageHeader.vue'
 import RadarChart from '@/components/RadarChart.vue'
+import { listAllClasses } from '@/api/classes'
 import { getSemesterStatsPreview } from '@/api/stats'
 import { useCourseSemesterPicker } from '@/composables/useCourseSemesterPicker'
+import { useClassFilterStore } from '@/stores/classFilter'
 import { getErrorMessage } from '@/utils/error'
-import type { SemesterStatsPreviewRow } from '@/types/api'
+import type { ClassVO, SemesterStatsPreviewRow } from '@/types/api'
 
 interface ClassAggregate {
   className: string
@@ -30,9 +32,12 @@ interface ClassAggregate {
 
 const message = useMessage()
 const { activeCourseId, activeSemesterId, courseOptions, semesterOptions, loadCourses } = useCourseSemesterPicker()
+const classFilter = useClassFilterStore()
 const preview = ref<SemesterStatsPreviewRow[]>([])
+const classes = ref<ClassVO[]>([])
 const loading = ref(false)
 const selectedClass = ref<string | null>(null)
+let syncingClassFromStore = false
 
 const classOptions = computed(() => classAggregates.value.map(item => ({
   label: item.className,
@@ -133,6 +138,11 @@ async function loadPreview() {
   }
 }
 
+async function loadTeacherClasses() {
+  classes.value = await listAllClasses()
+  applyGlobalClassFilter()
+}
+
 function buildClassAggregate(className: string, rows: SemesterStatsPreviewRow[]): ClassAggregate {
   const complete = rows.filter(row => row.totalScore != null && !row.remark)
   return {
@@ -156,6 +166,32 @@ function buildClassAggregate(className: string, rows: SemesterStatsPreviewRow[])
 
 function normalizedClassName(row: SemesterStatsPreviewRow) {
   return row.className || '未分班'
+}
+
+function classLabel(row: ClassVO) {
+  return `${row.grade}级${row.name}`
+}
+
+function applyGlobalClassFilter() {
+  syncingClassFromStore = true
+  const globalClassId = classFilter.selectedClassId
+  const className = globalClassId
+    ? classes.value.find(item => item.id === globalClassId)
+    : null
+  selectedClass.value = className ? classLabel(className) : null
+  queueMicrotask(() => {
+    syncingClassFromStore = false
+  })
+}
+
+function syncSelectedClassToStore(className: string | null) {
+  if (syncingClassFromStore) return
+  if (!className) {
+    classFilter.clearFilter()
+    return
+  }
+  const match = classes.value.find(item => classLabel(item) === className)
+  if (match) classFilter.setClassId(match.id)
 }
 
 function average<T>(rows: T[], getter: (row: T) => number | null | undefined) {
@@ -187,13 +223,15 @@ function gradeTagType(score: number | null | undefined) {
 
 onMounted(async () => {
   try {
-    await loadCourses()
+    await Promise.all([loadCourses(), loadTeacherClasses()])
   } catch (e) {
     message.error(getErrorMessage(e, '加载课程列表失败'))
   }
 })
 
 watch(activeSemesterId, loadPreview)
+watch(() => classFilter.selectedClassId, applyGlobalClassFilter)
+watch(selectedClass, syncSelectedClassToStore)
 </script>
 
 <template>

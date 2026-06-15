@@ -94,6 +94,9 @@ async function handleImageUpload(question: TaskQuestion, { file }: UploadCustomR
     fd.append('file', rawFile)
     fd.append('courseId', String(courseId.value))
     const upload = await http.post<FileUploadVO>('/files/upload', fd)
+    if (!upload.resourceId) {
+      throw new Error('图片资源上传失败')
+    }
     const stream = await getStreamUrl(upload.resourceId)
     question.imageUrl = stream.url
     message.success('题目图片已插入')

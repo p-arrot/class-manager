@@ -5,11 +5,16 @@ import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.LoginUser;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.classes.entity.SchoolClass;
+import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.evaluation.entity.DimensionScore;
+import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.project.entity.Project;
 import com.example.edu.modules.project.entity.ProjectScore;
@@ -18,6 +23,9 @@ import com.example.edu.modules.project.mapper.ProjectMapper;
 import com.example.edu.modules.project.mapper.ProjectSubmissionMapper;
 import com.example.edu.modules.project.mapper.ProjectTeamMapper;
 import com.example.edu.modules.project.mapper.ProjectTeamMemberMapper;
+import com.example.edu.modules.project.vo.ProjectSubmissionVO;
+import com.example.edu.modules.user.entity.User;
+import com.example.edu.modules.user.mapper.UserMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +57,9 @@ class ProjectServiceTest {
     @Mock private SemesterMapper semesterMapper;
     @Mock private CourseMapper courseMapper;
     @Mock private CourseClassMapper courseClassMapper;
+    @Mock private SchoolClassMapper schoolClassMapper;
+    @Mock private UserMapper userMapper;
+    @Mock private DimensionScoreMapper dimensionScoreMapper;
     @Mock private AuditLogService auditLogService;
     @Mock private DimensionScoreService dimensionScoreService;
 
@@ -121,6 +132,45 @@ class ProjectServiceTest {
         projectService.scoreSubmission(31L, scores);
 
         verify(dimensionScoreService).replaceScores("project", 31L, 101L, scores);
+    }
+
+    @Test
+    void ownerTeacherCanListProjectSubmissionInboxWithNotSubmittedAndGradedStudents() {
+        setTeacher(9L);
+        when(projectMapper.selectById(1L)).thenReturn(project(LocalDateTime.now().plusDays(1)));
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course(9L));
+        CourseClass binding = new CourseClass();
+        binding.setCourseId(4L);
+        binding.setClassId(10L);
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(binding));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                student(102L, "20260002", "周二"),
+                student(101L, "20260001", "林一")
+        ));
+        when(schoolClassMapper.selectBatchIds(any())).thenReturn(List.of(schoolClass(10L)));
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission(31L, 1L, 101L)));
+        DimensionScore score = new DimensionScore();
+        score.setSourceType("project");
+        score.setSourceId(31L);
+        score.setEarnedScore(BigDecimal.valueOf(8));
+        when(dimensionScoreMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(score));
+
+        List<ProjectSubmissionVO> inbox = projectService.listSubmissionInbox(1L);
+
+        assertThat(inbox).hasSize(2);
+        ProjectSubmissionVO graded = inbox.stream().filter(row -> row.getStudentId().equals(101L)).findFirst().orElseThrow();
+        assertThat(graded.getId()).isEqualTo(31L);
+        assertThat(graded.getSubmissionId()).isEqualTo(31L);
+        assertThat(graded.getStatus()).isEqualTo("graded");
+        assertThat(graded.getScore()).isEqualByComparingTo("8");
+        assertThat(graded.getClassName()).isEqualTo("2026级1班");
+
+        ProjectSubmissionVO notSubmitted = inbox.stream().filter(row -> row.getStudentId().equals(102L)).findFirst().orElseThrow();
+        assertThat(notSubmitted.getId()).isNull();
+        assertThat(notSubmitted.getSubmissionId()).isNull();
+        assertThat(notSubmitted.getStatus()).isEqualTo("not_submitted");
+        assertThat(notSubmitted.getClassName()).isEqualTo("2026级1班");
     }
 
     @Test
@@ -210,5 +260,23 @@ class ProjectServiceTest {
         submission.setStudentId(studentId);
         submission.setContent("{}");
         return submission;
+    }
+
+    private static User student(Long id, String studentNo, String name) {
+        User user = new User();
+        user.setId(id);
+        user.setRole("student");
+        user.setStudentNo(studentNo);
+        user.setName(name);
+        user.setClassId(10L);
+        return user;
+    }
+
+    private static SchoolClass schoolClass(Long id) {
+        SchoolClass schoolClass = new SchoolClass();
+        schoolClass.setId(id);
+        schoolClass.setGrade("2026");
+        schoolClass.setName("1班");
+        return schoolClass;
     }
 }

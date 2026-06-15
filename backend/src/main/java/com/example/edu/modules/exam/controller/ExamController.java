@@ -7,7 +7,6 @@ import com.example.edu.modules.exam.service.ExamService;
 import com.example.edu.modules.exam.vo.*;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -84,7 +83,7 @@ public class ExamController {
     public R<ExamSubmissionVO> submit(@PathVariable Long examId, @RequestBody Map<String,String> body) {
         ExamSubmission s = examService.submit(examId, body.get("answers"));
         User u = userMapper.selectById(s.getStudentId());
-        return R.ok(ExamSubmissionVO.builder().id(s.getId()).examId(s.getExamId())
+        return R.ok(ExamSubmissionVO.builder().id(s.getId()).submissionId(s.getId()).examId(s.getExamId())
                 .studentId(s.getStudentId()).studentName(u != null ? u.getName() : null)
                 .studentNo(u != null ? u.getStudentNo() : null)
                 .answers(s.getAnswers()).score(s.getScore()).status(s.getStatus())
@@ -94,17 +93,7 @@ public class ExamController {
     @GetMapping("/api/exams/{examId}/submissions")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<List<ExamSubmissionVO>> listSubmissions(@PathVariable Long examId) {
-        List<ExamSubmission> subs = examService.listSubmissions(examId);
-        java.util.Set<Long> sids = subs.stream().map(ExamSubmission::getStudentId).collect(Collectors.toSet());
-        Map<Long,User> um = sids.isEmpty() ? Map.of() : userMapper.selectBatchIds(sids).stream().collect(Collectors.toMap(User::getId, u->u));
-        return R.ok(subs.stream().map(s -> {
-            User u = um.get(s.getStudentId());
-            return ExamSubmissionVO.builder().id(s.getId()).examId(s.getExamId())
-                    .studentId(s.getStudentId()).studentName(u != null ? u.getName() : null)
-                    .studentNo(u != null ? u.getStudentNo() : null)
-                    .answers(s.getAnswers()).score(s.getScore()).status(s.getStatus())
-                    .submittedAt(s.getSubmittedAt()).createdAt(s.getCreatedAt()).build();
-        }).toList());
+        return R.ok(examService.listSubmissionInbox(examId));
     }
 
     @PutMapping("/api/exam-submissions/{id}/grade")

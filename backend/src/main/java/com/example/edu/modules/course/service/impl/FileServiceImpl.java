@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
 import java.util.*;
 
@@ -41,8 +42,12 @@ public class FileServiceImpl implements FileService {
     private final AuditLogService auditLogService;
 
     private static final long MAX_FILE_SIZE = 200L * 1024 * 1024; // 200 MB
+    private static final long MAX_COVER_SIZE = 5L * 1024 * 1024; // 5 MB
+    private static final String COVER_PREFIX = "course-covers/";
     private static final java.util.Set<String> FORBIDDEN_EXTENSIONS =
             java.util.Set.of("exe", "bat", "sh", "cmd", "com", "msi", "dll", "so");
+    private static final java.util.Set<String> ALLOWED_COVER_TYPES =
+            java.util.Set.of("image/jpeg", "image/png", "image/webp", "image/gif");
 
     private void validateFileType(String fileName) {
         if (fileName == null) return;
@@ -177,6 +182,26 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
+    public FileUploadVO uploadCourseCover(MultipartFile file) {
+        String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("cover");
+        String contentType = Optional.ofNullable(file.getContentType()).orElse("");
+        validateCover(fileName, contentType, file.getSize());
+        String objectName = generateCoverObjectName(fileName);
+        try {
+            minioService.uploadObject(objectName, file.getInputStream(), contentType);
+        } catch (IOException e) {
+            log.error("Failed to read course cover stream: objectName={}", objectName, e);
+            throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "封面上传失败");
+        }
+        String token = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(objectName.getBytes(StandardCharsets.UTF_8));
+        auditLogService.record("上传课程封面", "course_cover", null, fileName);
+        return FileUploadVO.builder()
+                .url("/api/files/course-cover/" + token)
+                .build();
+    }
+
+    @Override
     public String getDownloadUrl(Long resourceId) {
         CourseResource resource = loadFileResource(resourceId);
         // Generate download URL with forced attachment (prevents browser from rendering)
@@ -210,6 +235,21 @@ public class FileServiceImpl implements FileService {
                 .build();
     }
 
+    @Override
+    public FileRawDTO getCourseCoverRaw(String token) {
+        String objectName = decodeCoverToken(token);
+        if (!objectName.startsWith(COVER_PREFIX)) {
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
+        }
+        java.io.InputStream stream = minioService.getObject(objectName);
+        return FileRawDTO.builder()
+                .inputStream(stream)
+                .contentType(inferImageContentType(objectName))
+                .fileName(objectName.substring(objectName.lastIndexOf('/') + 1))
+                .fileSize(0L)
+                .build();
+    }
+
     // ========== private helpers ==========
 
     private CourseResource loadFileResource(Long resourceId) {
@@ -231,6 +271,39 @@ public class FileServiceImpl implements FileService {
         String yearMonth = YearMonth.now().toString();
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         return courseId + "/" + yearMonth + "/" + uuid + "_" + safeName;
+    }
+
+    private void validateCover(String fileName, String contentType, long fileSize) {
+        validateFileType(fileName);
+        if (fileSize <= 0 || fileSize > MAX_COVER_SIZE) {
+            throw new BizException(ErrorCode.FILE_SIZE_EXCEEDED);
+        }
+        if (!ALLOWED_COVER_TYPES.contains(contentType)) {
+            throw new BizException(ErrorCode.FILE_TYPE_NOT_ALLOWED, "仅支持 jpg、png、webp、gif 封面图片");
+        }
+    }
+
+    private String generateCoverObjectName(String fileName) {
+        String safeName = fileName.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_");
+        String yearMonth = YearMonth.now().toString();
+        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        return COVER_PREFIX + yearMonth + "/" + uuid + "_" + safeName;
+    }
+
+    private String decodeCoverToken(String token) {
+        try {
+            return new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
+        }
+    }
+
+    private String inferImageContentType(String objectName) {
+        String lower = objectName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        return "image/jpeg";
     }
 
 }
