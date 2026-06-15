@@ -47,6 +47,7 @@ public class SemesterServiceImpl implements SemesterService {
         checkTeacherOwnsCourse(course);
 
         checkNameDuplicate(courseId, dto.getName(), null);
+        validateTimeRange(courseId, dto.getStartTime(), dto.getEndTime(), null);
 
         Semester semester = new Semester();
         semester.setCourseId(courseId);
@@ -97,6 +98,7 @@ public class SemesterServiceImpl implements SemesterService {
         checkTeacherOwnsCourse(course);
 
         checkNameDuplicate(semester.getCourseId(), dto.getName(), id);
+        validateTimeRange(semester.getCourseId(), dto.getStartTime(), dto.getEndTime(), id);
 
         semester.setName(dto.getName());
         semester.setStartTime(dto.getStartTime());
@@ -182,6 +184,22 @@ public class SemesterServiceImpl implements SemesterService {
         }
         if (semesterMapper.selectCount(wrapper) > 0) {
             throw new BizException(ErrorCode.SEMESTER_NAME_DUPLICATE);
+        }
+    }
+
+    private void validateTimeRange(Long courseId, java.time.LocalDateTime start, java.time.LocalDateTime end, Long excludeId) {
+        if (start == null || end == null || !start.isBefore(end)) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "学期开始时间必须早于结束时间");
+        }
+        LambdaQueryWrapper<Semester> wrapper = new LambdaQueryWrapper<Semester>()
+                .eq(Semester::getCourseId, courseId)
+                .lt(Semester::getStartTime, end)
+                .gt(Semester::getEndTime, start);
+        if (excludeId != null) {
+            wrapper.ne(Semester::getId, excludeId);
+        }
+        if (semesterMapper.selectCount(wrapper) > 0) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "同一课程下学期时间不能重叠");
         }
     }
 

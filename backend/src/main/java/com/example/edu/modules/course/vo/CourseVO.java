@@ -37,4 +37,10 @@ public class CourseVO {
 
     @Schema(description = "更新时间")
     private LocalDateTime updatedAt;
+
+    @Schema(description = "学生已完成任务数(仅学生视角)")
+    private Integer mySubmittedCount;
+
+    @Schema(description = "总任务数(仅学生视角)")
+    private Integer myTotalTaskCount;
 }

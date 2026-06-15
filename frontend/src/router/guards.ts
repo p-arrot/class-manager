@@ -30,8 +30,8 @@ export function setupGuards(router: Router) {
 
 function getRoleHome(role: string): string {
   switch (role) {
-    case 'admin': return '/admin/classes'
-    case 'teacher': return '/teacher/courses'
+    case 'admin': return '/admin/overview'
+    case 'teacher': return '/teacher/home'
     case 'student': return '/student/home'
     default: return '/login'
   }

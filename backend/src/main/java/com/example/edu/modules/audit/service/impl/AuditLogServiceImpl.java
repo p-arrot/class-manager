@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Slf4j
@@ -34,16 +35,11 @@ public class AuditLogServiceImpl implements AuditLogService {
                 userId = loginUser.getUserId();
             }
 
-            try {
-                ServletRequestAttributes attrs =
-                        (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-                if (attrs != null) {
-                    HttpServletRequest request = attrs.getRequest();
-                    ip = request.getRemoteAddr();
-                    userAgent = request.getHeader("User-Agent");
-                }
-            } catch (Exception ignored) {
-                // request context may not be available (e.g. CommandLineRunner)
+            RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+            if (requestAttributes instanceof ServletRequestAttributes attrs) {
+                HttpServletRequest request = attrs.getRequest();
+                ip = request.getRemoteAddr();
+                userAgent = request.getHeader("User-Agent");
             }
 
             AuditLog logEntry = new AuditLog();
@@ -56,7 +52,7 @@ public class AuditLogServiceImpl implements AuditLogService {
             logEntry.setUserAgent(userAgent);
             auditLogMapper.insert(logEntry);
         } catch (Exception e) {
-            log.warn("审计日志写入失败: action={}, error={}", action, e.getMessage());
+            log.warn("审计日志写入失败: action={}", action, e);
         }
     }
 }

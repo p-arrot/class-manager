@@ -49,6 +49,7 @@ public class SecurityConfig {
                                         ErrorCode.FORBIDDEN)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                "/api/health",
                                 "/api/auth/login",
                                 "/api-docs/**",
                                 "/swagger-ui/**",
@@ -58,10 +59,48 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/classes/list-all").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers("/api/classes/**").hasRole("ADMIN")
                         .requestMatchers("/api/teachers/**").hasRole("ADMIN")
-                        .requestMatchers("/api/files/upload/**").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/files/course-cover/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/files/course-cover/upload").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers("/api/files/upload/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/files/*/download").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/files/*/preview").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/files/*/stream").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/files/*/raw").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers("/api/lessons/*/tasks", "/api/lessons/*/tasks/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/tasks/*/submit").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/tasks/*/my-submission").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/tasks/*/my-result").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/tasks/*/submissions").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/tasks/*").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers("/api/tasks/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Students (submissions sub-path also open to student viewing own data)
+                        .requestMatchers(HttpMethod.GET, "/api/students/*/submissions", "/api/students/*/evaluations", "/api/students/*/radar").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers("/api/students/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Courses, Semesters, Lessons (non-task), Resources
+                        .requestMatchers(HttpMethod.GET, "/api/courses/**", "/api/semesters/**", "/api/lessons/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers("/api/courses/**", "/api/semesters/**", "/api/lessons/**").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/resources/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers("/api/resources/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Evaluations
+                        .requestMatchers(HttpMethod.GET, "/api/students/*/evaluations", "/api/students/*/radar").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/evaluations/grade-scores").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers("/api/submissions/*/evaluate", "/api/tasks/*/auto-grade").hasAnyRole("ADMIN", "TEACHER")
+                        // Exams
+                        .requestMatchers(HttpMethod.GET, "/api/exam-papers", "/api/semesters/*/exams", "/api/exams/*/submissions").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/exams/*/start", "/api/exams/*/submit").hasRole("STUDENT")
+                        .requestMatchers("/api/exam-papers/**", "/api/exams/**", "/api/exam-submissions/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Projects & Teams (specific student rules MUST come before broad /api/projects/**)
+                        .requestMatchers(HttpMethod.GET, "/api/semesters/*/projects").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/projects/*/teams", "/api/teams/*/join", "/api/projects/*/submit").hasRole("STUDENT")
+                        .requestMatchers("/api/projects/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Drive
+                        .requestMatchers("/api/drive/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        // Stats
+                        .requestMatchers("/api/stats/**").hasAnyRole("ADMIN", "TEACHER")
+                        // Submissions detail
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        // WebSocket + OPTIONS
+                        .requestMatchers("/ws/**", "/ws").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )

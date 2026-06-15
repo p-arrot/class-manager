@@ -331,11 +331,9 @@ public class StudentServiceImpl implements StudentService {
         for (Long id : dto.getIds()) {
             User student = userMapper.selectById(id);
             if (student == null || !"student".equals(student.getRole())) continue;
-            try {
-                checkTeacherStudentAccess(loginUser, student);
-                userMapper.deleteById(id);
-                count++;
-            } catch (BizException ignored) { /* skip unauthorized */ }
+            if (!canAccessStudent(loginUser, student)) continue;
+            userMapper.deleteById(id);
+            count++;
         }
         auditLogService.record("批量删除学生", "student", null, "删除" + count + "名学生");
     }
@@ -351,12 +349,10 @@ public class StudentServiceImpl implements StudentService {
         for (Long id : dto.getIds()) {
             User student = userMapper.selectById(id);
             if (student == null || !"student".equals(student.getRole())) continue;
-            try {
-                checkTeacherStudentAccess(loginUser, student);
-                student.setPassword(encoded);
-                userMapper.updateById(student);
-                count++;
-            } catch (BizException ignored) { /* skip unauthorized */ }
+            if (!canAccessStudent(loginUser, student)) continue;
+            student.setPassword(encoded);
+            userMapper.updateById(student);
+            count++;
         }
         auditLogService.record("批量重置密码", "student", null, "重置" + count + "名学生密码");
     }
@@ -364,15 +360,18 @@ public class StudentServiceImpl implements StudentService {
     // ---- private helpers ----
 
     private void checkTeacherStudentAccess(LoginUser loginUser, User student) {
-        if (!"teacher".equals(loginUser.getRole())) return;
+        if (canAccessStudent(loginUser, student)) return;
+        throw new BizException(ErrorCode.TEACHER_NOT_IN_CHARGE);
+    }
+
+    private boolean canAccessStudent(LoginUser loginUser, User student) {
+        if (!"teacher".equals(loginUser.getRole())) return true;
         List<TeacherClass> bindings = teacherClassMapper.selectList(
                 new LambdaQueryWrapper<TeacherClass>()
                         .eq(TeacherClass::getTeacherId, loginUser.getUserId()));
         Set<Long> myClassIds = bindings.stream()
                 .map(TeacherClass::getClassId).collect(Collectors.toSet());
-        if (student.getClassId() == null || !myClassIds.contains(student.getClassId())) {
-            throw new BizException(ErrorCode.TEACHER_NOT_IN_CHARGE);
-        }
+        return student.getClassId() != null && myClassIds.contains(student.getClassId());
     }
 
     private void checkTeacherClassAccess(LoginUser loginUser, Long classId) {

@@ -1,9 +1,12 @@
 package com.example.edu.modules.course.controller;
 
 import com.example.edu.common.result.R;
+import com.example.edu.modules.course.dto.AssessmentSchemeDTO;
 import com.example.edu.modules.course.dto.SemesterCreateDTO;
 import com.example.edu.modules.course.dto.SemesterUpdateDTO;
+import com.example.edu.modules.course.service.CourseService;
 import com.example.edu.modules.course.service.SemesterService;
+import com.example.edu.modules.course.vo.AssessmentSchemeVO;
 import com.example.edu.modules.course.vo.SemesterVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,10 +23,11 @@ import java.util.List;
 public class SemesterController {
 
     private final SemesterService semesterService;
+    private final CourseService courseService;
 
     @Operation(summary = "创建学期")
     @PostMapping("/api/courses/{courseId}/semesters")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<SemesterVO> create(@PathVariable Long courseId,
                                 @Valid @RequestBody SemesterCreateDTO dto) {
         return R.ok(semesterService.create(courseId, dto));
@@ -47,15 +51,29 @@ public class SemesterController {
 
     @Operation(summary = "获取学期详情")
     @GetMapping("/api/semesters/{id}")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<SemesterVO> getById(@PathVariable Long id) {
         return R.ok(semesterService.getById(id));
     }
 
     @Operation(summary = "获取课程下的学期列表")
     @GetMapping("/api/courses/{courseId}/semesters")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<SemesterVO>> listByCourseId(@PathVariable Long courseId) {
         return R.ok(semesterService.listByCourseId(courseId));
+    }
+
+    @Operation(summary = "获取学期考核方案")
+    @GetMapping("/api/semesters/{id}/assessment-scheme")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public R<AssessmentSchemeVO> getAssessmentScheme(@PathVariable Long id) {
+        return R.ok(courseService.getAssessmentScheme(id));
+    }
+
+    @Operation(summary = "设置学期考核方案")
+    @PutMapping("/api/semesters/{id}/assessment-scheme")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<AssessmentSchemeVO> saveAssessmentScheme(@PathVariable Long id, @Valid @RequestBody AssessmentSchemeDTO dto) {
+        return R.ok(courseService.saveAssessmentScheme(id, dto));
     }
 }

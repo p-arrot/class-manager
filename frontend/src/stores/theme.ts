@@ -5,6 +5,10 @@ import { darkTheme, type GlobalTheme, type GlobalThemeOverrides } from 'naive-ui
 // Shared overrides applied to both light and dark
 const sharedOverrides: GlobalThemeOverrides = {
   common: {
+    fontSize: '15px',
+    fontSizeSmall: '13px',
+    fontSizeMedium: '15px',
+    fontSizeLarge: '17px',
     borderRadius: '6px',
     borderRadiusSmall: '4px',
     fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif",

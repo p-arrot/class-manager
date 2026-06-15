@@ -1,5 +1,5 @@
 import http from './request'
-import type { CourseVO, CourseDetailVO, CourseCreateDTO, CourseUpdateDTO, CoursePageQuery, PageResult, CourseResourceVO } from '@/types/api'
+import type { CourseVO, CourseDetailVO, CourseCreateDTO, CourseUpdateDTO, CoursePageQuery, PageResult, CourseResourceVO, FileUploadVO } from '@/types/api'
 
 export function listCourses(params: CoursePageQuery): Promise<PageResult<CourseVO>> {
   return http.get('/courses', { params })
@@ -19,6 +19,15 @@ export function updateCourse(id: number, data: CourseUpdateDTO): Promise<CourseV
 
 export function deleteCourse(id: number): Promise<void> {
   return http.delete(`/courses/${id}`)
+}
+
+export function uploadCourseCover(file: File): Promise<FileUploadVO> {
+  const data = new FormData()
+  data.append('file', file)
+  return http.post('/files/course-cover/upload', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
 }
 
 // ========== Course Resources ==========

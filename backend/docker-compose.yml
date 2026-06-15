@@ -1,49 +1,122 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.6-alpine
     container_name: edu-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: edu
-      POSTGRES_PASSWORD: edu123
-      POSTGRES_DB: edu
+      POSTGRES_USER: ${DB_USERNAME:-edu}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-edu123}
+      POSTGRES_DB: ${DB_NAME:-edu}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-edu}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: edu-redis
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ];
+      then redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+      else redis-server --appendonly yes;
+      fi'
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD}\" ]; then redis-cli -a \"$${REDIS_PASSWORD}\" ping; else redis-cli ping; fi"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
     container_name: edu-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      MINIO_SERVER_URL: http://host.docker.internal:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   kkfileview:
-    image: keking/kkfileview:latest
+    image: ${KKFILEVIEW_IMAGE:-keking/kkfileview:4.1.0}
     container_name: edu-kkfileview
     restart: unless-stopped
     ports:
-      - "8012:8012"
+      - "${KKFILEVIEW_PORT:-8012}:8012"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: edu-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-this-secret-32chars-min}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=${DB_USERNAME:-edu}
+      - DB_PASSWORD=${DB_PASSWORD:-edu123}
+      - DB_NAME=${DB_NAME:-edu}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DATABASE=${REDIS_DATABASE:-0}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-edu}
+      - KKFILEVIEW_BASE_URL=${KKFILEVIEW_BASE_URL:-http://localhost:8012}
+      - APP_LOG_LEVEL=${APP_LOG_LEVEL:-info}
+      - SECURITY_LOG_LEVEL=${SECURITY_LOG_LEVEL:-warn}
+    volumes:
+      - backend_data:/app/data
+
+  # 前端 (生产模式 — Nginx 静态文件 + API 反向代理)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: edu-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    # 共享 Nginx 配置和构建产物
+    # nginx.conf 由 frontend/Dockerfile 内置
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  backend_data:

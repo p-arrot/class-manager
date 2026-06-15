@@ -7,6 +7,7 @@ import com.example.edu.common.security.SecurityUtils;
 import com.example.edu.infrastructure.minio.MinioService;
 import com.example.edu.infrastructure.preview.PreviewService;
 import com.example.edu.modules.audit.service.AuditLogService;
+import com.example.edu.modules.course.dto.FileRawDTO;
 import com.example.edu.modules.course.dto.FileUploadDTO;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
@@ -23,6 +24,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
 import java.util.*;
 
@@ -39,10 +42,27 @@ public class FileServiceImpl implements FileService {
     private final AuditLogService auditLogService;
 
     private static final long MAX_FILE_SIZE = 200L * 1024 * 1024; // 200 MB
+    private static final long MAX_COVER_SIZE = 5L * 1024 * 1024; // 5 MB
+    private static final String COVER_PREFIX = "course-covers/";
+    private static final java.util.Set<String> FORBIDDEN_EXTENSIONS =
+            java.util.Set.of("exe", "bat", "sh", "cmd", "com", "msi", "dll", "so");
+    private static final java.util.Set<String> ALLOWED_COVER_TYPES =
+            java.util.Set.of("image/jpeg", "image/png", "image/webp", "image/gif");
+
+    private void validateFileType(String fileName) {
+        if (fileName == null) return;
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0) return;
+        String ext = fileName.substring(dot + 1).toLowerCase();
+        if (FORBIDDEN_EXTENSIONS.contains(ext)) {
+            throw new BizException(ErrorCode.FILE_TYPE_NOT_ALLOWED);
+        }
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FileUploadVO createPresignedUpload(FileUploadDTO dto) {
+        validateFileType(dto.getFileName());
         // 1. Validate course
         Course course = courseMapper.selectById(dto.getCourseId());
         if (course == null) {
@@ -105,6 +125,7 @@ public class FileServiceImpl implements FileService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FileUploadVO directUpload(FileUploadDTO dto, MultipartFile file) {
+        validateFileType(dto.getFileName());
         // 1. Validate course
         Course course = courseMapper.selectById(dto.getCourseId());
         if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
@@ -125,7 +146,7 @@ public class FileServiceImpl implements FileService {
 
         // 5. Calculate sort order
         List<CourseResource> siblings = courseResourceMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CourseResource>()
+                new LambdaQueryWrapper<CourseResource>()
                         .eq(dto.getParentId() != null, CourseResource::getParentId, dto.getParentId())
                         .isNull(dto.getParentId() == null, CourseResource::getParentId)
                         .eq(CourseResource::getCourseId, dto.getCourseId())
@@ -136,8 +157,8 @@ public class FileServiceImpl implements FileService {
         // 6. Upload file to MinIO
         try {
             minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
-        } catch (Exception e) {
-            log.error("Failed to upload to MinIO: objectName={}", objectName, e);
+        } catch (IOException e) {
+            log.error("Failed to read upload stream: objectName={}", objectName, e);
             throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "文件上传失败");
         }
 
@@ -157,6 +178,26 @@ public class FileServiceImpl implements FileService {
 
         return FileUploadVO.builder()
                 .resourceId(resource.getId())
+                .build();
+    }
+
+    @Override
+    public FileUploadVO uploadCourseCover(MultipartFile file) {
+        String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("cover");
+        String contentType = Optional.ofNullable(file.getContentType()).orElse("");
+        validateCover(fileName, contentType, file.getSize());
+        String objectName = generateCoverObjectName(fileName);
+        try {
+            minioService.uploadObject(objectName, file.getInputStream(), contentType);
+        } catch (IOException e) {
+            log.error("Failed to read course cover stream: objectName={}", objectName, e);
+            throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "封面上传失败");
+        }
+        String token = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(objectName.getBytes(StandardCharsets.UTF_8));
+        auditLogService.record("上传课程封面", "course_cover", null, fileName);
+        return FileUploadVO.builder()
+                .url("/api/files/course-cover/" + token)
                 .build();
     }
 
@@ -182,6 +223,33 @@ public class FileServiceImpl implements FileService {
         return minioService.generatePresignedGetUrl(resource.getObjectName());
     }
 
+    @Override
+    public FileRawDTO getRawFile(Long resourceId) {
+        CourseResource resource = loadFileResource(resourceId);
+        java.io.InputStream stream = minioService.getObject(resource.getObjectName());
+        return FileRawDTO.builder()
+                .inputStream(stream)
+                .contentType(resource.getContentType())
+                .fileName(resource.getName())
+                .fileSize(resource.getFileSize() != null ? resource.getFileSize() : 0)
+                .build();
+    }
+
+    @Override
+    public FileRawDTO getCourseCoverRaw(String token) {
+        String objectName = decodeCoverToken(token);
+        if (!objectName.startsWith(COVER_PREFIX)) {
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
+        }
+        java.io.InputStream stream = minioService.getObject(objectName);
+        return FileRawDTO.builder()
+                .inputStream(stream)
+                .contentType(inferImageContentType(objectName))
+                .fileName(objectName.substring(objectName.lastIndexOf('/') + 1))
+                .fileSize(0L)
+                .build();
+    }
+
     // ========== private helpers ==========
 
     private CourseResource loadFileResource(Long resourceId) {
@@ -203,6 +271,39 @@ public class FileServiceImpl implements FileService {
         String yearMonth = YearMonth.now().toString();
         String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         return courseId + "/" + yearMonth + "/" + uuid + "_" + safeName;
+    }
+
+    private void validateCover(String fileName, String contentType, long fileSize) {
+        validateFileType(fileName);
+        if (fileSize <= 0 || fileSize > MAX_COVER_SIZE) {
+            throw new BizException(ErrorCode.FILE_SIZE_EXCEEDED);
+        }
+        if (!ALLOWED_COVER_TYPES.contains(contentType)) {
+            throw new BizException(ErrorCode.FILE_TYPE_NOT_ALLOWED, "仅支持 jpg、png、webp、gif 封面图片");
+        }
+    }
+
+    private String generateCoverObjectName(String fileName) {
+        String safeName = fileName.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_");
+        String yearMonth = YearMonth.now().toString();
+        String uuid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        return COVER_PREFIX + yearMonth + "/" + uuid + "_" + safeName;
+    }
+
+    private String decodeCoverToken(String token) {
+        try {
+            return new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.FILE_NOT_FOUND);
+        }
+    }
+
+    private String inferImageContentType(String objectName) {
+        String lower = objectName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        return "image/jpeg";
     }
 
 }

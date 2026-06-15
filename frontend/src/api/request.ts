@@ -1,22 +1,33 @@
-import axios, { type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 
-const http = axios.create({
+interface HttpClient {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+}
+
+const axiosInstance = axios.create({
   baseURL: '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 })
 
 // Request interceptor: attach token
-http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+axiosInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('token')
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // Remove default JSON Content-Type for FormData (browser sets multipart boundary)
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type']
   }
   return config
 })
 
 // Response interceptor: unwrap R<T>, handle flat errors from SecurityConfig
-http.interceptors.response.use(
+axiosInstance.interceptors.response.use(
   (response: AxiosResponse) => {
     const body = response.data
 
@@ -61,4 +72,4 @@ http.interceptors.response.use(
   }
 )
 
-export default http
+export default axiosInstance as HttpClient

@@ -6,15 +6,14 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("lesson_resources")
-public class LessonResource {
+@TableName("assessment_schemes")
+public class AssessmentScheme {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long lessonId;
-    private String name;
-    private Long fileSize;
-    private String contentType;
-    private String objectName;
+    private Long semesterId;
+    private Integer processPercent;
+    private Integer examPercent;
+    private Integer projectPercent;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

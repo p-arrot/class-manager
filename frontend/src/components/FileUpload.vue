@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { NButton, NIcon, NProgress, NSpace } from 'naive-ui'
+import { NButton, NIcon, NProgress, NSpace, useDialog, useMessage } from 'naive-ui'
 import { CloudUploadOutline, DocumentOutline, FolderOpenOutline } from '@vicons/ionicons5'
 import { useFileUpload } from '@/composables/useFileUpload'
 import { createResourceFolder } from '@/api/courses'
+import { getErrorMessage } from '@/utils/error'
+
+const dialog = useDialog()
+const message = useMessage()
 
 const props = defineProps<{
   courseId: number
@@ -16,7 +20,7 @@ const emit = defineEmits<{
   folderUploaded: []
 }>()
 
-const { state, uploadFile, retry, reset } = useFileUpload()
+const { state, uploadFile, retry } = useFileUpload()
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
@@ -75,8 +79,9 @@ async function traverseEntry(entry: FileSystemEntry, parentId: number | null): P
         parentId: parentId,
       })
       folderId = folder.id
-    } catch {
-      folderId = null
+    } catch (e) {
+      message.error(getErrorMessage(e, `创建文件夹「${entry.name}」失败`))
+      return
     }
     // Process children
     const reader = (entry as FileSystemDirectoryEntry).createReader()
@@ -107,9 +112,9 @@ async function handleInputChange(e: Event) {
     const folderMap = new Map<string, number | null>() // path -> folderId
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      const relativePath = (file as any).webkitRelativePath || file.name
+      const relativePath = file.webkitRelativePath || file.name
       const parts = relativePath.split('/')
-      const fileName = parts.pop()!
+      parts.pop()
       // Create parent folders as needed
       let currentParentId = props.parentId
       let currentPath = ''
@@ -123,9 +128,10 @@ async function handleInputChange(e: Event) {
             })
             folderMap.set(currentPath, folder.id)
             currentParentId = folder.id
-          } catch {
-            currentParentId = null
-            break
+          } catch (e) {
+            message.error(getErrorMessage(e, `创建文件夹「${parts[j]}」失败`))
+            input.value = ''
+            return
           }
         } else {
           currentParentId = folderMap.get(currentPath)!
@@ -144,8 +150,18 @@ async function handleInputChange(e: Event) {
       const file = files[i]
       // Check name conflict
       if (props.existingNames?.includes(file.name)) {
-        const ok = window.confirm(`文件「${file.name}」已存在，是否覆盖？`)
-        if (!ok) continue
+        const confirmed = await new Promise<boolean>((resolve) => {
+          dialog.warning({
+            title: '文件已存在',
+            content: `文件「${file.name}」已存在，是否覆盖？`,
+            positiveText: '覆盖',
+            negativeText: '取消',
+            onPositiveClick: () => { resolve(true) },
+            onNegativeClick: () => { resolve(false) },
+            onClose: () => { resolve(false) },
+          })
+        })
+        if (!confirmed) continue
       }
       const rid = await uploadFile(file, props.courseId, props.parentId)
       if (rid) emit('uploaded', rid)
@@ -185,7 +201,7 @@ async function handleRetry() {
         :percentage="state.progress"
         :height="4"
         :border-radius="2"
-        style="width: 100%; max-width: 280px;"
+        class="upload-progress"
         :show-text="false"
       />
 
@@ -229,6 +245,7 @@ async function handleRetry() {
 .upload-zone.error { border-color: var(--n-error-color); border-style: solid; }
 .file-input { display: none; }
 .upload-content { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.upload-progress { width: 100%; max-width: 280px; }
 .upload-hint { font-size: 13px; color: var(--n-text-color-2); transition: color 200ms ease; }
 .upload-zone.error .upload-hint { color: var(--n-error-color); }
 .upload-ext-hint { font-size: 11px; color: var(--n-text-color-3); margin-top: 6px; text-align: center; }

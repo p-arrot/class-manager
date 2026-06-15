@@ -1,6 +1,7 @@
 package com.example.edu.common.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class JwtUtils {
                 .claim("username", loginUser.getUsername())
                 .claim("role", loginUser.getRole())
                 .claim("classId", loginUser.getClassId())
+                .claim("enabled", loginUser.isEnabled())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(secretKey)
@@ -50,11 +52,13 @@ public class JwtUtils {
                 .parseSignedClaims(token)
                 .getPayload();
 
+        Boolean enabled = claims.get("enabled", Boolean.class);
         return new LoginUser(
                 Long.parseLong(claims.getSubject()),
                 claims.get("username", String.class),
                 claims.get("role", String.class),
-                claims.get("classId", Long.class)
+                claims.get("classId", Long.class),
+                enabled != null ? enabled : true
         );
     }
 
@@ -62,7 +66,7 @@ public class JwtUtils {
         try {
             Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token);
             return true;
-        } catch (Exception e) {
+        } catch (JwtException | IllegalArgumentException e) {
             log.debug("JWT校验失败: {}", e.getMessage());
             return false;
         }

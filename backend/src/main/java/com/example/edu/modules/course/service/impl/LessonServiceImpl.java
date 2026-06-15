@@ -116,7 +116,7 @@ public class LessonServiceImpl implements LessonService {
         if (semester == null) {
             throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
         }
-        checkSemesterOwner(semester);
+        checkSemesterAccess(semester);
         List<Lesson> lessons = lessonMapper.selectList(
                 new LambdaQueryWrapper<Lesson>()
                         .eq(Lesson::getSemesterId, semesterId)
@@ -170,10 +170,14 @@ public class LessonServiceImpl implements LessonService {
 
     private void checkSemesterOwner(Semester semester) {
         Course course = courseMapper.selectById(semester.getCourseId());
-        if (course == null) {
-            throw new BizException(ErrorCode.COURSE_NOT_FOUND);
-        }
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         CoursePermissionHelper.checkTeacherOwnsCourse(course);
+    }
+
+    private void checkSemesterAccess(Semester semester) {
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
     }
 
     private void checkLessonOwner(Lesson lesson) {

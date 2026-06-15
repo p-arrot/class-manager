@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NButton, NIcon, NModal, NForm, NFormItem, NInput, NSpace, NTag, NPopconfirm, NPopover, useMessage } from 'naive-ui'
-import { AddOutline, DownloadOutline, EyeOutline, TrashOutline, CreateOutline, CloudUploadOutline, FolderAddOutline, ArrowForwardOutline } from '@vicons/ionicons5'
+import { DownloadOutline, EyeOutline, TrashOutline, CreateOutline, ArrowForwardOutline } from '@vicons/ionicons5'
 import FileTree from '@/components/FileTree.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import FilePreview from '@/components/FilePreview.vue'
 import { listCourseResources, createResourceFolder, renameResource, deleteResource } from '@/api/courses'
-import { getDownloadUrl } from '@/api/files'
+import http from '@/api/request'
 import { formatFileSize, getFileExtension } from '@/utils/validation'
 import { formatDate } from '@/utils/date'
+import { getErrorMessage } from '@/utils/error'
 import type { CourseResourceVO } from '@/types/api'
-import type { FormInst, FormRules } from 'naive-ui'
+import type { FormInst } from 'naive-ui'
 
 const props = defineProps<{
   courseId: number
@@ -28,7 +29,6 @@ const loading = ref(false)
 const showNewFolder = ref(false)
 const newFolderName = ref('')
 const folderFormRef = ref<FormInst | null>(null)
-const folderRules: FormRules = { name: { required: true, message: '请输入文件夹名称', trigger: 'blur' } }
 
 // Rename
 const showRename = ref(false)
@@ -54,19 +54,28 @@ function isPreviewable(resource: CourseResourceVO): boolean {
 }
 
 async function loadTree() {
-  try { tree.value = await listCourseResources(props.courseId) } catch { /* ignore */ }
+  try {
+    tree.value = await listCourseResources(props.courseId)
+  } catch (e) {
+    tree.value = []
+    message.error(getErrorMessage(e, '加载资源目录失败'))
+  }
 }
 
 async function loadContents() {
   loading.value = true
   try {
     if (selectedFolderId.value === null) {
-      folderContents.value = tree.value.filter(n => (n as any).parentId == null)
+      folderContents.value = tree.value.filter(n => n.parentId == null)
     } else {
       folderContents.value = await listCourseResources(props.courseId, selectedFolderId.value)
     }
-  } catch { /* ignore */ }
-  finally { loading.value = false }
+  } catch (e) {
+    folderContents.value = []
+    message.error(getErrorMessage(e, '加载资源列表失败'))
+  } finally {
+    loading.value = false
+  }
 }
 
 function handleFolderSelect(id: number | null) {
@@ -76,7 +85,11 @@ function handleFolderSelect(id: number | null) {
 
 // New folder
 async function handleCreateFolder() {
-  try { await folderFormRef.value?.validate() } catch { return }
+  try {
+    await folderFormRef.value?.validate()
+  } catch {
+    return
+  }
   try {
     await createResourceFolder(props.courseId, {
       name: newFolderName.value, parentId: selectedFolderId.value,
@@ -86,7 +99,9 @@ async function handleCreateFolder() {
     newFolderName.value = ''
     await loadTree()
     await loadContents()
-  } catch (e: any) { message.error(e.message || '创建失败') }
+  } catch (e) {
+    message.error(getErrorMessage(e, '创建失败'))
+  }
 }
 
 // Rename
@@ -103,7 +118,9 @@ async function handleRename() {
     showRename.value = false
     await loadTree()
     await loadContents()
-  } catch (e: any) { message.error(e.message || '重命名失败') }
+  } catch (e) {
+    message.error(getErrorMessage(e, '重命名失败'))
+  }
 }
 
 // Delete
@@ -113,15 +130,28 @@ async function handleDelete(resource: CourseResourceVO) {
     message.success('已删除')
     await loadTree()
     await loadContents()
-  } catch (e: any) { message.error(e.message || '删除失败') }
+  } catch (e) {
+    message.error(getErrorMessage(e, '删除失败'))
+  }
 }
 
 // Download
 async function handleDownload(resource: CourseResourceVO) {
   try {
-    const { url } = await getDownloadUrl(resource.id)
-    window.open(url, '_blank')
-  } catch (e: any) { message.error(e.message || '下载失败') }
+    const response = await http.get<Blob>(`/files/${resource.id}/raw`, {
+      responseType: 'blob',
+    })
+    const blobUrl = URL.createObjectURL(response)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = resource.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
+  } catch (e) {
+    message.error(getErrorMessage(e, '下载失败'))
+  }
 }
 
 // Preview
@@ -144,8 +174,13 @@ function openFolder(resource: CourseResourceVO) {
   loadContents()
 }
 
-function isFolder(r: CourseResourceVO) { return r.type === 'FOLDER' }
-function isFile(r: CourseResourceVO) { return r.type === 'FILE' }
+function isFolder(r: CourseResourceVO) {
+  return r.type === 'FOLDER'
+}
+
+function isFile(r: CourseResourceVO) {
+  return r.type === 'FILE'
+}
 
 onMounted(async () => {
   await loadTree()
@@ -192,38 +227,36 @@ onMounted(async () => {
               <!-- Preview button (file only, previewable types) -->
               <NPopover v-if="isFile(item) && !isPreviewable(item)" trigger="hover" placement="top">
                 <template #trigger>
-                  <NButton size="tiny" quaternary disabled>
+                  <NButton size="tiny" quaternary disabled title="无法预览" aria-label="无法预览">
                     <template #icon><NIcon :size="14"><EyeOutline /></NIcon></template>
                   </NButton>
                 </template>
                 该文件类型无法预览
               </NPopover>
-              <NButton v-else-if="isFile(item)" size="tiny" quaternary @click="handlePreview(item)">
+              <NButton v-else-if="isFile(item)" size="tiny" quaternary title="预览文件" aria-label="预览文件" @click="handlePreview(item)">
                 <template #icon><NIcon :size="14"><EyeOutline /></NIcon></template>
               </NButton>
 
               <!-- Download (file only) -->
-              <NButton v-if="isFile(item)" size="tiny" quaternary @click="handleDownload(item)">
+              <NButton v-if="isFile(item)" size="tiny" quaternary title="下载文件" aria-label="下载文件" @click="handleDownload(item)">
                 <template #icon><NIcon :size="14"><DownloadOutline /></NIcon></template>
               </NButton>
 
               <!-- Open folder (folder only) -->
-              <NButton v-if="isFolder(item)" size="tiny" quaternary @click="openFolder(item)">
+              <NButton v-if="isFolder(item)" size="tiny" quaternary title="打开文件夹" aria-label="打开文件夹" @click="openFolder(item)">
                 <template #icon><NIcon :size="14"><ArrowForwardOutline /></NIcon></template>
               </NButton>
 
               <!-- Edit (not readonly) -->
               <template v-if="!readonly">
-                <NButton size="tiny" quaternary @click="openRename(item)">
+                <NButton size="tiny" quaternary title="重命名" aria-label="重命名" @click="openRename(item)">
                   <template #icon>
-                    <NIcon :size="14">
-                      <svg viewBox="0 0 512 512" width="14" height="14"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M364.13 125.25L87 403l-23 45 44.99-23 277.76-277.13-22.62-22.62z"/><path d="M420.55 150.68l-22.62-22.62 35.69-35.69a32 32 0 0145.25 0l.01.01a32 32 0 010 45.25l-35.68 35.68z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
-                    </NIcon>
+                    <NIcon :size="14"><CreateOutline /></NIcon>
                   </template>
                 </NButton>
                 <NPopconfirm @positive-click="() => handleDelete(item)">
                   <template #trigger>
-                    <NButton size="tiny" quaternary>
+                    <NButton size="tiny" quaternary title="删除" aria-label="删除">
                       <template #icon><NIcon :size="14"><TrashOutline /></NIcon></template>
                     </NButton>
                   </template>
@@ -240,7 +273,7 @@ onMounted(async () => {
     </div>
 
     <!-- New folder modal -->
-    <NModal v-model:show="showNewFolder" title="新建文件夹" preset="card" style="width:360px">
+    <NModal v-model:show="showNewFolder" title="新建文件夹" preset="card" class="resource-modal">
       <NForm ref="folderFormRef" :model="{ name: newFolderName }" :rules="{ name: { required: true, message: '请输入文件夹名称', trigger: 'blur' } }" label-placement="left" label-width="56">
         <NFormItem label="名称" path="name">
           <NInput v-model:value="newFolderName" placeholder="如：课件资料" />
@@ -255,7 +288,7 @@ onMounted(async () => {
     </NModal>
 
     <!-- Rename modal -->
-    <NModal v-model:show="showRename" title="重命名" preset="card" style="width:360px">
+    <NModal v-model:show="showRename" title="重命名" preset="card" class="resource-modal">
       <NFormItem label="名称" label-placement="left" label-width="56">
         <NInput v-model:value="renameValue" placeholder="新名称" />
       </NFormItem>
@@ -310,4 +343,5 @@ onMounted(async () => {
 .res-meta { font-size: 12px; color: var(--n-text-color-3); flex-shrink: 0; }
 .res-time { font-size: 12px; color: var(--n-text-color-3); flex-shrink: 0; margin-left: 6px; }
 .empty-hint { text-align: center; padding: 40px 0; font-size: 13px; color: var(--n-text-color-3); }
+.resource-modal { width: 360px; }
 </style>

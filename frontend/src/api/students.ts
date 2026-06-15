@@ -1,7 +1,8 @@
 import http from './request'
 import type {
   StudentVO, StudentImportResultVO, StudentPageQuery,
-  PasswordResetDTO, StudentCreateDTO, StudentUpdateDTO, StudentBatchDTO, PageResult
+  PasswordResetDTO, StudentCreateDTO, StudentUpdateDTO, StudentBatchDTO, PageResult,
+  EvaluationVO, RadarVO, SubmissionVO
 } from '@/types/api'
 
 export function createStudent(data: StudentCreateDTO): Promise<StudentVO> {
@@ -39,4 +40,16 @@ export function batchDeleteStudents(data: StudentBatchDTO): Promise<void> {
 
 export function batchResetPassword(data: StudentBatchDTO): Promise<void> {
   return http.post('/students/batch/password', data)
+}
+
+export function getStudentRadar(studentId: number, semesterId: number): Promise<RadarVO> {
+  return http.get(`/students/${studentId}/radar`, { params: { semesterId } })
+}
+
+export function listStudentEvaluations(studentId: number, semesterId: number): Promise<EvaluationVO[]> {
+  return http.get(`/students/${studentId}/evaluations`, { params: { semesterId } })
+}
+
+export function listStudentSubmissions(studentId: number, semesterId: number): Promise<SubmissionVO[]> {
+  return http.get(`/students/${studentId}/submissions`, { params: { semesterId } })
 }

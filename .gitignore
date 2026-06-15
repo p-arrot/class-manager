@@ -27,3 +27,13 @@ Thumbs.db
 .env
 *.local.yml
 *.local.*
+
+# Deployment backups
+backups/
+
+# Local demo captures
+demo-screenshots/
+demo-class-flow.json
+
+# Codex pet build artifacts
+hatch-pet-runs/

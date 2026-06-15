@@ -1,0 +1,130 @@
+package com.example.edu.modules.task.controller;
+
+import com.example.edu.common.result.R;
+import com.example.edu.modules.task.dto.SubmissionDTO;
+import com.example.edu.modules.task.dto.TaskCreateDTO;
+import com.example.edu.modules.task.dto.TaskUpdateDTO;
+import com.example.edu.modules.task.service.TaskService;
+import com.example.edu.modules.task.vo.SubmissionVO;
+import com.example.edu.modules.task.vo.TaskAnalyticsVO;
+import com.example.edu.modules.task.vo.TaskDetailVO;
+import com.example.edu.modules.task.vo.TaskResultVO;
+import com.example.edu.modules.task.vo.TaskVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@Tag(name = "课堂任务")
+@RestController
+@RequiredArgsConstructor
+public class TaskController {
+
+    private final TaskService taskService;
+
+    @Operation(summary = "获取课时下的任务列表")
+    @GetMapping("/api/lessons/{lessonId}/tasks")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public R<List<TaskVO>> listByLesson(@PathVariable Long lessonId) {
+        return R.ok(taskService.listByLessonId(lessonId));
+    }
+
+    @Operation(summary = "创建任务")
+    @PostMapping("/api/lessons/{lessonId}/tasks")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<TaskVO> create(@PathVariable Long lessonId,
+                            @Valid @RequestBody TaskCreateDTO dto) {
+        return R.ok(taskService.create(lessonId, dto));
+    }
+
+    @Operation(summary = "获取任务详情")
+    @GetMapping("/api/tasks/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public R<TaskDetailVO> getById(@PathVariable Long id) {
+        return R.ok(taskService.getById(id));
+    }
+
+    @Operation(summary = "编辑任务")
+    @PutMapping("/api/tasks/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<TaskVO> update(@PathVariable Long id,
+                            @Valid @RequestBody TaskUpdateDTO dto) {
+        return R.ok(taskService.update(id, dto));
+    }
+
+    @Operation(summary = "删除任务")
+    @DeleteMapping("/api/tasks/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<Void> delete(@PathVariable Long id) {
+        taskService.delete(id);
+        return R.ok();
+    }
+
+    @Operation(summary = "学生提交任务")
+    @PostMapping("/api/tasks/{taskId}/submit")
+    @PreAuthorize("hasRole('STUDENT')")
+    public R<SubmissionVO> submit(@PathVariable Long taskId,
+                                  @Valid @RequestBody SubmissionDTO dto) {
+        return R.ok(taskService.submit(taskId, dto));
+    }
+
+    @Operation(summary = "学生查看自己在该任务的提交")
+    @GetMapping("/api/tasks/{taskId}/my-submission")
+    @PreAuthorize("hasRole('STUDENT')")
+    public R<SubmissionVO> getMySubmission(@PathVariable Long taskId) {
+        Long studentId = com.example.edu.common.security.SecurityUtils.getCurrentUserId();
+        return R.ok(taskService.getMySubmission(taskId, studentId));
+    }
+
+    @Operation(summary = "学生查看自己的任务批改详情")
+    @GetMapping("/api/tasks/{taskId}/my-result")
+    @PreAuthorize("hasRole('STUDENT')")
+    public R<TaskResultVO> getMyResult(@PathVariable Long taskId) {
+        Long studentId = com.example.edu.common.security.SecurityUtils.getCurrentUserId();
+        return R.ok(taskService.getMyResult(taskId, studentId));
+    }
+
+    @Operation(summary = "查看单个提交详情")
+    @GetMapping("/api/submissions/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public R<SubmissionVO> getSubmission(@PathVariable Long id) {
+        return R.ok(taskService.getSubmission(id));
+    }
+
+    @Operation(summary = "学生查看自己的提交记录")
+    @GetMapping("/api/students/{studentId}/submissions")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public R<List<SubmissionVO>> getStudentSubmissions(
+            @PathVariable Long studentId,
+            @RequestParam Long semesterId) {
+        return R.ok(taskService.getStudentSubmissions(studentId, semesterId));
+    }
+
+    @Operation(summary = "教师查看任务提交统计（含未提交人数）")
+    @GetMapping("/api/tasks/{taskId}/submission-stats")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<java.util.Map<String, Object>> getSubmissionStats(@PathVariable Long taskId) {
+        return R.ok(taskService.getSubmissionStats(taskId));
+    }
+
+    @Operation(summary = "教师查看任务完成情况数据看板")
+    @GetMapping("/api/tasks/{taskId}/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<TaskAnalyticsVO> getTaskAnalytics(@PathVariable Long taskId,
+                                               @RequestParam(required = false) Long classId) {
+        return R.ok(taskService.getTaskAnalytics(taskId, classId));
+    }
+
+    @Operation(summary = "教师查看任务提交列表")
+    @GetMapping("/api/tasks/{taskId}/submissions")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<List<SubmissionVO>> listSubmissions(
+            @PathVariable Long taskId,
+            @RequestParam(required = false) Long classId) {
+        return R.ok(taskService.listSubmissions(taskId, classId));
+    }
+}

@@ -14,4 +14,7 @@ public class FileUploadVO {
 
     @Schema(description = "MinIO 预签名上传 URL")
     private String presignedUrl;
+
+    @Schema(description = "稳定访问 URL，用于课程封面等公开只读资源")
+    private String url;
 }

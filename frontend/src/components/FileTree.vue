@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, h, type Component } from 'vue'
+import { computed, h } from 'vue'
 import { NTree, NIcon, NEmpty } from 'naive-ui'
 import type { TreeOption } from 'naive-ui'
-import { FolderOutline, FolderOpenOutline } from '@vicons/ionicons5'
+import { FolderOutline } from '@vicons/ionicons5'
 import type { CourseResourceVO } from '@/types/api'
 
 const props = defineProps<{
@@ -45,15 +45,16 @@ function nodeProps({ option }: { option: TreeOption }) {
   return {
     style: { cursor: 'pointer' },
     onClick() {
-      handleSelect([option.key], [])
+      if (typeof option.key === 'string' || typeof option.key === 'number') {
+        handleSelect([option.key], [])
+      }
     },
   }
 }
 
-function renderIcon({ option }: { option: TreeOption }) {
-  const isExpanded = false // NTree manages expand state internally
+function renderIcon() {
   return h(NIcon, { size: 16 }, () =>
-    h(isExpanded ? FolderOpenOutline : FolderOutline)
+    h(FolderOutline)
   )
 }
 </script>

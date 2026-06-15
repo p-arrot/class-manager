@@ -82,13 +82,14 @@
 - user ✅ — 用户、学生、教师管理
 - classes ✅ — 班级管理
 - course ✅ — 课程 + 学期 + 课时 + 课程资源文件夹
-- task 🔲 — 课堂任务、学习单、课堂作品（Phase 4）
-- evaluation 🔲 — 四维度评价（Phase 5）
-- exam 🔲 — 试卷和考试（Phase 6a）
-- project 🔲 — 项目化学习（Phase 6b）
-- drive 🔲 — 学生网盘（Phase 7）
-- stats 🔲 — 统计分析、雷达图、学期总评（Phase 5/7）
-- realtime 🔲 — WebSocket 实时汇总（Phase 4）
+- task ✅ — 课堂任务、学习单、课堂作品
+- evaluation ✅ — 四维度评价
+- exam ✅ — 试卷和考试
+- project ✅ — 项目化学习
+- drive ✅ — 学生网盘
+- stats ✅ — 统计分析、学期总评
+- realtime ✅ — WebSocket 实时汇总
+- dashboard ✅ — 首页聚合接口
 - audit ✅ — 审计日志
 
 > 注：`semester` 和 `lesson` 作为 `course` 模块的子包实现，不独立为顶层模块。`school` 表预留但未实现 CRUD。
@@ -110,14 +111,14 @@ src/main/java/com/example/edu
 │   ├── classes/      # ✅ 班级管理
 │   ├── course/       # ✅ 课程 + 学期 + 课时 + 资源文件夹
 │   ├── audit/        # ✅ 审计日志
-│   ├── task/         # 🔲 Phase 4
-│   ├── evaluation/   # 🔲 Phase 5
-│   ├── exam/         # 🔲 Phase 6a
-│   ├── project/      # 🔲 Phase 6b
-│   ├── drive/        # 🔲 Phase 7
-│   ├── stats/        # 🔲 Phase 5/7
-│   └── realtime/     # 🔲 Phase 4
-└── infrastructure/   # 🔲 MinIO / Redis / Preview（待 Phase 3b）
+│   ├── task/         # ✅
+│   ├── evaluation/   # ✅
+│   ├── exam/         # ✅
+│   ├── project/      # ✅
+│   ├── drive/        # ✅
+│   ├── stats/        # ✅
+│   └── realtime/     # ✅
+└── infrastructure/    # ✅ minio / preview
 
 每个业务模块按照以下结构组织：
 
@@ -265,6 +266,7 @@ modules/xxx
 - 参加考试
 - 提交项目化学习作品
 - 查看自己的评分结果
+- 查看本人任务的批改详情，包括逐题得分、维度拆分、教师总评和逐题评语
 - 查看自己的学期能力雷达图
 - 查看自己的进步雷达图
 - 使用个人网盘上传、下载、预览和管理文件
@@ -610,9 +612,9 @@ artifact：课堂作品
 
 ### 学习单
 
-学习单类似问卷星表单。
+学习单类似问卷星表单。教师创建任务时按题目逐题配置，学生端以问卷式页面作答。
 
-学习单结构使用 JSONB 保存到：
+学习单结构以 JSON 字符串保存到：
 
 ```text
 tasks.form_schema
@@ -620,52 +622,48 @@ tasks.form_schema
 
 学习单支持题型：
 
-- 单选 radio
-- 多选 checkbox
-- 填空 text
-- 长回答 textarea
-- 表格 table
+- 填空 `blank`
+- 单选 `single`
+- 多选 `multiple`
+- 是非 `true_false`
+- 简答 `short`
 
-学习单 schema 示例：
+每道题只有一个题干字段 `stem`。题干使用 Markdown 富文本，教师端可在源码编辑和预览之间切换，学生端只看到渲染后的 Markdown。题目可配置配图 `imageUrl`。
+
+每道题必须设置核心素养维度分值。四个维度为：
+
+- `AWARENESS`：信息意识
+- `COMPUTING`：计算思维
+- `DIGITAL_LEARNING`：数字化学习与创新
+- `RESPONSIBILITY`：信息社会责任
+
+学习单 schema 当前版本为 `version: 3`，示例：
 
 ```json
 {
-  "version": 1,
-  "fields": [
+  "version": 3,
+  "questions": [
     {
       "id": "q1",
-      "type": "radio",
-      "label": "Python 是什么类型的语言？",
+      "type": "single",
+      "stem": "Python 是什么类型的语言？",
+      "required": true,
       "options": ["解释型", "编译型", "汇编"],
-      "required": true
+      "answer": "解释型",
+      "autoGrade": true,
+      "dimensionScores": [
+        { "dimension": "COMPUTING", "maxScore": 5 },
+        { "dimension": "DIGITAL_LEARNING", "maxScore": 3 }
+      ]
     },
     {
       "id": "q2",
-      "type": "checkbox",
-      "label": "以下哪些是 Python 数据类型？",
-      "options": ["int", "str", "list", "tree"]
-    },
-    {
-      "id": "q3",
-      "type": "text",
-      "label": "请简述算法的基本特征",
-      "maxLength": 500
-    },
-    {
-      "id": "q4",
-      "type": "table",
-      "label": "填写实验数据",
-      "columns": [
-        {
-          "key": "step",
-          "label": "步骤",
-          "type": "text"
-        },
-        {
-          "key": "result",
-          "label": "结果",
-          "type": "text"
-        }
+      "type": "short",
+      "stem": "请简述算法的基本特征。",
+      "required": true,
+      "autoGrade": false,
+      "dimensionScores": [
+        { "dimension": "COMPUTING", "maxScore": 8 }
       ]
     }
   ]
@@ -683,16 +681,11 @@ submissions.content
 ```json
 {
   "q1": "解释型",
-  "q2": ["int", "str", "list"],
-  "q3": "算法具有有穷性、确定性、可行性、输入和输出。",
-  "q4": [
-    {
-      "step": "步骤1",
-      "result": "完成"
-    }
-  ]
+  "q2": "算法具有有穷性、确定性、可行性、输入和输出。"
 }
 ```
+
+选择题、是非题需要设置正确答案并支持自动批改。填空和简答可以选择设置正确答案并启用自动批改，默认不启用。
 
 ### 课堂作品
 
@@ -709,6 +702,13 @@ submissions.content
 作品文件存储到 MinIO。
 
 提交内容保存为 JSONB，包含文件列表。
+
+课堂作品任务可配置提交方式：
+
+- 文件
+- 文件夹
+
+当提交方式为文件时，教师可以设置允许的文件后缀名；留空表示不限格式。
 
 ---
 
@@ -734,6 +734,25 @@ special
 ```
 
 后续再增强草稿功能。
+
+学生查看批改详情时使用任务维度入口，而不是提交 ID：
+
+```text
+GET /api/tasks/{taskId}/my-result
+```
+
+状态约定：
+
+- `not_submitted`：仅用于接口包装层，表示当前学生没有该任务提交，不写入 `submissions.status`。
+- `submitted`：已提交，等待教师批改。
+- `graded`：已完成批改，可展示总分、逐题得分、维度汇总和教师评语。
+- `special`：特殊处理，不计入评价统计，页面展示原因或总评。
+
+安全规则：
+
+- 学生只能查看自己的批改详情，不能通过 `submissionId` 枚举同学提交。
+- 教师查看提交详情时必须校验课程/班级归属。
+- 批改详情页不得在 403/404/接口失败时渲染任何提交内容。
 
 默认规则：
 
@@ -803,28 +822,45 @@ DIGITAL_LEARNING：数字化学习与创新
 RESPONSIBILITY：信息社会责任
 ```
 
-评分等级为六级：
-
-| 等级 | 分数 |
-| ---- | ---: |
-| A    |  100 |
-| B    |   80 |
-| C    |   60 |
-| D    |   40 |
-| E    |   20 |
-| F    |    0 |
-
-教师手动评分时只能选择：
+系统保留 A-E/F 等级评价作为兼容模型，同时引入逐题数值得分模型：
 
 ```text
-A、B、C、D、E
+dimension_scores
 ```
 
-学生未提交且任务截止后，系统自动评为：
+数值得分字段：
 
 ```text
-F
+student_id
+source_type：process / exam / project
+source_id：对应提交记录 ID
+question_id：题目或评分项 ID
+dimension：核心素养维度
+earned_score：学生实际得分
+max_score：该维度满分
+auto_graded：是否自动批改
 ```
+
+自动批改题根据正确答案写入 `earned_score/max_score`。手动批改题由教师按题目、按维度输入得分。
+
+教师文字反馈不写入 `dimension_scores`，单独保存到 `submission_feedback`：
+
+```text
+submission_id：对应 submissions.id
+teacher_id：最后批改教师
+teacher_comment：整份任务总评语
+question_feedback：逐题评语 JSON，包含 questionId/comment/referenceAnswerVisible
+graded_at：批改完成时间
+```
+
+保存批改时：
+
+- 自动题和人工题数值得分写入/覆盖 `dimension_scores`。
+- 整体评语、逐题评语和参考答案可见性写入/覆盖 `submission_feedback`。
+- `submissions.status` 从 `submitted` 变为 `graded`，特殊处理时变为 `special`。
+- 重新保存同一份提交时必须覆盖旧评分，不产生重复脏数据。
+
+每个核心素养维度最终按百分比折算：该维度学生得分 / 该维度总分。四个维度各自折算为 0-100 分，可用于雷达图和学期总评。
 
 特殊情况：
 
@@ -851,22 +887,14 @@ F
 2. 课堂作品
 3. 项目化学习作品
 
-学习单和课堂作品评分可以选择 1 到 4 个维度。
+评分以“题目/评分项 + 核心素养维度分值”为基础：
 
-即：
+- 学习单：每道题设置一个或多个核心素养维度满分。
+- 课堂作品：按作品任务中的评分项或题目维度评分。
+- 考试：试卷题目同样设置核心素养维度满分。
+- 项目：项目评分 rubric 设置核心素养维度满分。
 
-- 可以只评一个维度
-- 可以评两个维度
-- 可以评三个维度
-- 可以四个维度都评
-
-每个被评分维度选择 A-E。
-
-未提交自动 F。
-
-项目化学习评分使用 A-F。
-
-如果项目为组队提交，则同一队伍成员分数相同。
+自动批改只负责能明确判断正确答案的题目；填空、简答、项目、课堂作品等开放题由教师手动评分。
 
 ---
 
@@ -887,22 +915,16 @@ F
 单次任务分数 = 被评分维度分数平均值
 ```
 
-任务权重：
-
-```text
-学习单权重 = 1.0
-课堂作品权重 = 1.5
-```
-
 过程评价分：
 
 ```text
-过程评价分 = 所有有效任务分数的加权平均值
+过程评价某维度分 = 平时任务中该维度 earned_score 总和 / max_score 总和 * 100
+过程评价分 = 四个维度分的平均值
 ```
 
 特殊情况不计入。
 
-如果学生某任务未提交，系统自动评 F，计入过程评价。
+如果学生某任务未提交，是否计 0 分由任务补交/缺交规则决定；当前主要统计已产生的有效 `dimension_scores`。
 
 ---
 
@@ -946,12 +968,11 @@ F
 - 选择班级
 - 考试开始时间
 - 考试结束时间
-- 权重
 - 是否删除
 
-考试结果以分数为准。
+考试不再单独设置评价权重。考试在学期总评中的占比由“学期考核方案”统一设置。
 
-考试计入结果评价。
+考试题目同样设置核心素养维度分值。多次考试时，按同一来源桶内该维度 `earned_score / max_score` 汇总折算，而不是先给每次考试单独权重。
 
 考试可以删除，但必须逻辑删除，并记录审计日志。
 
@@ -986,7 +1007,9 @@ F
 - 所属学期
 - 最大组队人数
 - 截止时间
-- 权重
+- 提交方式：文件 / 文件夹
+- 允许文件后缀名
+- 项目评分 rubric（核心素养维度满分）
 
 学生需要在项目中提交项目化学习作品。
 
@@ -999,18 +1022,7 @@ F
 
 学生组队后，以队伍为单位提交作品。
 
-项目评分等级：
-
-| 等级 | 分数 |
-| ---- | ---: |
-| A    |  100 |
-| B    |   80 |
-| C    |   60 |
-| D    |   40 |
-| E    |   20 |
-| F    |    0 |
-
-若组队提交，则同一队伍所有成员分数相同。
+项目评分按核心素养维度输入数值得分，写入 `dimension_scores(source_type='project')`。
 
 项目计入结果评价。
 
@@ -1032,39 +1044,48 @@ F，即 0 分
 
 ### 项目评分和雷达图关系
 
-项目化学习默认计入结果评价。
-
-第一版项目评分只计算项目分数，不进入四维度雷达图。
-
-如果后续需要让项目也参与四维度能力雷达图，可以扩展为项目四维度评分，并写入 `evaluations` 表。
-
-第一版规则：
-
-```text
-雷达图主要来源于学习单和课堂作品的四维度评价。
-项目和考试默认不参与雷达图。
-```
+项目、考试、平时任务都可以产生四个核心素养维度得分。雷达图可以按来源展示，也可以展示按学期考核方案折算后的总评维度分。
 
 ---
 
 ## 十七、结果评价
 
-结果评价来源：
+学期考核方案包含三个来源：
 
 ```text
+平时任务
 考试
 项目化学习
 ```
 
-考试和项目都可以设置权重。
-
-结果评价分：
+教师在课程学期中设置三项占比：
 
 ```text
-结果评价分 = 所有有效考试和项目分数的加权平均值
+平时任务占比 + 考试占比 + 项目占比 = 100%
 ```
 
-如果没有考试或项目，结果评价分显示为“暂无数据”，不能简单按 0 分处理。
+默认方案：
+
+```text
+平时任务 50%，考试 50%，项目 0%
+```
+
+如果一学期有多次考试或多个项目，不再给单次考试/项目设置权重；同一来源下按维度总得分率聚合：
+
+```text
+某来源某维度分 = 该来源该维度 earned_score 总和 / max_score 总和 * 100
+```
+
+最终某维度总评分：
+
+```text
+最终某维度分 =
+  平时任务该维度分 * 平时任务占比
+  + 考试该维度分 * 考试占比
+  + 项目该维度分 * 项目占比
+```
+
+如果某来源占比为 0，则不参与计算。如果某来源占比大于 0 但暂无有效分数，应在总评预览中提示缺少对应成绩。
 
 ---
 
@@ -1075,7 +1096,7 @@ F，即 0 分
 学期总评计算：
 
 ```text
-学期总评 = 过程评价分 * 50% + 结果评价分 * 50%
+学期总评 = 四个最终核心素养维度分的平均值
 ```
 
 导出 Excel 时按班级分 Sheet。
@@ -1094,7 +1115,6 @@ Excel 字段包括：
 过程评价分
 考试评价分
 项目评价分
-结果评价分
 学期总评
 等级
 备注
@@ -1530,6 +1550,31 @@ created_at
 | is_special | SMALLINT DEFAULT 0 | 特殊情况标记 |
 | created_at | TIMESTAMP | |
 
+**dimension_scores** — 逐题/逐评分项核心素养数值得分（Phase 8）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| student_id | BIGINT NOT NULL FK→users | |
+| source_type | VARCHAR(20) NOT NULL | process / exam / project |
+| source_id | BIGINT NOT NULL | 对应提交记录 ID |
+| question_id | VARCHAR(80) | 题目或评分项 ID |
+| dimension | VARCHAR(30) NOT NULL | AWARENESS/COMPUTING/DIGITAL_LEARNING/RESPONSIBILITY |
+| earned_score | DECIMAL(8,2) NOT NULL | 实际得分 |
+| max_score | DECIMAL(8,2) NOT NULL | 该维度满分 |
+| auto_graded | BOOLEAN NOT NULL | 是否自动批改 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+**submission_feedback** — 提交批改反馈（Phase 8）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| submission_id | BIGINT PK FK→submissions | 对应学生提交 |
+| teacher_id | BIGINT FK→users | 最后批改教师 |
+| teacher_comment | TEXT | 整份任务总评语 |
+| question_feedback | TEXT | 逐题反馈 JSON，含 questionId/comment/referenceAnswerVisible |
+| graded_at | TIMESTAMP | 批改完成时间 |
+| created_at, updated_at | TIMESTAMP | |
+
 **exam_papers** — 试卷（Phase 6a）
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -1550,7 +1595,7 @@ created_at
 | paper_id | BIGINT NOT NULL FK→exam_papers | |
 | start_time | TIMESTAMP NOT NULL | |
 | end_time | TIMESTAMP NOT NULL | |
-| weight | DECIMAL(3,2) DEFAULT 1.0 | 结果评价权重 |
+| weight | DECIMAL(3,2) DEFAULT 1.0 | 历史字段；总评权重由 assessment_schemes 管理 |
 | deleted | SMALLINT | |
 | created_at, updated_at | TIMESTAMP | |
 
@@ -1581,7 +1626,7 @@ created_at
 | semester_id | BIGINT NOT NULL FK | |
 | max_team_size | INT DEFAULT 1 | 最大组队人数 |
 | deadline | TIMESTAMP | |
-| weight | DECIMAL(3,2) DEFAULT 1.0 | |
+| weight | DECIMAL(3,2) DEFAULT 1.0 | 历史字段；总评权重由 assessment_schemes 管理 |
 | deleted | SMALLINT | |
 | created_at, updated_at | TIMESTAMP | |
 
@@ -1621,6 +1666,21 @@ created_at
 | grade | VARCHAR(1) NOT NULL | A-F |
 | is_special | SMALLINT DEFAULT 0 | |
 | created_at | TIMESTAMP | |
+
+> 当前主要项目评分入口为 `project_submissions` + `dimension_scores(source_type='project')`；`project_scores` 为历史兼容表。
+
+**assessment_schemes** — 学期考核方案（Phase 8）
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | BIGINT PK | |
+| semester_id | BIGINT NOT NULL UNIQUE FK→semesters | |
+| process_percent | INT NOT NULL DEFAULT 50 | 平时任务占比 |
+| exam_percent | INT NOT NULL DEFAULT 50 | 考试占比 |
+| project_percent | INT NOT NULL DEFAULT 0 | 项目占比 |
+| created_at, updated_at | TIMESTAMP | |
+| deleted | SMALLINT | |
+
+约束：三项占比均在 0-100，且总和必须为 100。
 
 **user_drive** — 学生网盘（Phase 7）
 | 列 | 类型 | 说明 |
@@ -1834,7 +1894,10 @@ PUT    /api/tasks/{id}                       编辑任务
 DELETE /api/tasks/{id}                       删除任务
 POST   /api/tasks/{id}/submit               学生提交（学习单答案/作品附件）
 GET    /api/tasks/{id}/submissions           教师查看提交列表
+GET    /api/tasks/{id}/my-submission         学生查看本人提交
+GET    /api/tasks/{id}/my-result             学生查看本人批改详情
 GET    /api/submissions/{id}                 查看单个提交详情
+POST   /api/submissions/{id}/evaluate        教师批改提交（维度得分 + 教师反馈）
 ```
 
 **评价（Phase 5）**
@@ -1909,13 +1972,25 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
   /teacher/home                   教师工作台（仪表板）
   /teacher/courses                课程列表
   /teacher/courses/:id            课程详情
-  /teacher/courses/:id/resources  课程资源管理（Phase F2）
-  /teacher/...                    考试管理、项目管理、数据分析、成绩导出（后续阶段）
+  /teacher/courses/:id/resources  课程资源管理
+  /teacher/tasks                  作业与评分工作台
+  /teacher/tasks/:taskId/analytics 任务数据看板
+  /teacher/grading/:taskId        教师批改页
+  /teacher/exams                  考试管理与提交批改
+  /teacher/projects               项目管理与提交批改
+  /teacher/stats                  班级数据分析
+  /teacher/grade-export           学期总评导出
 
 /student                          学生布局（侧边栏导航）
   /student/home                   我的课程
   /student/courses/:id            课程详情
-  /student/...                    考试、项目、评价、网盘（后续阶段）
+  /student/courses/:id/resources  课程资源浏览
+  /student/tasks/:taskId          学习单/作品提交
+  /student/tasks/:taskId/result   批改详情
+  /student/exams                  考试列表与答题
+  /student/projects               项目列表、组队与作品提交
+  /student/evaluation             学习评价
+  /student/drive                  我的网盘
 ```
 
 ### 布局设计
@@ -2035,19 +2110,19 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
 | Phase 2 | 班级/教师/学生管理 + Excel 导入 | ✅ |
 | Phase F0 | 前端脚手架：登录 + 三套 Layout + 路由守卫 | ✅ |
 | Phase 3a | 后端：Course/Semester/Lesson + 课程资源文件夹 | ✅ |
-| Phase F1 | 前端：管理员管理页 + 教师/学生课程页 | 🔄 |
+| Phase F1 | 前端：管理员管理页 + 教师/学生课程页 | ✅ |
 | Phase 3b | 后端：MinIO 文件基础设施（预签名 URL、kkFileView） | ✅ |
 | Phase F2 | 前端：文件组件（Upload/Preview/Tree）+ 课程资源管理 | ✅ |
-| Phase 4 | 后端：课堂任务（worksheet/artifact）+ WebSocket | ⬜ |
-| Phase F3 | 前端：任务创建 + 学习单填写 + 作品提交 + 实时统计 | ⬜ |
-| Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ⬜ |
-| Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ⬜ |
-| Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ⬜ |
-| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ⬜ |
-| Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ⬜ |
-| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ⬜ |
-| Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ⬜ |
-| Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ⬜ |
+| Phase 4 | 后端：课堂任务（worksheet/artifact）+ WebSocket | ✅ |
+| Phase F3 | 前端：任务创建 + 学习单填写 + 作品提交 + 实时统计 | ✅ |
+| Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ✅ |
+| Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ✅ |
+| Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ✅ |
+| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ✅ |
+| Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ✅ |
+| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ✅ |
+| Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ✅ |
+| Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ✅ |
 
 ---
 

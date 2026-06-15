@@ -24,7 +24,7 @@ public class CourseResourceController {
 
     @Operation(summary = "创建资源文件夹")
     @PostMapping("/api/courses/{courseId}/resources")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<CourseResourceVO> createFolder(@PathVariable Long courseId,
                                             @Valid @RequestBody CourseResourceCreateDTO dto) {
         return R.ok(courseResourceService.createFolder(courseId, dto));
@@ -32,7 +32,7 @@ public class CourseResourceController {
 
     @Operation(summary = "重命名资源")
     @PutMapping("/api/resources/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<Void> rename(@PathVariable Long id,
                           @Valid @RequestBody CourseResourceUpdateDTO dto) {
         courseResourceService.rename(id, dto);
@@ -41,7 +41,7 @@ public class CourseResourceController {
 
     @Operation(summary = "删除资源（级联删除子节点）")
     @DeleteMapping("/api/resources/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<Void> delete(@PathVariable Long id) {
         courseResourceService.delete(id);
         return R.ok();
@@ -49,7 +49,7 @@ public class CourseResourceController {
 
     @Operation(summary = "移动资源")
     @PutMapping("/api/resources/{id}/move")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public R<Void> move(@PathVariable Long id,
                         @Valid @RequestBody CourseResourceMoveDTO dto) {
         courseResourceService.move(id, dto);
@@ -58,14 +58,14 @@ public class CourseResourceController {
 
     @Operation(summary = "获取课程资源树")
     @GetMapping("/api/courses/{courseId}/resources/tree")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<CourseResourceVO>> getTree(@PathVariable Long courseId) {
         return R.ok(courseResourceService.getTree(courseId));
     }
 
     @Operation(summary = "获取子资源列表")
     @GetMapping("/api/courses/{courseId}/resources")
-    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
     public R<List<CourseResourceVO>> getChildren(@PathVariable Long courseId,
                                                   @RequestParam(required = false) Long parentId) {
         return R.ok(courseResourceService.getChildren(courseId, parentId));

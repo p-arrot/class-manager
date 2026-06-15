@@ -1,28 +1,26 @@
 <script setup lang="ts">
-import {ref, reactive, onMounted, h, computed} from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import { formatDate } from '@/utils/date'
 import {
   NButton,
   NDataTable,
-  NModal,
-  NForm,
-  NFormItem,
-  NInput,
   NSpace,
   NTag,
-  NSwitch,
   NIcon,
-  NCheckboxGroup,
-  NCheckbox,
   NEmpty,
   useMessage,
   useDialog
 } from 'naive-ui'
-import {AddOutline, CreateOutline, TrashOutline, LinkOutline, KeyOutline} from '@vicons/ionicons5'
-import {listTeachers, createTeacher, updateTeacher, getTeacherClasses, bindClasses, unbindClasses, deleteTeacher, resetTeacherPassword} from '@/api/teachers'
-import {listAllClasses} from '@/api/classes'
-import type {TeacherVO, TeacherCreateDTO, TeacherUpdateDTO, ClassVO, PageQuery} from '@/types/api'
-import type {DataTableColumns, FormInst, FormRules} from 'naive-ui'
+import { CreateOutline, KeyOutline, LinkOutline, TrashOutline } from '@vicons/ionicons5'
+import TeacherBindModal from '@/components/admin/TeacherBindModal.vue'
+import TeacherFormModal from '@/components/admin/TeacherFormModal.vue'
+import TeacherManageToolbar from '@/components/admin/TeacherManageToolbar.vue'
+import { listTeachers, createTeacher, updateTeacher, getTeacherClasses, bindClasses, unbindClasses, deleteTeacher, resetTeacherPassword } from '@/api/teachers'
+import { listAllClasses } from '@/api/classes'
+import type { TeacherVO, ClassVO, PageQuery } from '@/types/api'
+import type { DataTableColumns, FormRules } from 'naive-ui'
+import { getErrorMessage } from '@/utils/error'
+import type { TeacherFormValue } from '@/components/admin/TeacherFormModal.vue'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -30,14 +28,15 @@ const dialog = useDialog()
 const loading = ref(false)
 const records = ref<TeacherVO[]>([])
 const total = ref(0)
-const query = reactive<PageQuery>({page: 1, size: 10, keyword: ''})
+const query = reactive<PageQuery>({ page: 1, size: 10, keyword: '' })
+const teacherKeyword = ref('')
 
 // Create/Edit modal
 const showModal = ref(false)
 const modalTitle = ref('创建教师')
 const editingId = ref<number | null>(null)
-const formRef = ref<FormInst | null>(null)
-const formValue = reactive<TeacherCreateDTO & TeacherUpdateDTO>({
+const formRef = ref<InstanceType<typeof TeacherFormModal> | null>(null)
+const formValue = reactive<TeacherFormValue>({
   username: '',
   name: '',
   password: '',
@@ -46,9 +45,9 @@ const formValue = reactive<TeacherCreateDTO & TeacherUpdateDTO>({
   enabled: true
 })
 const createRules: FormRules = {
-  username: {required: true, message: '请输入用户名', trigger: 'blur'},
-  name: {required: true, message: '请输入姓名', trigger: 'blur'},
-  password: {required: true, message: '请输入密码', trigger: 'blur', min: 6},
+  username: { required: true, message: '请输入用户名', trigger: 'blur' },
+  name: { required: true, message: '请输入姓名', trigger: 'blur' },
+  password: { required: true, message: '请输入密码', trigger: 'blur', min: 6 },
 }
 
 // Bind modal
@@ -59,8 +58,8 @@ const allClasses = ref<ClassVO[]>([])
 const checkedClassIds = ref<number[]>([])
 
 const columns: DataTableColumns<TeacherVO> = [
-  {title: '用户名', key: 'username', width: 130},
-  {title: '姓名', key: 'name', width: 120},
+  { title: '用户名', key: 'username', width: 130 },
+  { title: '姓名', key: 'name', width: 120 },
   {
     title: '状态', key: 'enabled', width: 90,
     render(row: TeacherVO) {
@@ -72,7 +71,7 @@ const columns: DataTableColumns<TeacherVO> = [
     },
   },
   {
-    title: '负责班级', key: 'classIds', ellipsis: {tooltip: true},
+    title: '负责班级', key: 'classIds', ellipsis: { tooltip: true },
     render(row: TeacherVO) {
       return row.classIds?.length ? `共 ${row.classIds.length} 个班级` : '未绑定'
     },
@@ -85,27 +84,35 @@ const columns: DataTableColumns<TeacherVO> = [
   {
     title: '操作', key: 'actions', width: 200,
     render(row: TeacherVO) {
-      return h(NSpace, {size: 2}, () => [
+      return h(NSpace, { size: 2 }, () => [
         h(NButton, {
           size: 'tiny',
           quaternary: true,
+          title: '绑定班级',
+          'aria-label': '绑定班级',
           onClick: () => openBind(row)
-        }, () => h(NIcon, {size: 15}, () => h(LinkOutline))),
+        }, () => h(NIcon, { size: 15 }, () => h(LinkOutline))),
         h(NButton, {
           size: 'tiny',
           quaternary: true,
+          title: '编辑教师',
+          'aria-label': '编辑教师',
           onClick: () => openEdit(row)
-        }, () => h(NIcon, {size: 15}, () => h(CreateOutline))),
+        }, () => h(NIcon, { size: 15 }, () => h(CreateOutline))),
         h(NButton, {
           size: 'tiny',
           quaternary: true,
+          title: '重置密码',
+          'aria-label': '重置密码',
           onClick: () => handleResetPassword(row)
-        }, () => h(NIcon, {size: 15}, () => h(KeyOutline))),
+        }, () => h(NIcon, { size: 15 }, () => h(KeyOutline))),
         h(NButton, {
           size: 'tiny',
           quaternary: true,
+          title: '删除教师',
+          'aria-label': '删除教师',
           onClick: () => handleDelete(row)
-        }, () => h(NIcon, {size: 15}, () => h(TrashOutline))),
+        }, () => h(NIcon, { size: 15 }, () => h(TrashOutline))),
       ])
     },
   },
@@ -114,30 +121,37 @@ const columns: DataTableColumns<TeacherVO> = [
 async function fetchData() {
   loading.value = true
   try {
-    const r = await listTeachers(query);
-    records.value = r.records;
+    query.keyword = teacherKeyword.value
+    const r = await listTeachers(query)
+    records.value = r.records
     total.value = r.total
-  } catch (e: any) {
-    message.error(e.message || '加载失败')
+  } catch (e) {
+    message.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
   }
 }
 
 function handlePageChange(page: number) {
-  query.page = page;
+  query.page = page
+  fetchData()
+}
+
+function handlePageSizeChange(size: number) {
+  query.size = size
+  query.page = 1
   fetchData()
 }
 
 function openCreate() {
-  modalTitle.value = '创建教师';
+  modalTitle.value = '创建教师'
   editingId.value = null
-  Object.assign(formValue, {username: '', name: '', password: '', phone: '', email: '', enabled: true})
+  Object.assign(formValue, { username: '', name: '', password: '', phone: '', email: '', enabled: true })
   showModal.value = true
 }
 
 function openEdit(row: TeacherVO) {
-  modalTitle.value = '编辑教师';
+  modalTitle.value = '编辑教师'
   editingId.value = row.id
   Object.assign(formValue, {
     username: row.username,
@@ -166,45 +180,60 @@ async function handleSubmit() {
       })
       message.success('更新成功')
     } else {
-      await createTeacher({username: formValue.username!, name: formValue.name!, password: formValue.password!})
+      await createTeacher({ username: formValue.username, name: formValue.name, password: formValue.password })
       message.success('创建成功')
     }
-    showModal.value = false;
+    showModal.value = false
     fetchData()
-  } catch (e: any) {
-    message.error(e.message || '操作失败')
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
   }
 }
 
 async function openBind(row: TeacherVO) {
-  bindTeacherId.value = row.id;
+  bindTeacherId.value = row.id
   bindTeacherName.value = row.name
   try {
     const [classes, bindings] = await Promise.all([listAllClasses(), getTeacherClasses(row.id)])
     allClasses.value = classes
     checkedClassIds.value = bindings.map(b => b.classId)
     showBind.value = true
-  } catch (e: any) {
-    message.error(e.message || '加载失败')
+  } catch (e) {
+    message.error(getErrorMessage(e, '加载失败'))
   }
 }
 
 function handleDelete(row: TeacherVO) {
   dialog.warning({
-    title: '确认删除', content: `确定删除教师「${row.name}」吗？教师的所有课程将保留。`, positiveText: '删除', negativeText: '取消',
+    title: '确认删除',
+    content: `确定删除教师「${row.name}」吗？教师的所有课程将保留。`,
+    positiveText: '删除',
+    negativeText: '取消',
     onPositiveClick: async () => {
-      try { await deleteTeacher(row.id); message.success('已删除'); fetchData() }
-      catch (e: any) { message.error(e.message || '删除失败') }
+      try {
+        await deleteTeacher(row.id)
+        message.success('已删除')
+        fetchData()
+      } catch (e) {
+        message.error(getErrorMessage(e, '删除失败'))
+      }
     },
   })
 }
 
 function handleResetPassword(row: TeacherVO) {
   dialog.warning({
-    title: '重置密码', content: `将「${row.name}」的密码重置为默认密码 123456，确定继续？`, positiveText: '确定', negativeText: '取消',
+    title: '重置密码',
+    content: `将「${row.name}」的密码重置为默认密码 123456，确定继续？`,
+    positiveText: '确定',
+    negativeText: '取消',
     onPositiveClick: async () => {
-      try { await resetTeacherPassword(row.id); message.success('密码已重置为 123456') }
-      catch (e: any) { message.error(e.message || '重置失败') }
+      try {
+        await resetTeacherPassword(row.id)
+        message.success('密码已重置为 123456')
+      } catch (e) {
+        message.error(getErrorMessage(e, '重置失败'))
+      }
     },
   })
 }
@@ -212,17 +241,17 @@ function handleResetPassword(row: TeacherVO) {
 async function handleBind() {
   if (bindTeacherId.value === null) return
   try {
-    const current = await getTeacherClasses(bindTeacherId.value!)
+    const current = await getTeacherClasses(bindTeacherId.value)
     const currentIds = current.map(b => b.classId)
     const toAdd = checkedClassIds.value.filter(id => !currentIds.includes(id))
     const toRemove = currentIds.filter(id => !checkedClassIds.value.includes(id))
-    if (toAdd.length) await bindClasses(bindTeacherId.value, {classIds: toAdd})
-    if (toRemove.length) await unbindClasses(bindTeacherId.value, {classIds: toRemove})
+    if (toAdd.length) await bindClasses(bindTeacherId.value, { classIds: toAdd })
+    if (toRemove.length) await unbindClasses(bindTeacherId.value, { classIds: toRemove })
     message.success('班级绑定已更新')
-    showBind.value = false;
+    showBind.value = false
     fetchData()
-  } catch (e: any) {
-    message.error(e.message || '操作失败')
+  } catch (e) {
+    message.error(getErrorMessage(e, '操作失败'))
   }
 }
 
@@ -232,76 +261,34 @@ onMounted(fetchData)
 
 <template>
   <div class="page">
-    <div class="page-head">
-      <h2 class="page-title">教师管理</h2>
-      <div class="head-actions">
-        <NInput v-model:value="query.keyword" placeholder="搜索用户名或姓名" clearable size="small" style="width:200px"
-                @keyup.enter="fetchData" @clear="fetchData"/>
-        <NButton type="primary" size="small" @click="openCreate">
-          <template #icon>
-            <NIcon :size="16">
-              <AddOutline/>
-            </NIcon>
-          </template>
-          创建教师
-        </NButton>
-      </div>
-    </div>
+    <TeacherManageToolbar v-model:keyword="teacherKeyword" :total="total" @search="fetchData" @create="openCreate" />
 
     <NDataTable :columns="columns" :data="records" :loading="loading"
                 :pagination="{ page: query.page, pageSize: query.size, itemCount: total, prefix: () => `共 ${total} 条` }"
                 remote :row-key="(r: TeacherVO) => r.id" @update:page="handlePageChange"
-                @update:page-size="(s: number) => { query.size = s; fetchData() }" size="small">
+                @update:page-size="handlePageSizeChange" size="small">
       <template #empty>
-        <NEmpty description="暂无教师数据"/>
+        <NEmpty description="暂无教师数据" />
       </template>
     </NDataTable>
 
-    <NModal v-model:show="showModal" :title="modalTitle" preset="card" style="width:420px">
-      <NForm ref="formRef" :model="formValue" :rules="editingId ? undefined : createRules" label-placement="left"
-             label-width="72">
-        <NFormItem v-if="!editingId" label="用户名" path="username">
-          <NInput v-model:value="formValue.username" placeholder="登录用户名"/>
-        </NFormItem>
-        <NFormItem label="姓名" path="name">
-          <NInput v-model:value="formValue.name" placeholder="真实姓名"/>
-        </NFormItem>
-        <NFormItem v-if="!editingId" label="密码" path="password">
-          <NInput v-model:value="formValue.password" type="password" placeholder="最少6位"/>
-        </NFormItem>
-        <NFormItem v-if="editingId" label="电话">
-          <NInput v-model:value="formValue.phone" placeholder="选填"/>
-        </NFormItem>
-        <NFormItem v-if="editingId" label="邮箱">
-          <NInput v-model:value="formValue.email" placeholder="选填"/>
-        </NFormItem>
-        <NFormItem v-if="editingId" label="启用">
-          <NSwitch v-model:value="formValue.enabled"/>
-        </NFormItem>
-      </NForm>
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showModal = false">取消</NButton>
-          <NButton type="primary" @click="handleSubmit">确定</NButton>
-        </NSpace>
-      </template>
-    </NModal>
+    <TeacherFormModal
+      ref="formRef"
+      v-model:show="showModal"
+      v-model:form-value="formValue"
+      :title="modalTitle"
+      :editing="Boolean(editingId)"
+      :rules="createRules"
+      @submit="handleSubmit"
+    />
 
-    <NModal v-model:show="showBind" title="班级绑定" preset="card" style="width:460px">
-      <p style="margin:0 0 16px;color:var(--n-text-color-2);font-size:14px">为 <strong>{{ bindTeacherName }}</strong>
-        选择授课班级</p>
-      <NCheckboxGroup v-model:value="checkedClassIds">
-        <NSpace vertical :size="6">
-          <NCheckbox v-for="c in allClasses" :key="c.id" :value="c.id" :label="c.grade + '级' + c.name"/>
-        </NSpace>
-      </NCheckboxGroup>
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showBind = false">取消</NButton>
-          <NButton type="primary" @click="handleBind">保存</NButton>
-        </NSpace>
-      </template>
-    </NModal>
+    <TeacherBindModal
+      v-model:show="showBind"
+      v-model:checked-class-ids="checkedClassIds"
+      :teacher-name="bindTeacherName"
+      :classes="allClasses"
+      @submit="handleBind"
+    />
   </div>
 </template>
 
@@ -321,25 +308,5 @@ onMounted(fetchData)
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-
-.head-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
 }
 </style>
