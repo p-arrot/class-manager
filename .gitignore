@@ -27,6 +27,7 @@ Thumbs.db
 .env
 *.local.yml
 *.local.*
+CLAUDE.md
 
 # Deployment backups
 backups/
