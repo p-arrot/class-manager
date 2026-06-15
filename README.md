@@ -1,46 +1,46 @@
-# Class Manager
+# Class Manager 信息科技课堂管理系统
 
-Information technology classroom management system for semester-based teaching, task submission, grading, course resources, student drive files, exams, projects, learning analytics, and grade export.
+面向信息科技课程的课堂管理系统，覆盖一个学期内的建班建课、课程资源、任务发布、学生提交、教师批改、考试项目、学生网盘、学习评价、数据分析和成绩导出等流程。
 
-The project is designed for a single-school intranet deployment. A typical production setup runs the frontend, backend, PostgreSQL, Redis, MinIO, and kkFileView through Docker Compose.
+项目主要面向学校内网单机部署。生产环境推荐使用 Docker Compose 一次性启动前端、后端、PostgreSQL、Redis、MinIO 和 kkFileView。
 
-## Features
+## 功能特性
 
-- Admin management for classes, teachers, students, imports, and password resets
-- Teacher workflows for courses, semesters, lessons, resources, task publishing, grading inboxes, exams, projects, analytics, student profiles, and grade export
-- Student workflows for courses, course resources, task submission, project submission with notes, exam entry, learning evaluation, and personal drive files
-- Worksheet grading with per-question feedback, teacher comments, and dimension summaries
-- File storage through MinIO and document preview through kkFileView
-- Docker-first intranet deployment with a root `deploy.ps1` helper
+- 管理员：班级管理、教师管理、学生管理、学生导入、密码重置
+- 教师：课程、学期、课次、课程资源、任务发布、批改收件箱、考试、项目、学生档案、学生网盘、数据分析、成绩导出
+- 学生：首页待办、我的课程、课程资源、任务提交、考试入口、项目提交备注、学习评价、个人网盘
+- 批改：支持学习单逐题评分、逐题评语、教师总评、维度评价和学生查看批改详情
+- 文件：通过 MinIO 存储课程资源、学生作品和网盘文件，通过 kkFileView 进行文件预览
+- 部署：Docker 优先，根目录提供 `deploy.ps1` 作为内网部署入口
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
+| 层级 | 技术 |
 | --- | --- |
-| Frontend | Vue 3, TypeScript, Vite, Pinia, Vue Router, Naive UI, ECharts |
-| Backend | Spring Boot 3, Java 21, MyBatis-Plus, Spring Security, Flyway |
-| Data | PostgreSQL, Redis |
-| Files | MinIO, kkFileView |
-| Deployment | Docker Compose, Nginx |
+| 前端 | Vue 3、TypeScript、Vite、Pinia、Vue Router、Naive UI、ECharts |
+| 后端 | Spring Boot 3、Java 21、MyBatis-Plus、Spring Security、Flyway |
+| 数据 | PostgreSQL、Redis |
+| 文件 | MinIO、kkFileView |
+| 部署 | Docker Compose、Nginx |
 
-## Repository Layout
+## 目录结构
 
 ```text
-backend/    Spring Boot API, database migrations, Docker Compose
-frontend/   Vue frontend and Nginx image
-docs/       Product, API, deployment, middleware, and user-operation docs
-scripts/    Deployment, health-check, and Docker-based test helpers
+backend/    Spring Boot API、数据库迁移、Docker Compose
+frontend/   Vue 前端、生产 Nginx 镜像
+docs/       产品、API、部署、中间件和用户操作文档
+scripts/    部署、健康检查、Docker 测试辅助脚本
 ```
 
-## Quick Start: Intranet Docker Deployment
+## 快速部署：校园内网 Docker 部署
 
-From the repository root:
+在仓库根目录执行：
 
 ```powershell
 .\deploy.ps1 init -ServerIp 192.168.1.100
 ```
 
-Edit `backend/.env` and change at least:
+打开 `backend/.env`，至少修改：
 
 - `DB_PASSWORD`
 - `MINIO_ROOT_PASSWORD`
@@ -48,23 +48,23 @@ Edit `backend/.env` and change at least:
 - `SERVER_IP`
 - `KKFILEVIEW_BASE_URL`
 
-Then start the system:
+启动系统：
 
 ```powershell
 .\deploy.ps1 start
 ```
 
-Open:
+访问：
 
 ```text
 http://192.168.1.100
 ```
 
-More details are in [docs/INTRANET_WINDOWS_DEPLOYMENT.md](docs/INTRANET_WINDOWS_DEPLOYMENT.md).
+详细步骤见 [docs/INTRANET_WINDOWS_DEPLOYMENT.md](docs/INTRANET_WINDOWS_DEPLOYMENT.md)。
 
-## Local Development
+## 本地开发
 
-Backend:
+后端：
 
 ```powershell
 cd backend
@@ -73,7 +73,7 @@ mvn test
 mvn spring-boot:run
 ```
 
-Frontend:
+前端：
 
 ```powershell
 cd frontend
@@ -81,36 +81,43 @@ npm install
 npm run dev
 ```
 
-The frontend dev server runs on `http://localhost:5173` and proxies `/api` to `http://localhost:8080`.
+前端开发服务运行在 `http://localhost:5173`，并将 `/api` 代理到 `http://localhost:8080`。
 
-## Testing
+## 测试
 
-Frontend quality gate:
+前端质量检查：
 
 ```powershell
 cd frontend
 npm run check
 ```
 
-Backend tests can be run locally with Maven or through the cached Docker helper:
+后端测试可以使用本机 Maven，也可以使用带 Maven 缓存的 Docker 辅助脚本：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\backend-test-docker.ps1
 ```
 
-## Documentation
+## 文档
 
-- [Middleware configuration](docs/MIDDLEWARE_CONFIG.md)
-- [Windows intranet deployment](docs/INTRANET_WINDOWS_DEPLOYMENT.md)
-- [API notes](docs/API.md)
-- [Specification](docs/SPECIFICATION.md)
-- [Progress log](docs/PROGRESS.md)
-- [User semester flow report](docs/USER_SEMESTER_FLOW_REPORT.md)
+- [中间件配置](docs/MIDDLEWARE_CONFIG.md)
+- [Windows 校园内网部署](docs/INTRANET_WINDOWS_DEPLOYMENT.md)
+- [API 说明](docs/API.md)
+- [需求规格](docs/SPECIFICATION.md)
+- [开发进度](docs/PROGRESS.md)
+- [用户学期流程测试报告](docs/USER_SEMESTER_FLOW_REPORT.md)
 
-## Security
+## 安全提醒
 
-Do not commit real `.env` files, production IPs, JWT secrets, database passwords, MinIO passwords, backups, or uploaded files. See [SECURITY.md](SECURITY.md) for vulnerability reporting and supported deployment guidance.
+不要提交真实 `.env` 文件、生产 IP、JWT 密钥、数据库密码、MinIO 密码、备份文件或真实学生数据。漏洞报告和部署加固建议见 [SECURITY.md](SECURITY.md)。
 
-## License
+生产或校园内网部署前，务必修改：
 
-This project is licensed under the [MIT License](LICENSE).
+- 应用默认管理员密码
+- `DB_PASSWORD`
+- `MINIO_ROOT_PASSWORD`
+- `JWT_SECRET`
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)。
