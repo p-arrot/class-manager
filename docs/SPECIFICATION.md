@@ -1005,7 +1005,6 @@ graded_at：批改完成时间
 - 项目名称
 - 项目说明
 - 所属学期
-- 最大组队人数
 - 截止时间
 - 提交方式：文件 / 文件夹
 - 允许文件后缀名
@@ -1013,14 +1012,9 @@ graded_at：批改完成时间
 
 学生需要在项目中提交项目化学习作品。
 
-项目支持：
+项目仅支持个人提交。学生可以在“备注 / 组员说明”中填写协作成员姓名、学号和分工，系统仍按学生个人保存提交和成绩，由教师分别查找、批改。
 
-- 单人提交
-- 组队提交
-
-教师创建项目时可以设置最大组队人数。
-
-学生组队后，以队伍为单位提交作品。
+截止前，待批改或教师退回的作品可以修改；已批改、缺考或特殊处理的作品锁定。教师退回时必须填写原因，并清除旧总分和维度分，学生重新提交后回到待批改状态。
 
 项目评分按核心素养维度输入数值得分，写入 `dimension_scores(source_type='project')`。
 
@@ -1028,7 +1022,7 @@ graded_at：批改完成时间
 
 ### 项目未提交规则
 
-项目截止后，如果学生或队伍没有提交项目作品，则默认记为：
+项目截止后，如果学生没有提交项目作品，则默认记为：
 
 ```text
 F，即 0 分
@@ -1036,7 +1030,7 @@ F，即 0 分
 
 未提交项目计入结果评价。
 
-教师可以将未提交项目的学生或队伍标记为特殊情况。
+教师可以将未提交项目的学生标记为特殊情况。
 
 特殊情况需要填写原因。
 
@@ -1614,7 +1608,12 @@ created_at
 | student_id | BIGINT NOT NULL FK | |
 | answers | JSONB | 答案 |
 | score | INT 可空 | 得分 |
-| status | VARCHAR(20) | submitted / absent / special |
+| status | VARCHAR(20) | in_progress / submitted / graded / returned / absent / special |
+| return_reason | TEXT | 教师退回原因 |
+| returned_at | TIMESTAMP | 最近退回时间 |
+| revision_count | INT | 退回后重新提交次数 |
+| started_at | TIMESTAMP | 首次开始答题时间 |
+| updated_at | TIMESTAMP | 草稿最近保存时间 |
 | submitted_at | TIMESTAMP | |
 
 **projects** — 项目化学习（Phase 6b）
@@ -1624,50 +1623,26 @@ created_at
 | name | VARCHAR(200) NOT NULL | |
 | description | TEXT | |
 | semester_id | BIGINT NOT NULL FK | |
-| max_team_size | INT DEFAULT 1 | 最大组队人数 |
 | deadline | TIMESTAMP | |
 | weight | DECIMAL(3,2) DEFAULT 1.0 | 历史字段；总评权重由 assessment_schemes 管理 |
 | deleted | SMALLINT | |
 | created_at, updated_at | TIMESTAMP | |
-
-**project_teams** — 项目队伍（Phase 6b）
-| 列 | 类型 | 说明 |
-|----|------|------|
-| id | BIGINT PK | |
-| project_id | BIGINT NOT NULL FK | |
-| name | VARCHAR(200) | 队伍名 |
-| created_at | TIMESTAMP | |
-
-**project_team_members** — 队伍成员（Phase 6b）
-| 列 | 类型 | 说明 |
-|----|------|------|
-| id | BIGINT PK | |
-| team_id | BIGINT NOT NULL FK | |
-| student_id | BIGINT NOT NULL FK | |
-| created_at | TIMESTAMP | |
 
 **project_submissions** — 项目提交（Phase 6b）
 | 列 | 类型 | 说明 |
 |----|------|------|
 | id | BIGINT PK | |
 | project_id | BIGINT NOT NULL FK | |
-| team_id | BIGINT FK 可空 | 队伍提交时有值 |
 | student_id | BIGINT NOT NULL FK | |
-| content | JSONB | 作品文件列表 |
+| content | JSONB | 作品文件列表及备注/组员说明 |
+| status | VARCHAR(20) | submitted / graded / returned / absent / special |
+| return_reason | TEXT | 教师退回原因 |
+| returned_at | TIMESTAMP | 最近退回时间 |
+| revision_count | INT | 退回后重新提交次数 |
 | submitted_at | TIMESTAMP | |
-| created_at | TIMESTAMP | |
+| created_at, updated_at | TIMESTAMP | |
 
-**project_scores** — 项目评分（Phase 6b）
-| 列 | 类型 | 说明 |
-|----|------|------|
-| id | BIGINT PK | |
-| project_id | BIGINT NOT NULL FK | |
-| student_id | BIGINT NOT NULL FK | |
-| grade | VARCHAR(1) NOT NULL | A-F |
-| is_special | SMALLINT DEFAULT 0 | |
-| created_at | TIMESTAMP | |
-
-> 当前主要项目评分入口为 `project_submissions` + `dimension_scores(source_type='project')`；`project_scores` 为历史兼容表。
+> V15 已将项目统一为个人提交，并删除历史队伍表、队伍关联字段和 `project_scores`。项目评分统一写入 `dimension_scores(source_type='project')`。
 
 **assessment_schemes** — 学期考核方案（Phase 8）
 | 列 | 类型 | 说明 |
@@ -1912,21 +1887,28 @@ GET    /api/students/{id}/radar/progress     进步雷达图（前后学期对�
 ```
 GET    /api/exam-papers                      试卷列表
 POST   /api/exam-papers                      创建试卷
-GET    /api/exams                            考试任务列表
-POST   /api/exams                            创建考试任务
-POST   /api/exams/{id}/start                 学生开始考试
+GET    /api/semesters/{id}/exams             考试任务列表
+POST   /api/semesters/{id}/exams             创建考试任务
+GET    /api/exams/{id}                       考试详情
+POST   /api/exams/{id}/start                 学生开始/恢复考试
+PUT    /api/exams/{id}/draft                 保存答题草稿
+GET    /api/exams/{id}/my-submission         查看本人答题记录
 POST   /api/exams/{id}/submit                学生提交考试
 GET    /api/exams/{id}/submissions           教师查看考试提交
+PUT    /api/exam-submissions/{id}/grade      教师批改/重新批改
+PUT    /api/exam-submissions/{id}/return     教师退回修改
 ```
 
 **项目化学习（Phase 6b）**
 ```
-GET    /api/projects                         项目列表
-POST   /api/projects                         创建项目
-POST   /api/projects/{id}/teams              创建队伍
-POST   /api/teams/{id}/join                  加入队伍
+GET    /api/semesters/{id}/projects          项目列表
+POST   /api/semesters/{id}/projects          创建项目
+GET    /api/projects/{id}                    项目详情
+GET    /api/projects/{id}/my-submission      查看本人提交
 POST   /api/projects/{id}/submit             提交项目作品
-POST   /api/projects/{id}/scores             教师评分（组队同分）
+GET    /api/projects/{id}/submissions        教师查看应完成人员名单
+POST   /api/project-submissions/{id}/score   教师逐维度评分
+PUT    /api/project-submissions/{id}/return  教师退回修改
 ```
 
 **学生网盘（Phase 7）**
@@ -1976,8 +1958,10 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
   /teacher/tasks                  作业与评分工作台
   /teacher/tasks/:taskId/analytics 任务数据看板
   /teacher/grading/:taskId        教师批改页
-  /teacher/exams                  考试管理与提交批改
-  /teacher/projects               项目管理与提交批改
+  /teacher/exams                  考试与试卷管理
+  /teacher/exams/:examId/submissions 考试应完成人员名单与批改
+  /teacher/projects               项目管理
+  /teacher/projects/:projectId/submissions 项目应完成人员名单与批改
   /teacher/stats                  班级数据分析
   /teacher/grade-export           学期总评导出
 
@@ -1985,10 +1969,11 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
   /student/home                   我的课程
   /student/courses/:id            课程详情
   /student/courses/:id/resources  课程资源浏览
+  /student/tasks                  课堂任务待完成入口
   /student/tasks/:taskId          学习单/作品提交
   /student/tasks/:taskId/result   批改详情
   /student/exams                  考试列表与答题
-  /student/projects               项目列表、组队与作品提交
+  /student/projects               个人项目列表与作品提交
   /student/evaluation             学习评价
   /student/drive                  我的网盘
 ```
@@ -2118,9 +2103,9 @@ GET    /api/stats/semester/{semesterId}/export   导出学期总评 Excel
 | Phase 5 | 后端：四维度评价 + 过程评价计算 + 雷达图数据 | ✅ |
 | Phase F4 | 前端：评分页 + 雷达图 + 学生评价页 | ✅ |
 | Phase 6a | 后端：试卷 + 考试任务 + 缺考处理 | ✅ |
-| Phase 6b | 后端：项目化学习 + 组队 + 评分 | ✅ |
+| Phase 6b | 后端：个人项目提交 + 退回 + 评分 | ✅ |
 | Phase 6c | 后端：结果评价（加权平均、"暂无数据"处理） | ✅ |
-| Phase F5 | 前端：试卷编辑器 + 考试答题 + 项目组队 + 评分 | ✅ |
+| Phase F5 | 前端：试卷编辑器 + 考试草稿 + 个人项目 + 名单批改 | ✅ |
 | Phase 7 | 后端：学生网盘 + 学期总评 Excel 导出 | ✅ |
 | Phase F6 | 前端：网盘页 + 总评预览 + Excel 导出 | ✅ |
 

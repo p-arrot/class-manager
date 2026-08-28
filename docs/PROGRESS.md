@@ -24,7 +24,7 @@
 | Phase F5 | 前端：考试 + 项目 + 结果评价 | ✅ 已完成 |
 | Phase 7 | 后端：网盘和总评导出 | ✅ 已完成 |
 | Phase F6 | 前端：网盘 + 总评导出 | ✅ 已完成 |
-| Phase 8 | 评分模型重构 + 工作台性能优化 | 🔄 进行中 |
+| Phase 8 | 提交生命周期 + 批改工作台 + 性能与部署优化 | ✅ 已完成 |
 
 ---
 
@@ -180,9 +180,9 @@
 
 ## Phase 6b — 后端：项目化学习 ✅
 
-- Flyway V9：projects / project_teams / team_members / project_submissions / project_scores 表
-- Project / ProjectTeam / ProjectTeamMember / ProjectSubmission 实体 + Mapper
-- ProjectController：项目 CRUD、组队、提交、提交列表、项目提交逐维度评分
+- Flyway V9 建立项目基础表；V15 将项目迁移为个人提交，并删除队伍表、队伍关联和旧 `project_scores`
+- Project / ProjectSubmission 实体 + Mapper，提交包含明确状态、退回原因和修订次数
+- ProjectController：项目 CRUD、个人提交、本人提交详情、应完成人员名单、退回和逐维度评分
 - 项目支持文件/文件夹提交配置、文件后缀限制、按核心素养维度设置评分项
 
 ## Phase 6c — 后端：结果评价 ✅
@@ -200,7 +200,7 @@
 - DriveController：4 个端点（tree / createFolder / delete / download）
 - MinIO 集成：上传/下载/预览 via presigned URL
 
-## Phase 8 — 评分模型重构 + 性能优化 🔄
+## Phase 8 — 提交生命周期 + 批改工作台 + 性能与部署优化 ✅
 
 - 后端新增 `dimension_scores` 数值得分模型，自动批改和手动逐题评分都按四个核心素养维度落分
 - 前端新增 `MarkdownEditor.vue` / `MarkdownView.vue`，Markdown 编辑使用 Monaco 懒加载，降低非编辑页面首屏负担
@@ -409,3 +409,22 @@
   - 数据落点：项目已评分状态复用 `dimension_scores(source_type='project')`，项目备注复用 `ProjectSubmissionContent.note`，未新增数据库字段或第二套 DTO。
   - 可选后续重构：任务、考试、项目服务里都存在小段“课程绑定班级学生 + 班级名格式化”聚合逻辑；当前测试覆盖且规模可控，后续若继续扩展收件箱字段，可抽取共享 helper，避免重复增长。
   - 验证：Docker Maven 缓存脚本定向测试 `TaskServiceImplTest,ExamServiceTest,ProjectServiceTest` 共 20 个测试通过；`npm run check` 通过质量门、类型检查、10 个前端测试文件 32 个测试和生产构建；`git diff --check` 无实际格式错误，仅 CRLF/LF 提示。
+- 2026-07-10：完成提交生命周期、个人项目和名单优先批改架构升级。
+  - Flyway V15 为任务/考试/项目补齐退回原因、退回时间和修订次数；考试增加开始/草稿更新时间，项目增加显式状态并迁移历史数据。
+  - 已批改、缺考、特殊处理提交统一锁定并返回 HTTP 409；教师填写原因退回时清除旧总分/维度分，学生重新提交后回到 `submitted`。
+  - 项目彻底改为个人提交：删除队伍实体、Mapper、接口、前端字段和旧项目评分表；附件及“备注 / 组员说明”保留。
+  - 考试和项目批改拆为独立路由，首屏使用共享 `SubmissionRoster.vue` 按班级展示全部应完成学生，再进入答卷/作品详情。
+  - 学生考试补齐开始/恢复、1 秒防抖草稿、保存状态、倒计时和退回重交；学生导航新增 `/student/tasks` 课堂任务入口。
+  - 完成移动布局、44px 触控区、键盘操作、暗色主题变量、减少动画、认证缓存清理和任务实时面板 500ms 合并刷新。
+  - Redis 默认关闭，Compose `cache` profile 可选启用；默认部署只依赖 PostgreSQL、后端、前端及现有文件服务。
+  - 验证：后端全量测试通过；前端 `npm run check` 通过 10 个测试文件 32 个测试、类型检查和生产构建；浏览器在 1440x900、1024x768、375x812 浅色/暗色下无横向溢出。
+
+- 2026-08-11：完成真实场景回归、遗漏修复和用户指南更新。
+  - 后端任务、考试、项目统一覆盖开始/提交/退回/重交/批改/锁定和审计日志；新增 `CourseRosterService` 收敛三类批改名单的课程学生聚合逻辑。
+  - 修复 `BizException` 业务错误曾统一返回 HTTP 200 的问题，400/401/403/404/409/500 现按错误码族返回真实 HTTP 状态。
+  - 修复 Docker JVM 时区差异，默认使用可配置的 `APP_TIME_ZONE=Asia/Shanghai`；考试起止时间和课堂显示保持一致。
+  - 补齐学生项目批改详情：本人可见总分、四维度分和备注；他人详情不可枚举；教师重新批改时可加载原分数。
+  - 修复登录请求携带过期 token、考试已批改弹窗仍显示倒计时/草稿状态、考试/项目状态直接显示英文、移动端操作按钮不足 44px 等问题。
+  - Docker 无 Redis 场景模拟 30 名学生并发提交，209ms 完成且统计为 30；启用 Redis profile 后以 10 名学生复跑，128ms 完成。两种模式均通过任务、考试、项目、课程资源和学生网盘全链路。
+  - 浏览器验证教师工作台、项目完整学生名单、教师/学生项目批改详情、课程资源、学生网盘、考试只读结果和 375x812 手机项目页；手机页面无横向溢出，主按钮高度 44px。
+  - 《用户操作指南》更新到 43 页、37 张截图，补充最新关键流程；Word 实际导出逐页视觉检查通过，无障碍审计为 0 项。

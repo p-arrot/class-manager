@@ -1250,12 +1250,16 @@ GET    /api/exam-papers                 试卷列表
 POST   /api/exam-papers                 创建试卷
 GET    /api/semesters/{id}/exams        考试列表
 POST   /api/semesters/{id}/exams        创建考试
+GET    /api/exams/{id}                  考试详情
 PUT    /api/exams/{id}                  更新考试
 DELETE /api/exams/{id}                  删除考试
-POST   /api/exams/{id}/start            开始考试
+POST   /api/exams/{id}/start            开始或恢复考试
+PUT    /api/exams/{id}/draft            保存答题草稿
+GET    /api/exams/{id}/my-submission    查看本人答题记录
 POST   /api/exams/{id}/submit           提交考试
 GET    /api/exams/{id}/submissions      查看提交
 PUT    /api/exam-submissions/{id}/grade 考试评分
+PUT    /api/exam-submissions/{id}/return 退回修改
 ```
 
 考试列表会返回关联试卷的 `paperContent`，学生答题页按同一套 `version: 3` 题目 schema 渲染。选择、是非等自动批改题提交后写入 `dimension_scores`。
@@ -1290,37 +1294,39 @@ PUT    /api/exam-submissions/{id}/grade 考试评分
 - `absent=true` 时后端写入 `status=absent`、`score=0`，并清空该提交已有的考试维度得分。
 - `dimensionScores` 会写入 `dimension_scores(source_type='exam', source_id=submissionId)`，供雷达图和学期总评复用。
 - 教师查看提交和批改前，服务层会按 `Exam -> Semester -> Course` 校验课程归属；非任课教师不能查看或批改其他课程考试提交。
+- 学生开始考试后状态为 `in_progress`；草稿可反复覆盖。正式提交后，只有 `submitted` 或教师退回后的 `returned` 状态能在截止前修改。
+- `PUT /api/exam-submissions/{id}/return` 必须提交 `reason`，会清除总分和维度分；已批改、缺考、特殊处理状态不能由学生直接覆盖，冲突返回 HTTP 409。
 
 ## 18. 项目化学习 (Phase 6b)
 
 ```
 GET    /api/semesters/{id}/projects     项目列表
 POST   /api/semesters/{id}/projects     创建项目
+GET    /api/projects/{id}               项目详情
 PUT    /api/projects/{id}               更新项目
 DELETE /api/projects/{id}               删除项目
-POST   /api/projects/{id}/teams         创建队伍
-POST   /api/teams/{id}/join             加入队伍
+GET    /api/projects/{id}/my-submission 查看本人项目提交
 POST   /api/projects/{id}/submit        提交项目
 GET    /api/projects/{id}/submissions   教师查看项目提交
 POST   /api/project-submissions/{id}/score 项目提交逐维度评分（主入口）
-POST   /api/projects/{id}/scores        旧项目评分接口（兼容路由，服务层已停用）
-GET    /api/projects/{id}/scores        旧项目评分查询（兼容路由，服务层已停用）
+PUT    /api/project-submissions/{id}/return 退回项目修改
 ```
 
 项目权限约定：
 
 - 项目继承课程权限链路：`Project -> Semester -> Course`。
-- 学生创建队伍、加入队伍、提交项目时，必须属于项目所在课程绑定班级。
+- 项目仅支持个人提交；学生必须属于项目所在课程绑定班级。协作成员通过提交内容中的 `note` 备注说明，不产生队伍关系或队伍成绩。
 - 教师查看提交和逐维度评分时，必须是项目所在课程创建教师；管理员保留管理权限。
-- 旧 `/api/projects/{id}/scores` 不再写入 `project_scores`，应改用 `/api/project-submissions/{id}/score` 写入 `dimension_scores(source_type='project')`。
+- 历史队伍接口和 `/api/projects/{id}/scores` 已删除；评分统一通过 `/api/project-submissions/{id}/score` 写入 `dimension_scores(source_type='project')`。
 
 `GET /api/projects/{id}/submissions` 返回教师项目批改收件箱：
 
 - 接口按 `Project -> Semester -> Course` 校验课程归属，再读取课程绑定班级下的所有学生。
 - 已提交学生返回真实 `id/submissionId/content/submittedAt`；未提交学生也返回一行，`id/submissionId/content/submittedAt/score` 为空。
 - 每行包含 `studentId/studentName/studentNo/classId/className/status/score`。
-- `status=not_submitted` 表示未提交，`status=submitted` 表示已提交待评分，`status=graded` 表示已有 `dimension_scores(source_type='project', source_id=submissionId)`。
+- `status=not_submitted` 表示未提交，`submitted` 表示待评分，`graded` 表示已评分，`returned` 表示已退回；详情同时返回 `returnReason/revisionCount/canResubmit`。
 - `score` 为该项目提交已保存维度得分的 `earnedScore` 汇总，前端只用于展示状态和复核参考，最终评分仍通过 `POST /api/project-submissions/{id}/score` 保存。
+- 评分后学生提交被锁定；教师退回必须填写原因，退回时清除旧维度分，学生在截止前重新提交后恢复为 `submitted`。
 
 项目说明当前以 JSON 文本保存扩展配置，例如提交方式、允许文件后缀和项目评分维度：
 

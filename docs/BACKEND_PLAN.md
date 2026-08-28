@@ -23,7 +23,7 @@ modules/
 ├── evaluation/    🔲 Phase 5 — 四维度评分
 ├── stats/         🔲 Phase 5/7 — 统计分析 + 雷达图 + 总评导出
 ├── exam/          🔲 Phase 6a — 试卷 + 考试任务
-├── project/       🔲 Phase 6b — 项目化学习 + 组队
+├── project/       🔲 Phase 6b — 个人项目提交与评分
 └── drive/         🔲 Phase 7 — 学生网盘
 
 infrastructure/
@@ -54,7 +54,7 @@ user ◄── classes      │  教师-班级绑定 (teacher_classes)
   │              │                              │
   │              ├── exam ── exam_submission ────┤
   │              │                              │
-  │              └── project ── project_team ────┘
+  │              └── project ── project_submission ┘
   │
   ├── drive       (学生网盘)
   ├── stats       (跨模块读取：evaluation + exam + project)
@@ -159,7 +159,7 @@ auditLogService.record("DELETE_COURSE", "course", courseId, detail);
 | evaluation | ✅ | `EvaluationServiceImpl`, `DimensionScoreService`, `SubmissionFeedback` |
 | stats | ✅ | `StatsController`, `StatsService`（学期总评预览/Excel 导出） |
 | exam | ✅ | `ExamController`, `ExamService`（考试创建、提交、人工批改、缺考处理） |
-| project | ✅ | `ProjectController`, `ProjectService`（项目 CRUD、组队、提交、逐维度评分） |
+| project | ✅ | `ProjectController`, `ProjectService`（项目 CRUD、个人提交、退回、逐维度评分） |
 | drive | ✅ | `DriveController`, `DriveService`（学生网盘与教师查看） |
 
 ### 基础设施
@@ -380,19 +380,19 @@ cd backend && mvn clean compile
 
 1. `listBySemester(semesterId)`：教师只能看自己的课程学期，学生只能看本班绑定课程学期。
 2. `create/update/delete(project)`：仅课程创建教师或管理员可写。
-3. `createTeam/joinTeam/submit(projectId)`：学生必须属于项目所在课程绑定班级；提交仍受 deadline 限制。
+3. `getMySubmission/submit(projectId)`：学生必须属于项目所在课程绑定班级；提交受 deadline 和状态锁定规则限制。
 4. `listSubmissions(projectId)`：教师必须拥有项目所属课程。
 5. `scoreSubmission(submissionId)`：教师必须拥有提交所属项目课程，评分写入 `dimension_scores(source_type='project', source_id=submissionId)`。
-6. 旧 `/api/projects/{projectId}/scores`：兼容路由保留，但服务层继续返回 `BAD_REQUEST`，不再写 `project_scores`。
+6. `returnSubmission(submissionId)`：教师必须填写原因，服务层清除项目维度得分并将状态改为 `returned`。
 
 测试策略：
 
-- 新增 `ProjectServiceTest`，mock `SemesterMapper/CourseMapper/CourseClassMapper` 和项目相关 mapper，分别覆盖学生跨班提交被拒、同班提交可保存、非任课教师不能查看提交/评分、任课教师评分写入 `DimensionScoreService`、旧评分接口被拒。
+- `ProjectServiceTest` mock `SemesterMapper/CourseMapper/CourseClassMapper` 和项目相关 mapper，覆盖学生跨班提交被拒、同班提交可保存、已批改提交锁定、退回清分、非任课教师不能查看提交/评分、任课教师评分写入 `DimensionScoreService`。
 - 后端验证必须在 Docker Maven 中运行，命令形如：`docker run --rm -v "${PWD}\backend:/workspace" -w /workspace maven:3.9.9-eclipse-temurin-21 mvn "-Dtest=ProjectServiceTest" test`。
 
 执行结果：
 
-- 已新增 `ProjectServiceTest`，覆盖同班提交、跨班拒绝、非任课教师查看/评分拒绝、任课教师逐维度评分、重复提交更新、旧评分接口停用。
+- 已扩展 `ProjectServiceTest`，覆盖同班提交、跨班拒绝、非任课教师查看/评分拒绝、任课教师逐维度评分、已批改锁定、退回清分和重新提交。
 - 验证：Docker Maven 定向测试 `ProjectServiceTest` 7 个测试通过。
 
 ### 7.9 教师 Dashboard 提交查询性能计划
