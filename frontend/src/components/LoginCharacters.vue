@@ -10,6 +10,12 @@ const props = defineProps<{
   errorShown: boolean
 }>()
 
+const reducedMotion = ref(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+function handleMotionChange(event: MediaQueryListEvent) { reducedMotion.value = event.matches }
+onMounted(() => motionQuery.addEventListener('change', handleMotionChange))
+onUnmounted(() => motionQuery.removeEventListener('change', handleMotionChange))
+
 // ── Shared mouse ──
 const mouseX = ref(0)
 const mouseY = ref(0)
@@ -20,16 +26,17 @@ onUnmounted(() => window.removeEventListener('mousemove', onMouseMove))
 // ── Time for breathing (rAF) ──
 const elapsed = ref(0)
 let lastTs = 0
-let animFrame = 0
+let breathingFrame = 0
 onMounted(() => {
+  if (reducedMotion.value) return
   const loop = (ts: number) => {
     if (lastTs) elapsed.value += (ts - lastTs) / 1000
     lastTs = ts
-    animFrame = requestAnimationFrame(loop)
+    breathingFrame = requestAnimationFrame(loop)
   }
-  animFrame = requestAnimationFrame(loop)
+  breathingFrame = requestAnimationFrame(loop)
 })
-onUnmounted(() => cancelAnimationFrame(animFrame))
+onUnmounted(() => cancelAnimationFrame(breathingFrame))
 
 // ── Character personalities ──
 interface Persona {
@@ -63,10 +70,12 @@ const characters: Persona[] = [
 const blinking = ref<Record<string, boolean>>({})
 const blinkTimers = new Map<string, ReturnType<typeof setTimeout>>()
 function scheduleBlink(id: string) {
+  if (reducedMotion.value) return
   const delay = Math.random() * 4000 + 3000
   const timer = setTimeout(() => {
     blinking.value = { ...blinking.value, [id]: true }
-    setTimeout(() => { blinking.value = { ...blinking.value, [id]: false }; scheduleBlink(id) }, 150)
+    const closeTimer = setTimeout(() => { blinking.value = { ...blinking.value, [id]: false }; scheduleBlink(id) }, 150)
+    blinkTimers.set(`${id}:close`, closeTimer)
   }, delay)
   blinkTimers.set(id, timer)
 }
@@ -103,6 +112,7 @@ onUnmounted(() => reactionTimers.forEach(t => clearTimeout(t)))
 // ── Password-peek cycle ──
 const peekBlend = ref(0)  // 0=pretending not to look, 1=fully peeking
 let peekTimer: ReturnType<typeof setTimeout> | null = null
+let peekHoldTimer: ReturnType<typeof setTimeout> | null = null
 let peekAnimFrame: number | null = null
 function animatePeekIn() {
   if (peekBlend.value >= 1) return
@@ -119,13 +129,13 @@ watch(() => props.passwordVisible && props.passwordLength > 0, (active) => {
   else { if (peekTimer) clearTimeout(peekTimer); if (peekAnimFrame) cancelAnimationFrame(peekAnimFrame); peekBlend.value = 0 }
 })
 function schedulePeek() {
-  if (!props.passwordVisible || props.passwordLength === 0) return
+  if (reducedMotion.value || !props.passwordVisible || props.passwordLength === 0) return
   peekTimer = setTimeout(() => {
     animatePeekIn()
-    setTimeout(() => animatePeekOut(), 600 + Math.random() * 400)
+    peekHoldTimer = setTimeout(() => animatePeekOut(), 600 + Math.random() * 400)
   }, Math.random() * 3000 + 2000)
 }
-onUnmounted(() => { if (peekTimer) clearTimeout(peekTimer); if (peekAnimFrame) cancelAnimationFrame(peekAnimFrame) })
+onUnmounted(() => { if (peekTimer) clearTimeout(peekTimer); if (peekHoldTimer) clearTimeout(peekHoldTimer); if (peekAnimFrame) cancelAnimationFrame(peekAnimFrame) })
 
 // ── Error shock ──
 const shocked = ref(false)
@@ -233,10 +243,13 @@ function getCharStyle(c: Persona): StyleValue {
 
 // ── Pupil tracking ──
 const tick = ref(0)
+let pupilFrame = 0
 onMounted(() => {
-  const l = () => { tick.value++; animFrame = requestAnimationFrame(l) }
-  animFrame = requestAnimationFrame(l)
+  if (reducedMotion.value) return
+  const l = () => { tick.value++; pupilFrame = requestAnimationFrame(l) }
+  pupilFrame = requestAnimationFrame(l)
 })
+onUnmounted(() => cancelAnimationFrame(pupilFrame))
 
 function getPupilStyle(id: string, ei: number) {
   void tick.value

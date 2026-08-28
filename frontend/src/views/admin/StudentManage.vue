@@ -319,7 +319,7 @@ onMounted(() => {
       @batch-delete="handleBatchDelete"
     />
 
-    <NDataTable :columns="columns" :data="records" :loading="loading"
+    <NDataTable :columns="columns" :data="records" :loading="loading" :scroll-x="920"
                 :pagination="{ page: query.page, pageSize: query.size, itemCount: total }" remote
                 :row-key="(r: StudentVO) => r.id" :checked-row-keys="checkedRowKeys" @update:page="handlePageChange"
                 @update:page-size="handlePageSizeChange"
@@ -361,7 +361,7 @@ onMounted(() => {
 .page {
   max-width: 1100px;
   animation: fadein 200ms ease;
-  min-height: 100vh;
+  min-height: 0;
 }
 
 @keyframes fadein {

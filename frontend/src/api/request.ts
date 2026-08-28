@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import { clearAuthStorage } from '@/stores/auth'
 
 interface HttpClient {
   get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
@@ -16,7 +17,7 @@ const axiosInstance = axios.create({
 // Request interceptor: attach token
 axiosInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('token')
-  if (token && config.headers) {
+  if (token && config.headers && shouldAttachAuthToken(config.url)) {
     config.headers.Authorization = `Bearer ${token}`
   }
   // Remove default JSON Content-Type for FormData (browser sets multipart boundary)
@@ -25,6 +26,10 @@ axiosInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
   return config
 })
+
+export function shouldAttachAuthToken(url?: string) {
+  return url !== '/auth/login'
+}
 
 // Response interceptor: unwrap R<T>, handle flat errors from SecurityConfig
 axiosInstance.interceptors.response.use(
@@ -35,7 +40,7 @@ axiosInstance.interceptors.response.use(
     // These come as { code: number, msg: string } without the R<T> wrapper
     if (body && typeof body.code === 'number' && body.code !== 0 && body.data === undefined) {
       if (body.code === 401) {
-        localStorage.removeItem('token')
+        clearAuthStorage()
         window.location.href = '/login'
         return Promise.reject(new Error(body.msg || '未登录'))
       }
@@ -57,7 +62,7 @@ axiosInstance.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response
       if (status === 401) {
-        localStorage.removeItem('token')
+        clearAuthStorage()
         window.location.href = '/login'
         return Promise.reject(new Error('未登录或登录已过期'))
       }

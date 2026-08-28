@@ -9,6 +9,11 @@ const messageError = vi.fn()
 const messageSuccess = vi.fn()
 const activeCourseId = ref<number | null>(null)
 const activeSemesterId = ref<number | null>(null)
+const routerPush = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: routerPush }),
+}))
 
 vi.mock('@/api/exams', () => ({
   createExam: vi.fn(),
@@ -146,6 +151,11 @@ function submissions(): ExamSubmissionVO[] {
       answers: '{"q1":"A"}',
       score: null,
       status: 'submitted',
+      canResubmit: true,
+      returnReason: null,
+      returnedAt: null,
+      startedAt: '2026-06-14T09:00:00',
+      revisionCount: 0,
       submittedAt: '2026-06-14T09:00:00',
       createdAt: '2026-06-14T09:00:00',
     },
@@ -161,6 +171,11 @@ function submissions(): ExamSubmissionVO[] {
       answers: null,
       score: null,
       status: 'not_submitted',
+      canResubmit: false,
+      returnReason: null,
+      returnedAt: null,
+      startedAt: null,
+      revisionCount: 0,
       submittedAt: null,
       createdAt: null,
     },
@@ -197,25 +212,10 @@ describe('ExamManage inbox', () => {
     vi.clearAllMocks()
   })
 
-  it('renders expected students and disables grading for not submitted rows', async () => {
+  it('opens the roster-first grading route', async () => {
     const wrapper = await mountPage()
 
     await wrapper.find('button[title="提交/批改"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('批改收件箱')
-    expect(wrapper.text()).toContain('林一')
-    expect(wrapper.text()).toContain('周二')
-    expect(wrapper.text()).toContain('待批改')
-    expect(wrapper.text()).toContain('未提交')
-    expect(wrapper.text()).toContain('尚未提交')
-
-    const missingRow = wrapper.findAll('tr').find(row => row.text().includes('周二'))
-    await missingRow?.trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('该学生尚未提交考试')
-    const saveButton = wrapper.findAll('button').find(button => button.text().includes('保存批改'))
-    expect(saveButton?.attributes('disabled')).toBeDefined()
+    expect(routerPush).toHaveBeenCalledWith('/teacher/exams/301/submissions')
   })
 })

@@ -188,7 +188,7 @@ onMounted(fetchData)
         新建班级
       </NButton>
     </div>
-    <NDataTable :columns="columns" :data="records" :loading="loading"
+    <NDataTable :columns="columns" :data="records" :loading="loading" :scroll-x="760"
                 :pagination="{ page: query.page, pageSize: query.size, itemCount: total, prefix: () => `共 ${total} 条` }"
                 remote :row-key="(r: ClassVO) => r.id" @update:page="handlePageChange"
                 @update:page-size="handlePageSizeChange" @update:filters="handleFilter"
@@ -220,7 +220,7 @@ onMounted(fetchData)
 <style scoped>
 .page {
   max-width: 900px;
-  min-height: 100vh;
+  min-height: 0;
   animation: fadein 200ms ease;
   display: flex;
   flex-direction: column;

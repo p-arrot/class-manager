@@ -3,7 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NCard, NIcon, NInput, NSpin, NSpace, NTag, useMessage } from 'naive-ui'
 import { ArrowBackOutline, CloudUploadOutline, FolderOutline } from '@vicons/ionicons5'
-import { getTask, submitTask } from '@/api/tasks'
+import { getMyTaskSubmission, getTask, submitTask } from '@/api/tasks'
 import { uploadDriveFile } from '@/api/drive'
 import WorksheetRenderer from '@/components/WorksheetRenderer.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -11,7 +11,7 @@ import { formatDate } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
 import { parseTaskSchema, questionStem } from '@/types/taskSchema'
 import type { ArtifactSchema, WorksheetAnswerMap } from '@/types/taskSchema'
-import type { DriveItemVO, TaskDetailVO } from '@/types/api'
+import type { DriveItemVO, SubmissionVO, TaskDetailVO } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +19,7 @@ const message = useMessage()
 const taskId = Number(route.params.taskId)
 
 const task = ref<TaskDetailVO | null>(null)
+const submission = ref<SubmissionVO | null>(null)
 const submitted = ref(false)
 const loading = ref(false)
 const worksheetAnswer = ref<WorksheetAnswerMap>({})
@@ -35,12 +36,33 @@ const extensionLabel = computed(() => artifactSchema.value.allowedExtensions.len
 async function loadTask() {
   loading.value = true
   try {
-    task.value = await getTask(taskId)
+    const [taskData, existing] = await Promise.all([getTask(taskId), getMyTaskSubmission(taskId)])
+    task.value = taskData
+    submission.value = existing
+    if (existing && ['graded', 'special'].includes(existing.status)) {
+      await router.replace(`/student/tasks/${taskId}/result`)
+      return
+    }
+    if (existing?.content) restoreSubmission(existing.content)
   } catch (error) {
     message.error(getErrorMessage(error, '加载失败'))
     router.back()
   } finally {
     loading.value = false
+  }
+}
+
+function restoreSubmission(content: string) {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>
+    if (task.value?.type === 'worksheet') {
+      worksheetAnswer.value = parsed as WorksheetAnswerMap
+      return
+    }
+    artifactNote.value = typeof parsed.note === 'string' ? parsed.note : ''
+    uploadedItems.value = Array.isArray(parsed.files) ? parsed.files.filter(item => item && typeof item === 'object') as DriveItemVO[] : []
+  } catch {
+    if (task.value?.type === 'artifact') artifactNote.value = content
   }
 }
 
@@ -151,6 +173,8 @@ onMounted(loadTask)
       <div v-else-if="task" class="task-detail">
         <PageHeader :title="task.title" :subtitle="`${typeLabel(task.type)} · 截止 ${task.deadline ? formatDate(task.deadline, 'datetime') : '未设置'} · ${task.submissionCount} 人已提交`" />
         <p v-if="task.description" class="task-desc">{{ task.description }}</p>
+        <NAlert v-if="submission?.status === 'returned'" type="warning" :bordered="false" class="return-alert">教师退回：{{ submission.returnReason }}</NAlert>
+        <NAlert v-else-if="submission?.status === 'submitted'" type="info" :bordered="false" class="return-alert">当前内容已提交且尚未批改，截止前仍可修改并重新提交。</NAlert>
 
         <NCard v-if="task.type === 'worksheet' && task.formSchema" title="填写练习" size="small" class="answer-card">
           <WorksheetRenderer :schema="task.formSchema" v-model="worksheetAnswer" />
@@ -196,6 +220,7 @@ onMounted(loadTask)
 .page { max-width: 820px; margin: 0 auto; padding: 24px 0; }
 .task-desc { font-size: 14px; color: var(--n-text-color-2); margin: 12px 0 20px; line-height: 1.7; white-space: pre-wrap; }
 .answer-card { margin-top: 16px; }
+.return-alert { margin: 12px 0; }
 .artifact-hint { margin-bottom: 14px; }
 .upload-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .uploaded-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import TaskAnalytics from '@/views/teacher/TaskAnalytics.vue'
 import { listAllClasses } from '@/api/classes'
 import { getCourse } from '@/api/courses'
@@ -14,6 +14,7 @@ const back = vi.hoisted(() => vi.fn())
 const messageError = vi.hoisted(() => vi.fn())
 const messageSuccess = vi.hoisted(() => vi.fn())
 const selectedClassId = vi.hoisted(() => ({ value: null as number | null }))
+const realtimeState = vi.hoisted(() => ({ callback: null as (() => void) | null }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { taskId: '101' }, path: '/teacher/tasks/101/analytics' }),
@@ -41,7 +42,9 @@ vi.mock('@/composables/useRealtime', () => ({
   useRealtime: () => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
-    subscribeTask: vi.fn(),
+    subscribeTask: vi.fn((_taskId: number, callback: () => void) => {
+      realtimeState.callback = callback
+    }),
   }),
 }))
 
@@ -115,6 +118,15 @@ vi.mock('naive-ui', () => {
     NSpin: passthrough('div'),
     NTag: passthrough('span'),
     useMessage: () => ({ error: messageError, success: messageSuccess }),
+    useThemeVars: () => ref({
+      primaryColor: '#2563eb',
+      successColor: '#16a34a',
+      warningColor: '#a16207',
+      railColor: '#d6d3cc',
+      textColor2: '#44403c',
+      borderColor: '#d6d3cc',
+      dividerColor: '#e7e5e0',
+    }),
   }
 })
 
@@ -177,8 +189,10 @@ async function mountPage() {
 
 describe('TaskAnalytics inbox', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
     selectedClassId.value = null
+    realtimeState.callback = null
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0)
       return 1
@@ -207,5 +221,23 @@ describe('TaskAnalytics inbox', () => {
 
     expect(push).toHaveBeenCalledWith('/teacher/grading/101?submissionId=501')
     expect(missingRow?.find('button').attributes('disabled')).toBeDefined()
+  })
+
+  it('merges a burst of realtime events into one analytics refresh', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountPage()
+
+    expect(getTaskAnalytics).toHaveBeenCalledTimes(1)
+    expect(realtimeState.callback).toBeTypeOf('function')
+
+    for (let index = 0; index < 30; index += 1) realtimeState.callback?.()
+    expect(getTaskAnalytics).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+
+    expect(getTaskAnalytics).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 })

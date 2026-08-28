@@ -74,9 +74,9 @@ onMounted(loadDashboard)
   <div class="page">
     <PageHeader title="工作台" subtitle="今日概览" />
     <NSpin :show="loading">
-      <NGrid :cols="3" :x-gap="16" :y-gap="16" class="stat-grid">
-        <NGi><NCard size="small" class="stat-card pending" hoverable @click="showPending = !showPending"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">{{ showPending ? '待评分 ↑' : '待评分 ↓' }}</div></NCard></NGi>
-        <NGi><NCard size="small" class="stat-card upcoming" hoverable @click="showUpcoming = !showUpcoming"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">{{ showUpcoming ? '即将截止 ↑' : '即将截止 ↓' }}</div></NCard></NGi>
+      <NGrid cols="1 s:3" responsive="screen" :x-gap="16" :y-gap="12" class="stat-grid">
+        <NGi><NCard size="small" class="stat-card pending interactive" hoverable role="button" tabindex="0" :aria-expanded="showPending" @click="showPending = !showPending" @keydown.enter="showPending = !showPending" @keydown.space.prevent="showPending = !showPending"><div class="stat-num">{{ stats.pendingGrading }}</div><div class="stat-label">{{ showPending ? '待评分 ↑' : '待评分 ↓' }}</div></NCard></NGi>
+        <NGi><NCard size="small" class="stat-card upcoming interactive" hoverable role="button" tabindex="0" :aria-expanded="showUpcoming" @click="showUpcoming = !showUpcoming" @keydown.enter="showUpcoming = !showUpcoming" @keydown.space.prevent="showUpcoming = !showUpcoming"><div class="stat-num">{{ stats.upcomingDeadlines }}</div><div class="stat-label">{{ showUpcoming ? '即将截止 ↑' : '即将截止 ↓' }}</div></NCard></NGi>
         <NGi><NCard size="small" class="stat-card info"><div class="stat-num">{{ stats.recentCount }}</div><div class="stat-label">近期提交</div></NCard></NGi>
       </NGrid>
 
@@ -121,6 +121,8 @@ onMounted(loadDashboard)
 .page { max-width: 800px; margin: 0 auto; }
 .stat-grid { margin-bottom: 28px; }
 .stat-card { text-align: center; padding: 24px 16px; }
+.interactive { cursor: pointer; }
+.interactive:focus-visible { outline: 2px solid var(--n-primary-color); outline-offset: 2px; }
 .stat-num { font-size: 34px; font-weight: 700; }
 .stat-label { font-size: 13px; color: var(--n-text-color-3); margin-top: 4px; }
 .pending .stat-num { color: #F97316; }
@@ -134,4 +136,10 @@ onMounted(loadDashboard)
 .row-sub { font-size: 13px; color: var(--n-text-color-2); }
 .row-meta { font-size: 12px; color: var(--n-text-color-3); margin-left: auto; }
 .row-action { margin-left: auto; }
+@media (max-width: 640px) {
+  .stat-card { padding: 14px 16px; }
+  .stat-num { font-size: 28px; }
+  .row { align-items: flex-start; flex-wrap: wrap; }
+  .row-action { min-height: 44px; margin-left: auto; }
+}
 </style>

@@ -11,7 +11,7 @@ import {
 } from '@vicons/ionicons5'
 import { getLesson } from '@/api/lessons'
 import { getDrivePreview, getDriveRaw } from '@/api/drive'
-import { evaluateSubmission, getTask, listSubmissions } from '@/api/tasks'
+import { evaluateSubmission, getTask, listSubmissions, returnTaskSubmission } from '@/api/tasks'
 import PageHeader from '@/components/PageHeader.vue'
 import ArtifactSubmissionPanel from '@/components/grading/ArtifactSubmissionPanel.vue'
 import WorksheetSubmissionPanel from '@/components/grading/WorksheetSubmissionPanel.vue'
@@ -40,6 +40,9 @@ const teacherComments = ref<Record<number, string>>({})
 const validationErrors = ref<Record<string, string>>({})
 const submitting = ref(false)
 const specialLoading = ref(false)
+const returnLoading = ref(false)
+const showReturnModal = ref(false)
+const returnReason = ref('')
 const semesterId = ref<number | null>(null)
 const profileStudentId = ref<number | null>(null)
 const profileStudentName = ref('')
@@ -182,6 +185,24 @@ async function unmarkSpecial() {
   }
 }
 
+async function confirmReturn() {
+  const sub = current.value
+  if (!sub || !returnReason.value.trim()) return
+  returnLoading.value = true
+  try {
+    await returnTaskSubmission(sub.id, returnReason.value.trim())
+    sub.status = 'returned'
+    sub.returnReason = returnReason.value.trim()
+    message.success('已退回学生修改，原评分已清除')
+    showReturnModal.value = false
+    returnReason.value = ''
+  } catch (error) {
+    message.error(getErrorMessage(error, '退回失败'))
+  } finally {
+    returnLoading.value = false
+  }
+}
+
 function getQuestionScore(subId: number, questionId: string, dimension: string) {
   const existing = questionScores.value[subId]?.[questionId]?.[dimension]
   if (typeof existing === 'number') return existing
@@ -286,6 +307,7 @@ function statusLabel(status: string) {
   if (status === 'submitted') return '待评分'
   if (status === 'graded') return '已评分'
   if (status === 'special') return '特殊处理'
+  if (status === 'returned') return '已退回'
   return status
 }
 
@@ -403,6 +425,7 @@ onMounted(loadSubmissions)
           </NButton>
           <NButton v-if="current.status !== 'special'" type="warning" :loading="specialLoading" :disabled="submitting" @click="markSpecial">特殊处理</NButton>
           <NButton v-else :loading="specialLoading" :disabled="submitting" @click="unmarkSpecial">取消特殊处理</NButton>
+          <NButton type="error" secondary :disabled="submitting || specialLoading" @click="showReturnModal = true">退回修改</NButton>
           <NButton :disabled="submitting || specialLoading" @click="router.push(`/teacher/tasks/${taskId}/analytics`)">返回数据看板</NButton>
           <NButton :disabled="currentIdx >= submissions.length - 1 || submitting || specialLoading" @click="currentIdx++">
             下一个
@@ -416,6 +439,10 @@ onMounted(loadSubmissions)
     </NSpin>
 
     <StudentProfileModal :student-id="profileStudentId" :student-name="profileStudentName" :semester-id="semesterId" @close="profileStudentId = null" />
+    <NModal v-model:show="showReturnModal" preset="card" title="退回学生修改" class="return-modal">
+      <NInput v-model:value="returnReason" type="textarea" placeholder="请说明需要修改的内容" :maxlength="500" show-count />
+      <template #footer><div class="return-actions"><NButton @click="showReturnModal = false">取消</NButton><NButton type="warning" :loading="returnLoading" :disabled="!returnReason.trim()" @click="confirmReturn">确认退回</NButton></div></template>
+    </NModal>
     <NModal
       :show="!!previewTitle"
       preset="card"
@@ -450,10 +477,10 @@ onMounted(loadSubmissions)
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid #e7e5e0;
+  border: 1px solid var(--n-border-color);
   border-radius: 8px;
   margin-bottom: 16px;
-  background: #ffffff;
+  background: var(--n-card-color);
 }
 .student-main {
   display: flex;
@@ -461,19 +488,19 @@ onMounted(loadSubmissions)
   gap: 2px;
 }
 .student-name {
-  color: #1c1917;
+  color: var(--n-text-color);
   font-size: 16px;
   font-weight: 600;
 }
 .student-no {
-  color: #78716c;
+  color: var(--n-text-color-3);
   font-size: 13px;
 }
 .progress-pill {
   padding: 5px 10px;
   border-radius: 999px;
-  background: #f5f4f1;
-  color: #57534e;
+  background: var(--n-color-embedded);
+  color: var(--n-text-color-2);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -489,14 +516,14 @@ onMounted(loadSubmissions)
   align-items: baseline;
   gap: 12px;
   margin-bottom: 8px;
-  color: #44403c;
+  color: var(--n-text-color-2);
   font-size: 13px;
 }
 .content-label span {
   font-weight: 600;
 }
 .content-label small {
-  color: #78716c;
+  color: var(--n-text-color-3);
   font-size: 12px;
 }
 .validation-summary {
@@ -508,12 +535,12 @@ onMounted(loadSubmissions)
   gap: 8px;
   margin-top: 20px;
   padding: 14px 16px;
-  border: 1px solid #e7e5e0;
+  border: 1px solid var(--n-border-color);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--n-card-color);
 }
 .teacher-comment-label {
-  color: #44403c;
+  color: var(--n-text-color-2);
   font-size: 13px;
   font-weight: 600;
 }
@@ -527,9 +554,9 @@ onMounted(loadSubmissions)
   gap: 12px;
   margin-top: 24px;
   padding: 12px 16px;
-  border: 1px solid #e7e5e0;
+  border: 1px solid var(--n-border-color);
   border-radius: 8px 8px 0 0;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--n-card-color);
   backdrop-filter: blur(8px);
 }
 .preview-modal {
@@ -537,6 +564,8 @@ onMounted(loadSubmissions)
   max-width: 1100px;
   height: 85vh;
 }
+.return-modal { width: min(480px, calc(100vw - 32px)); }
+.return-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .preview-body {
   height: calc(85vh - 90px);
   display: flex;

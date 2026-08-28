@@ -7,16 +7,18 @@ import type { WorksheetAnswerMap, WorksheetAnswerValue } from '@/types/taskSchem
 
 type CheckboxGroupValue = Array<string | number>
 
-const props = defineProps<{ schema: string }>()
+const props = withDefaults(defineProps<{ schema: string; readonly?: boolean }>(), { readonly: false })
 const model = defineModel<WorksheetAnswerMap>({ default: () => ({}) })
 
 const questions = computed<TaskQuestion[]>(() => parseTaskSchema(props.schema).questions ?? [])
 
 function setAnswer(id: string, value: WorksheetAnswerValue) {
+  if (props.readonly) return
   model.value = { ...model.value, [id]: value }
 }
 
 function setMultipleAnswer(id: string, value: CheckboxGroupValue) {
+  if (props.readonly) return
   model.value = { ...model.value, [id]: value.map(String) }
 }
 
@@ -56,6 +58,7 @@ function booleanAnswer(id: string): boolean | null {
           v-if="q.type === 'single'"
           :value="stringAnswer(q.id)"
           class="choice-list"
+          :disabled="readonly"
           @update:value="value => setAnswer(q.id, value)"
         >
           <NRadio v-for="option in q.options ?? []" :key="option" :value="option" class="choice-option">
@@ -67,6 +70,7 @@ function booleanAnswer(id: string): boolean | null {
           v-else-if="q.type === 'multiple'"
           :value="multipleAnswer(q.id)"
           class="choice-list"
+          :disabled="readonly"
           @update:value="value => setMultipleAnswer(q.id, value)"
         >
           <NCheckbox v-for="option in q.options ?? []" :key="option" :value="option" class="choice-option">
@@ -78,6 +82,7 @@ function booleanAnswer(id: string): boolean | null {
           v-else-if="q.type === 'true_false'"
           :value="booleanAnswer(q.id)"
           class="choice-list"
+          :disabled="readonly"
           @update:value="value => setAnswer(q.id, value)"
         >
           <NRadio :value="true" class="choice-option">正确</NRadio>
@@ -88,6 +93,7 @@ function booleanAnswer(id: string): boolean | null {
           v-else-if="q.type === 'blank'"
           :value="stringAnswer(q.id)"
           placeholder="请输入答案"
+          :readonly="readonly"
           @update:value="value => setAnswer(q.id, value)"
         />
 
@@ -96,6 +102,7 @@ function booleanAnswer(id: string): boolean | null {
           type="textarea"
           :value="stringAnswer(q.id)"
           placeholder="请输入作答内容"
+          :readonly="readonly"
           :autosize="{ minRows: 4, maxRows: 12 }"
           @update:value="value => setAnswer(q.id, value)"
         />

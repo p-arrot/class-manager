@@ -1,5 +1,5 @@
 import { normalizeDimensionScores } from '@/types/taskSchema'
-import type { ProjectSubmissionVO, ProjectVO } from '@/types/api'
+import type { ProjectVO } from '@/types/api'
 import type { ArtifactFile } from '@/types/grading'
 import type { DimensionScoreConfig } from '@/types/taskSchema'
 
@@ -19,7 +19,6 @@ export interface ProjectDescriptionPayload {
 export interface ProjectFormValue {
   name: string
   description: string
-  maxTeamSize: number
   deadline: number | null
   submitMode: ProjectSubmitMode
   allowedExtensions: string
@@ -31,10 +30,6 @@ export interface ProjectSubmissionContent {
   files: ArtifactFile[]
 }
 
-export interface ProjectSubmissionRow extends ProjectSubmissionVO {
-  parsed: ProjectSubmissionContent
-}
-
 export const defaultProjectArtifact: ProjectArtifactConfig = {
   submitMode: 'file',
   allowedExtensions: [],
@@ -44,7 +39,6 @@ export function createEmptyProjectForm(): ProjectFormValue {
   return {
     name: '',
     description: '',
-    maxTeamSize: 1,
     deadline: null,
     submitMode: 'file',
     allowedExtensions: '',
@@ -57,7 +51,6 @@ export function createProjectFormFromProject(project: ProjectVO): ProjectFormVal
   return {
     name: project.name,
     description: parsed.text,
-    maxTeamSize: project.maxTeamSize,
     deadline: project.deadline ? new Date(project.deadline).getTime() : null,
     submitMode: parsed.artifact.submitMode,
     allowedExtensions: parsed.artifact.allowedExtensions.join(', '),

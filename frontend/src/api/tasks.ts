@@ -25,6 +25,10 @@ export function submitTask(taskId: number, data: SubmissionDTO): Promise<Submiss
   return http.post(`/tasks/${taskId}/submit`, data)
 }
 
+export function getMyTaskSubmission(taskId: number): Promise<SubmissionVO | null> {
+  return http.get(`/tasks/${taskId}/my-submission`)
+}
+
 export function listSubmissions(taskId: number, classId?: number): Promise<SubmissionVO[]> {
   return http.get(`/tasks/${taskId}/submissions`, { params: classId ? { classId } : undefined })
 }
@@ -35,6 +39,10 @@ export function getTaskAnalytics(taskId: number, classId?: number): Promise<Task
 
 export function evaluateSubmission(submissionId: number, data: SubmissionEvaluationDTO): Promise<void> {
   return http.post(`/submissions/${submissionId}/evaluate`, data)
+}
+
+export function returnTaskSubmission(submissionId: number, reason: string): Promise<void> {
+  return http.put(`/submissions/${submissionId}/return`, { reason })
 }
 
 export function getMyTaskResult(taskId: number): Promise<TaskResultVO> {

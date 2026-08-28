@@ -139,6 +139,7 @@ function handleLogout() {
           <NTooltip trigger="hover">
             <template #trigger>
               <NButton
+                class="shell-action"
                 quaternary
                 circle
                 size="small"
@@ -156,6 +157,7 @@ function handleLogout() {
           <NTooltip trigger="hover">
             <template #trigger>
               <NButton
+                class="shell-action"
                 quaternary
                 circle
                 size="small"
@@ -186,6 +188,7 @@ function handleLogout() {
             <span class="brand-text">{{ brand }}</span>
           </span>
         </div>
+        <div v-if="$slots['drawer-extra']" class="drawer-extra"><slot name="drawer-extra" /></div>
         <NMenu
           :value="activeKey"
           :options="menuOptions"
@@ -354,6 +357,13 @@ function handleLogout() {
 
   .mobile-menu {
     display: inline-flex;
+    width: 44px;
+    height: 44px;
+  }
+
+  .shell-action {
+    width: 44px;
+    height: 44px;
   }
 
   .top-header {
@@ -365,4 +375,6 @@ function handleLogout() {
     padding: 18px 14px 28px;
   }
 }
+
+.drawer-extra { padding: 4px 16px 12px; border-bottom: 1px solid var(--n-border-color); }
 </style>

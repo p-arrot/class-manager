@@ -60,8 +60,18 @@ const menu = [
         :options="classes.map(c => ({ label: c.grade + '级' + c.name, value: c.id }))"
         placeholder="当前班级"
         clearable
-        class="class-filter"
+        class="class-filter desktop-filter"
         size="small"
+      />
+    </template>
+    <template #drawer-extra>
+      <NSelect
+        v-if="showClassFilter"
+        v-model:value="selectedClassId"
+        :options="classes.map(c => ({ label: c.grade + '级' + c.name, value: c.id }))"
+        placeholder="当前班级"
+        clearable
+        class="mobile-filter"
       />
     </template>
   </AppShell>
@@ -73,8 +83,10 @@ const menu = [
 }
 
 @media (max-width: 640px) {
-  .class-filter {
+  .desktop-filter {
     display: none;
   }
 }
+
+.mobile-filter { width: 100%; }
 </style>

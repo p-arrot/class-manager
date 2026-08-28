@@ -31,9 +31,6 @@ const submitModeOptions = [
       <NFormItem label="说明">
         <NInput v-model:value="form.description" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" />
       </NFormItem>
-      <NFormItem label="组队上限">
-        <NInput :value="String(form.maxTeamSize)" @update:value="value => { form.maxTeamSize = Number(value) || 1 }" />
-      </NFormItem>
       <NFormItem label="截止时间">
         <NDatePicker v-model:value="form.deadline" type="datetime" clearable class="full-field" />
       </NFormItem>

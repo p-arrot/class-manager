@@ -263,7 +263,7 @@ onMounted(fetchData)
   <div class="page">
     <TeacherManageToolbar v-model:keyword="teacherKeyword" :total="total" @search="fetchData" @create="openCreate" />
 
-    <NDataTable :columns="columns" :data="records" :loading="loading"
+    <NDataTable :columns="columns" :data="records" :loading="loading" :scroll-x="820"
                 :pagination="{ page: query.page, pageSize: query.size, itemCount: total, prefix: () => `共 ${total} 条` }"
                 remote :row-key="(r: TeacherVO) => r.id" @update:page="handlePageChange"
                 @update:page-size="handlePageSizeChange" size="small">
@@ -296,7 +296,7 @@ onMounted(fetchData)
 .page {
   max-width: 1000px;
   animation: fadein 200ms ease;
-  min-height: 100vh;
+  min-height: 0;
 }
 
 @keyframes fadein {

@@ -5,6 +5,10 @@ export function listProjects(semesterId: number): Promise<ProjectVO[]> {
   return http.get(`/semesters/${semesterId}/projects`)
 }
 
+export function getProject(id: number): Promise<ProjectVO> {
+  return http.get(`/projects/${id}`)
+}
+
 export function createProject(semesterId: number, data: Partial<ProjectVO>): Promise<ProjectVO> {
   return http.post(`/semesters/${semesterId}/projects`, data)
 }
@@ -21,6 +25,10 @@ export function submitProject(id: number, data: ProjectSubmitDTO): Promise<Proje
   return http.post(`/projects/${id}/submit`, data)
 }
 
+export function getMyProjectSubmission(id: number): Promise<ProjectSubmissionVO | null> {
+  return http.get(`/projects/${id}/my-submission`)
+}
+
 export function listProjectSubmissions(id: number): Promise<ProjectSubmissionVO[]> {
   return http.get(`/projects/${id}/submissions`)
 }
@@ -29,6 +37,6 @@ export function scoreProjectSubmission(id: number, data: QuestionDimensionScoreD
   return http.post(`/project-submissions/${id}/score`, data)
 }
 
-export function createProjectTeam(id: number, name: string): Promise<{ id: number; projectId: number; teamName: string; status: string }> {
-  return http.post(`/projects/${id}/teams`, { name })
+export function returnProjectSubmission(id: number, reason: string): Promise<void> {
+  return http.put(`/project-submissions/${id}/return`, { reason })
 }

@@ -301,6 +301,10 @@ export interface SubmissionVO {
   studentName: string | null
   studentNo: string | null
   status: string
+  canResubmit: boolean
+  returnReason: string | null
+  returnedAt: string | null
+  revisionCount: number
   content: string
   submittedAt: string | null
   createdAt: string
@@ -589,6 +593,13 @@ export interface ExamVO {
   semesterId: number
   paperId?: number | null
   paperContent?: string | null
+  submissionId?: number | null
+  submissionStatus?: string
+  submittedAt?: string | null
+  score?: number | null
+  returnReason?: string | null
+  canResubmit?: boolean
+  startedAt?: string | null
 }
 
 export interface ExamPaperVO {
@@ -614,6 +625,11 @@ export interface ExamSubmissionVO {
   answers: string | null
   score: number | null
   status: string
+  canResubmit: boolean
+  returnReason: string | null
+  returnedAt: string | null
+  startedAt: string | null
+  revisionCount: number
   submittedAt: string | null
   createdAt: string
 }
@@ -628,10 +644,15 @@ export interface ProjectVO {
   id: number
   name: string
   description: string | null
-  maxTeamSize: number
   deadline: string | null
   weight?: number
   semesterId: number
+  submissionId?: number | null
+  submissionStatus?: string
+  submittedAt?: string | null
+  score?: number | null
+  returnReason?: string | null
+  canResubmit?: boolean
 }
 
 export interface ProjectSubmitDTO {
@@ -642,7 +663,6 @@ export interface ProjectSubmissionVO {
   id: number | null
   submissionId: number | null
   projectId: number
-  teamId: number | null
   studentId: number
   studentName: string | null
   studentNo: string | null
@@ -650,7 +670,17 @@ export interface ProjectSubmissionVO {
   className: string | null
   content: string | null
   status: string
+  canResubmit: boolean
+  returnReason: string | null
+  returnedAt: string | null
+  revisionCount: number
   score: number | null
+  dimensionScores: Array<{
+    questionId: string | null
+    dimension: string
+    earnedScore: number
+    maxScore: number
+  }>
   submittedAt: string | null
   createdAt: string | null
 }

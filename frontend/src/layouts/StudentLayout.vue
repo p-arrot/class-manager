@@ -17,6 +17,7 @@ const menu = [
     icon: ClipboardOutline,
     match: ['/student/exams', '/student/projects', '/student/tasks'],
     children: [
+      { label: '课堂任务', key: '/student/tasks', match: ['/student/tasks'] },
       { label: '考试', key: '/student/exams', match: ['/student/exams'] },
       { label: '项目', key: '/student/projects', match: ['/student/projects'] },
     ],

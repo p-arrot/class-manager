@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   NButton,
   NDataTable,
   NEmpty,
   NIcon,
-  NModal,
   NPopconfirm,
   NSelect,
   NSpace,
   NTag,
-  NSpin,
   useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -19,40 +18,22 @@ import { listSemesters } from '@/api/semesters'
 import { createProject, deleteProject, listProjects } from '@/api/projects'
 import { formatDate, toLocalDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
-import { useProjectSubmissionScoring } from '@/composables/useProjectSubmissionScoring'
 import ProjectCreateModal from '@/components/project/ProjectCreateModal.vue'
-import ProjectSubmissionModal from '@/components/project/ProjectSubmissionModal.vue'
 import { buildProjectDescription, createEmptyProjectForm, parseProjectDescription } from '@/types/project'
 import type { ProjectVO, SemesterVO } from '@/types/api'
 
 const props = defineProps<{ courseId: number; semesterId?: number | null }>()
 const message = useMessage()
+const router = useRouter()
 const semesters = ref<SemesterVO[]>([])
 const activeSemesterId = ref<number | null>(null)
 const projects = ref<ProjectVO[]>([])
 const showModal = ref(false)
 const form = ref(createEmptyProjectForm())
-const {
-  showSubmissions,
-  submissionRows,
-  activeProjectRubric,
-  submissionModalTitle,
-  previewUrl,
-  previewTitle,
-  previewLoading,
-  openSubmissions,
-  previewFile,
-  downloadFile,
-  closePreview,
-  getProjectScore,
-  setProjectScore,
-  saveProjectScore,
-} = useProjectSubmissionScoring()
 
 const columns: DataTableColumns<ProjectVO> = [
   { title: '名称', key: 'name' },
   { title: '说明', key: 'description', ellipsis: { tooltip: true } },
-  { title: '组队上限', key: 'maxTeamSize', width: 90 },
   { title: '截止', key: 'deadline', width: 150, render: row => row.deadline ? formatDate(row.deadline, 'datetime') : '-' },
   {
     title: '提交要求',
@@ -71,7 +52,7 @@ const columns: DataTableColumns<ProjectVO> = [
     key: 'actions',
     width: 110,
     render: row => h(NSpace, { size: 2 }, () => [
-      h(NButton, { size: 'tiny', quaternary: true, title: '查看提交', 'aria-label': '查看提交', onClick: () => openSubmissions(row) }, () => h(NIcon, { size: 14 }, () => h(EyeOutline))),
+      h(NButton, { size: 'tiny', quaternary: true, title: '查看提交', 'aria-label': '查看提交', onClick: () => router.push(`/teacher/projects/${row.id}/submissions`) }, () => h(NIcon, { size: 14 }, () => h(EyeOutline))),
       h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
         trigger: () => h(NButton, { size: 'tiny', quaternary: true, title: '删除项目', 'aria-label': '删除项目' }, () => h(NIcon, { size: 14 }, () => h(TrashOutline))),
         default: () => '确认删除？',
@@ -131,7 +112,6 @@ async function handleSubmit() {
     await createProject(activeSemesterId.value, {
       name: form.value.name,
       description: buildProjectDescription(form.value),
-      maxTeamSize: form.value.maxTeamSize,
       deadline: toLocalDateTime(form.value.deadline),
       weight: 1,
     })
@@ -170,32 +150,6 @@ async function handleDelete(id: number) {
 
     <ProjectCreateModal v-model:show="showModal" v-model:form="form" @submit="handleSubmit" />
 
-    <ProjectSubmissionModal
-      v-model:show="showSubmissions"
-      :title="submissionModalTitle"
-      :rows="submissionRows"
-      :rubric="activeProjectRubric"
-      :get-score="getProjectScore"
-      @preview="previewFile"
-      @download="downloadFile"
-      @score-change="setProjectScore"
-      @save-score="saveProjectScore"
-    />
-
-    <NModal
-      :show="!!previewTitle"
-      preset="card"
-      :title="previewTitle"
-      class="preview-modal"
-      :bordered="false"
-      @update:show="v => { if (!v) closePreview() }"
-    >
-      <div class="preview-body">
-        <NSpin v-if="previewLoading" />
-        <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-frame" />
-        <NEmpty v-else description="暂无预览" />
-      </div>
-    </NModal>
   </div>
 </template>
 

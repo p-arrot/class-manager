@@ -33,6 +33,9 @@ export function useRealtime() {
     if (client?.active) return
     client = new Client({
       webSocketFactory: () => new SockJS('/ws'),
+      connectHeaders: {
+        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      },
       reconnectDelay: 5000,
       onConnect: () => {
         connected.value = true

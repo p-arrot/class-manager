@@ -5,7 +5,7 @@ import { init, use, type ComposeOption, type ECharts } from 'echarts/core'
 import { BarChart, PieChart, type BarSeriesOption, type PieSeriesOption } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent, type GridComponentOption, type LegendComponentOption, type TooltipComponentOption } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { NButton, NDataTable, NEmpty, NIcon, NModal, NProgress, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NEmpty, NIcon, NModal, NProgress, NSelect, NSpin, NTag, useMessage, useThemeVars } from 'naive-ui'
 import type { DataTableColumns, SelectOption } from 'naive-ui'
 import { ArrowBackOutline, CreateOutline, RefreshOutline } from '@vicons/ionicons5'
 import { listAllClasses } from '@/api/classes'
@@ -28,6 +28,7 @@ type DashboardChartOption = ComposeOption<GridComponentOption | LegendComponentO
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const themeVars = useThemeVars()
 const classFilter = useClassFilterStore()
 const taskId = Number(route.params.taskId)
 const loading = ref(false)
@@ -162,6 +163,33 @@ async function loadAnalytics(showToast = false) {
   }
 }
 
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let refreshInFlight = false
+let refreshQueued = false
+
+function scheduleAnalyticsRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(runRealtimeRefresh, 500)
+}
+
+async function runRealtimeRefresh() {
+  refreshTimer = null
+  if (refreshInFlight) {
+    refreshQueued = true
+    return
+  }
+  refreshInFlight = true
+  try {
+    await loadAnalytics()
+  } finally {
+    refreshInFlight = false
+    if (refreshQueued) {
+      refreshQueued = false
+      scheduleAnalyticsRefresh()
+    }
+  }
+}
+
 function renderCharts() {
   requestAnimationFrame(() => {
     renderSubmissionChart()
@@ -173,20 +201,20 @@ function renderSubmissionChart() {
   if (!submissionChartRef.value || !analytics.value) return
   if (!submissionChart) submissionChart = init(submissionChartRef.value)
   const data = [
-    { name: '待批改', value: analytics.value.submittedCount, itemStyle: { color: '#2563eb' } },
-    { name: '已批改', value: analytics.value.gradedCount, itemStyle: { color: '#16a34a' } },
-    { name: '未提交', value: analytics.value.notSubmittedCount, itemStyle: { color: '#d6d3cc' } },
-    { name: '特殊处理', value: analytics.value.specialCount, itemStyle: { color: '#a16207' } },
+    { name: '待批改', value: analytics.value.submittedCount, itemStyle: { color: themeVars.value.primaryColor } },
+    { name: '已批改', value: analytics.value.gradedCount, itemStyle: { color: themeVars.value.successColor } },
+    { name: '未提交', value: analytics.value.notSubmittedCount, itemStyle: { color: themeVars.value.railColor } },
+    { name: '特殊处理', value: analytics.value.specialCount, itemStyle: { color: themeVars.value.warningColor } },
   ]
   const option: DashboardChartOption = {
     tooltip: { trigger: 'item' },
-    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: '#57534e' } },
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: themeVars.value.textColor2 } },
     series: [{
       type: 'pie',
       radius: ['58%', '74%'],
       center: ['50%', '43%'],
       data,
-      label: { formatter: '{b} {c}', color: '#44403c' },
+      label: { formatter: '{b} {c}', color: themeVars.value.textColor2 },
     }],
   }
   submissionChart.setOption(option, true)
@@ -202,20 +230,20 @@ function renderAccuracyChart() {
     xAxis: {
       type: 'category',
       data: rows.map(item => `第 ${item.index} 题`),
-      axisLine: { lineStyle: { color: '#d6d3cc' } },
-      axisLabel: { color: '#57534e' },
+      axisLine: { lineStyle: { color: themeVars.value.borderColor } },
+      axisLabel: { color: themeVars.value.textColor2 },
     },
     yAxis: {
       type: 'value',
       max: 100,
-      axisLabel: { color: '#57534e', formatter: '{value}%' },
-      splitLine: { lineStyle: { color: '#e7e5e0' } },
+      axisLabel: { color: themeVars.value.textColor2, formatter: '{value}%' },
+      splitLine: { lineStyle: { color: themeVars.value.dividerColor } },
     },
     series: [{
       type: 'bar',
       data: rows.map(item => item.accuracyRate),
       barMaxWidth: 30,
-      itemStyle: { color: '#2563eb', borderRadius: [5, 5, 0, 0] },
+      itemStyle: { color: themeVars.value.primaryColor, borderRadius: [5, 5, 0, 0] },
     }],
   }
   accuracyChart.setOption(option, true)
@@ -286,6 +314,7 @@ function handleResize() {
 }
 
 watch(analytics, renderCharts)
+watch(themeVars, renderCharts, { deep: true })
 watch(selectedClassId, (value) => {
   loadAnalytics()
   if (syncingClassFromStore) return
@@ -300,11 +329,12 @@ watch(() => classFilter.selectedClassId, applyGlobalClassFilter)
 onMounted(async () => {
   await Promise.all([loadMeta(), loadAnalytics()])
   realtime.connect()
-  setTimeout(() => realtime.subscribeTask(taskId, () => loadAnalytics()), 300)
+  realtime.subscribeTask(taskId, scheduleAnalyticsRefresh)
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  if (refreshTimer) clearTimeout(refreshTimer)
   submissionChart?.dispose()
   accuracyChart?.dispose()
   realtime.disconnect()
@@ -357,7 +387,7 @@ onUnmounted(() => {
           <div class="metric primary">
             <span>提交率</span>
             <strong>{{ analytics.submissionRate }}%</strong>
-            <NProgress type="line" :percentage="analytics.submissionRate" color="#2563eb" rail-color="#dbeafe" :show-indicator="false" />
+            <NProgress type="line" :percentage="analytics.submissionRate" :color="themeVars.primaryColor" :rail-color="themeVars.railColor" :show-indicator="false" />
           </div>
           <div class="metric">
             <span>待批改</span>
@@ -437,7 +467,7 @@ onUnmounted(() => {
         <div v-if="optionRows(activeQuestion).length" class="option-bars">
           <div v-for="[option, count] in optionRows(activeQuestion)" :key="option" class="option-bar">
             <span>{{ option }}</span>
-            <NProgress type="line" color="#2563eb" rail-color="#e7e5e0" :percentage="completedCount ? Math.round(count * 1000 / completedCount) / 10 : 0" :indicator-placement="'inside'" />
+            <NProgress type="line" :color="themeVars.primaryColor" :rail-color="themeVars.railColor" :percentage="completedCount ? Math.round(count * 1000 / completedCount) / 10 : 0" :indicator-placement="'inside'" />
             <b>{{ count }}</b>
           </div>
         </div>
@@ -449,13 +479,13 @@ onUnmounted(() => {
 
 <style scoped>
 .analytics-page {
-  --surface: #ffffff;
-  --surface-muted: #f5f4f1;
-  --surface-soft: #fafaf9;
-  --border: #e7e5e0;
-  --text: #1c1917;
-  --text-muted: #78716c;
-  --accent: #2563eb;
+  --surface: var(--n-card-color);
+  --surface-muted: var(--n-color-embedded);
+  --surface-soft: var(--n-color-embedded);
+  --border: var(--n-border-color);
+  --text: var(--n-text-color);
+  --text-muted: var(--n-text-color-3);
+  --accent: var(--n-primary-color);
   max-width: 1160px;
   margin: 0 auto;
 }
@@ -509,8 +539,8 @@ onUnmounted(() => {
   background: var(--surface);
 }
 .metric.primary {
-  border-color: #bfdbfe;
-  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+  border-color: var(--n-primary-color);
+  background: var(--n-color-embedded);
 }
 .metric span {
   display: block;
@@ -593,7 +623,7 @@ onUnmounted(() => {
   transition: background-color 150ms ease, border-color 150ms ease;
 }
 .question-row:hover {
-  border-color: #d6d3cc;
+  border-color: var(--n-primary-color);
   background: var(--surface-muted);
 }
 .question-index {

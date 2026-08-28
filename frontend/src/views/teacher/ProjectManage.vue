@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, h, watch } from 'vue'
-import { NEmpty, NButton, NDataTable, NModal, NSelect, NSpace, NIcon, NPopconfirm, NSpin, NTag, useMessage } from 'naive-ui'
+import { useRouter } from 'vue-router'
+import { NEmpty, NButton, NDataTable, NSelect, NSpace, NIcon, NPopconfirm, NTag, useMessage } from 'naive-ui'
 import { AddOutline, CreateOutline, EyeOutline, TrashOutline } from '@vicons/ionicons5'
 import { createProject, deleteProject, listProjects, updateProject } from '@/api/projects'
 import PageHeader from '@/components/PageHeader.vue'
 import ProjectCreateModal from '@/components/project/ProjectCreateModal.vue'
-import ProjectSubmissionModal from '@/components/project/ProjectSubmissionModal.vue'
 import { useCourseSemesterPicker } from '@/composables/useCourseSemesterPicker'
-import { useProjectSubmissionScoring } from '@/composables/useProjectSubmissionScoring'
 import { formatDate, toLocalDateTime } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
 import { buildProjectDescription, createEmptyProjectForm, createProjectFormFromProject, parseProjectDescription } from '@/types/project'
@@ -15,27 +14,12 @@ import type { DataTableColumns } from 'naive-ui'
 import type { ProjectVO } from '@/types/api'
 
 const message = useMessage()
+const router = useRouter()
 const { activeCourseId, activeSemesterId, courseOptions, semesterOptions, loadCourses } = useCourseSemesterPicker()
 const projects = ref<ProjectVO[]>([])
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref(createEmptyProjectForm())
-const {
-  showSubmissions,
-  submissionRows,
-  activeProjectRubric,
-  submissionModalTitle,
-  previewUrl,
-  previewTitle,
-  previewLoading,
-  openSubmissions,
-  previewFile,
-  downloadFile,
-  closePreview,
-  getProjectScore,
-  setProjectScore,
-  saveProjectScore,
-} = useProjectSubmissionScoring()
 
 async function loadProjects() {
   if (!activeSemesterId.value) {
@@ -70,15 +54,10 @@ async function handleSubmit() {
     message.warning('请输入项目名称')
     return
   }
-  if (form.value.maxTeamSize < 1) {
-    message.warning('组队上限不能小于 1')
-    return
-  }
   try {
     const body = {
       name: form.value.name,
       description: buildProjectDescription(form.value),
-      maxTeamSize: form.value.maxTeamSize,
       deadline: toLocalDateTime(form.value.deadline),
       weight: 1,
     }
@@ -107,7 +86,6 @@ async function handleDelete(id: number) {
 const projectColumns: DataTableColumns<ProjectVO> = [
   { title: '名称', key: 'name' },
   { title: '说明', key: 'description', ellipsis: { tooltip: true }, render: row => parseProjectDescription(row).text || '-' },
-  { title: '组队上限', key: 'maxTeamSize', width: 90 },
   { title: '截止', key: 'deadline', width: 120, render: row => row.deadline ? formatDate(row.deadline, 'date') : '-' },
   {
     title: '提交要求',
@@ -126,7 +104,7 @@ const projectColumns: DataTableColumns<ProjectVO> = [
     key: 'actions',
     width: 140,
     render: row => h(NSpace, { size: 2 }, () => [
-      h(NButton, { size: 'tiny', quaternary: true, title: '查看提交和批改', 'aria-label': '查看提交和批改', onClick: () => openSubmissions(row) }, () => h(NIcon, { size: 14 }, () => h(EyeOutline))),
+      h(NButton, { size: 'tiny', quaternary: true, title: '查看提交和批改', 'aria-label': '查看提交和批改', onClick: () => router.push(`/teacher/projects/${row.id}/submissions`) }, () => h(NIcon, { size: 14 }, () => h(EyeOutline))),
       h(NButton, { size: 'tiny', quaternary: true, title: '编辑项目', 'aria-label': '编辑项目', onClick: () => openEdit(row) }, () => h(NIcon, { size: 14 }, () => h(CreateOutline))),
       h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
         trigger: () => h(NButton, { size: 'tiny', quaternary: true, title: '删除项目', 'aria-label': '删除项目' }, () => h(NIcon, { size: 14 }, () => h(TrashOutline))),
@@ -170,32 +148,6 @@ onMounted(async () => {
       @submit="handleSubmit"
     />
 
-    <ProjectSubmissionModal
-      v-model:show="showSubmissions"
-      :title="submissionModalTitle"
-      :rows="submissionRows"
-      :rubric="activeProjectRubric"
-      :get-score="getProjectScore"
-      @preview="previewFile"
-      @download="downloadFile"
-      @score-change="setProjectScore"
-      @save-score="saveProjectScore"
-    />
-
-    <NModal
-      :show="!!previewTitle"
-      preset="card"
-      :title="previewTitle"
-      class="preview-modal"
-      :bordered="false"
-      @update:show="v => { if (!v) closePreview() }"
-    >
-      <div class="preview-body">
-        <NSpin v-if="previewLoading" />
-        <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-frame" />
-        <NEmpty v-else description="暂无预览" />
-      </div>
-    </NModal>
   </div>
 </template>
 

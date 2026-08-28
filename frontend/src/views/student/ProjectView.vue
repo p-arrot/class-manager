@@ -7,9 +7,10 @@ import { useStudentContext } from '@/composables/useStudentContext'
 import { uploadDriveFile } from '@/api/drive'
 import { formatDate } from '@/utils/date'
 import { getErrorMessage } from '@/utils/error'
-import { listProjects, submitProject } from '@/api/projects'
-import { defaultProjectArtifact, parseProjectDescription } from '@/types/project'
-import type { DriveItemVO, ProjectVO, SemesterVO } from '@/types/api'
+import { getMyProjectSubmission, listProjects, submitProject } from '@/api/projects'
+import { defaultProjectArtifact, parseProjectDescription, parseProjectSubmissionContent } from '@/types/project'
+import { CORE_DIMENSIONS } from '@/types/taskSchema'
+import type { DriveItemVO, ProjectSubmissionVO, ProjectVO, SemesterVO } from '@/types/api'
 
 const { courses, semesters, loading: ctxLoading, loadSemesters } = useStudentContext()
 const message = useMessage()
@@ -18,6 +19,7 @@ const activeSemesterId = ref<number | null>(null)
 const projects = ref<ProjectVO[]>([])
 const showSubmit = ref(false)
 const activeProject = ref<ProjectVO | null>(null)
+const activeSubmission = ref<ProjectSubmissionVO | null>(null)
 const submitNote = ref('')
 const uploadedItems = ref<DriveItemVO[]>([])
 const uploadLoading = ref(false)
@@ -26,6 +28,7 @@ const folderInput = ref<HTMLInputElement | null>(null)
 
 const activeConfig = computed(() => activeProject.value ? parseProjectDescription(activeProject.value).artifact : defaultProjectArtifact)
 const extensionLabel = computed(() => activeConfig.value.allowedExtensions.length ? activeConfig.value.allowedExtensions.map((ext: string) => `.${ext}`).join('、') : '不限格式')
+const submissionLocked = computed(() => Boolean(activeSubmission.value && !activeSubmission.value.canResubmit))
 const courseOptions = computed(() => courses.value.map(course => ({
   label: course.name,
   value: course.id,
@@ -62,11 +65,25 @@ function projectDescription(project: ProjectVO) {
   return parseProjectDescription(project).text
 }
 
-function openSubmit(project: ProjectVO) {
+async function openSubmit(project: ProjectVO) {
   activeProject.value = project
   submitNote.value = ''
   uploadedItems.value = []
-  showSubmit.value = true
+  activeSubmission.value = null
+  try {
+    const existing = await getMyProjectSubmission(project.id)
+    activeSubmission.value = existing
+    if (existing?.content) {
+      const parsed = parseProjectSubmissionContent(existing.content)
+      submitNote.value = parsed.note
+      uploadedItems.value = parsed.files.map(file => ({ ...file, fileSize: file.fileSize ?? null, type: 'FILE', contentType: null, parentId: null, objectName: null, createdAt: existing.createdAt || '' }))
+    }
+    showSubmit.value = true
+  } catch (error) { message.error(getErrorMessage(error, '加载已有提交失败')) }
+}
+
+function dimensionLabel(value: string) {
+  return CORE_DIMENSIONS.find(item => item.key === value)?.label ?? value
 }
 
 function fileAllowed(file: File) {
@@ -122,10 +139,15 @@ async function handleSubmit() {
     })
     message.success('提交成功')
     showSubmit.value = false
+    if (activeSemesterId.value) projects.value = await listProjects(activeSemesterId.value)
   } catch (e) {
     message.error(getErrorMessage(e, '提交失败'))
   }
 }
+
+watch(courses, list => {
+  if (!activeCourseId.value && list.length) activeCourseId.value = list[0].id
+}, { immediate: true })
 
 </script>
 
@@ -143,9 +165,11 @@ async function handleSubmit() {
             <span class="name">{{ p.name }}</span>
             <span v-if="projectDescription(p)" class="desc">{{ projectDescription(p) }}</span>
             <span class="meta">个人提交 · 截止 {{ p.deadline ? formatDate(p.deadline, 'datetime') : '未设置' }}</span>
+            <NAlert v-if="p.submissionStatus === 'returned'" type="warning" :bordered="false">退回原因：{{ p.returnReason }}</NAlert>
+            <NTag v-else-if="p.submissionStatus && p.submissionStatus !== 'not_submitted'" size="small" :bordered="false" :type="p.submissionStatus === 'graded' ? 'success' : 'warning'">{{ p.submissionStatus === 'graded' ? '已批改' : '已提交待批改' }}</NTag>
           </div>
           <NSpace :size="8" class="card-actions">
-            <NButton size="small" type="primary" @click="openSubmit(p)">提交作品</NButton>
+            <NButton size="small" type="primary" @click="openSubmit(p)">{{ p.submissionStatus === 'submitted' || p.submissionStatus === 'returned' ? '查看或修改' : p.submissionStatus === 'graded' ? '查看批改详情' : '提交作品' }}</NButton>
           </NSpace>
         </div>
       </div>
@@ -156,7 +180,15 @@ async function handleSubmit() {
       <NAlert type="info" :bordered="false" class="submit-hint">
         提交方式：{{ activeConfig.submitMode === 'folder' ? '文件夹' : '文件' }}；文件格式：{{ extensionLabel }}。如有组员，请在备注中写清姓名或学号。
       </NAlert>
-      <div class="upload-actions">
+      <NAlert v-if="activeSubmission?.status === 'graded'" type="success" :bordered="false" class="grading-summary">
+        <strong>批改完成<span v-if="activeSubmission.score != null"> · {{ activeSubmission.score }} 分</span></strong>
+        <div v-if="activeSubmission.dimensionScores?.length" class="dimension-results">
+          <span v-for="item in activeSubmission.dimensionScores" :key="`${item.questionId}-${item.dimension}`">
+            {{ dimensionLabel(item.dimension) }} {{ item.earnedScore }}/{{ item.maxScore }}
+          </span>
+        </div>
+      </NAlert>
+      <div v-if="!submissionLocked" class="upload-actions">
         <NButton :loading="uploadLoading" @click="fileInput?.click()">
           <template #icon><NIcon><CloudUploadOutline /></NIcon></template>
           上传文件
@@ -179,12 +211,13 @@ async function handleSubmit() {
         <NInput
           v-model:value="submitNote"
           type="textarea"
+          :readonly="submissionLocked"
           placeholder="例如：组员张三 20240102、李四 20240103；作品链接或补充说明也可以写在这里"
           :autosize="{ minRows: 3, maxRows: 8 }"
         />
         <small>教师会根据这里的信息手动找到对应学生并分别评分。</small>
       </label>
-      <template #footer><NSpace justify="end"><NButton @click="showSubmit = false">取消</NButton><NButton type="primary" @click="handleSubmit">提交</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showSubmit = false">关闭</NButton><NButton v-if="!submissionLocked" type="primary" @click="handleSubmit">提交</NButton></NSpace></template>
     </NModal>
   </div>
 </template>
@@ -201,6 +234,9 @@ async function handleSubmit() {
 .meta { font-size: 12px; color: var(--n-text-color-3); }
 .project-modal { width: min(520px, calc(100vw - 32px)); }
 .submit-hint { margin-bottom: 14px; }
+.grading-summary { margin-bottom: 14px; }
+.grading-summary strong { display: block; margin-bottom: 8px; }
+.dimension-results { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
 .upload-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .hidden-input { display: none; }
 .uploaded-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -211,5 +247,6 @@ async function handleSubmit() {
 @media (max-width: 640px) {
   .filter-select { width: 100%; }
   .card { align-items: stretch; flex-direction: column; }
+  .card-actions :deep(.n-button) { min-height: 44px; }
 }
 </style>
