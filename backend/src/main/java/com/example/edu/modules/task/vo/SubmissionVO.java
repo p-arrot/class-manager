@@ -17,7 +17,11 @@ public class SubmissionVO {
     @Schema(description = "学生ID") private Long studentId;
     @Schema(description = "学生姓名") private String studentName;
     @Schema(description = "学号") private String studentNo;
-    @Schema(description = "状态: submitted/graded/special") private String status;
+    @Schema(description = "状态: submitted/graded/returned/special") private String status;
+    @Schema(description = "是否允许再次提交") private Boolean canResubmit;
+    @Schema(description = "退回原因") private String returnReason;
+    @Schema(description = "退回时间") private LocalDateTime returnedAt;
+    @Schema(description = "修改次数") private Integer revisionCount;
     @Schema(description = "提交内容") private String content;
     @Schema(description = "提交时间") private LocalDateTime submittedAt;
     @Schema(description = "创建时间") private LocalDateTime createdAt;

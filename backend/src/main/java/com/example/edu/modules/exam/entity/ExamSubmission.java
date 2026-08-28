@@ -13,5 +13,10 @@ public class ExamSubmission {
     private Integer score;
     private String status;
     private LocalDateTime submittedAt;
+    private String returnReason;
+    private LocalDateTime returnedAt;
+    private LocalDateTime startedAt;
+    private LocalDateTime updatedAt;
+    private Integer revisionCount;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
 }

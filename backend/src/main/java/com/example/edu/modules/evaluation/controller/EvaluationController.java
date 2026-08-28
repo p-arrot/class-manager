@@ -1,6 +1,7 @@
 package com.example.edu.modules.evaluation.controller;
 
 import com.example.edu.common.result.R;
+import com.example.edu.common.dto.ReturnSubmissionDTO;
 import com.example.edu.modules.evaluation.dto.EvaluateDTO;
 import com.example.edu.modules.evaluation.service.EvaluationService;
 import com.example.edu.modules.evaluation.vo.EvaluationVO;
@@ -28,6 +29,15 @@ public class EvaluationController {
     public R<Void> evaluate(@PathVariable Long submissionId,
                             @Valid @RequestBody EvaluateDTO dto) {
         evaluationService.evaluate(submissionId, dto);
+        return R.ok();
+    }
+
+    @Operation(summary = "教师退回任务提交")
+    @PutMapping("/api/submissions/{submissionId}/return")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public R<Void> returnSubmission(@PathVariable Long submissionId,
+                                    @Valid @RequestBody ReturnSubmissionDTO dto) {
+        evaluationService.returnSubmission(submissionId, dto.reason());
         return R.ok();
     }
 

@@ -14,11 +14,16 @@ public class RealtimeService {
     private final SimpMessagingTemplate messagingTemplate;
 
     public void pushSubmissionUpdate(Long taskId, SubmissionVO submission) {
-        messagingTemplate.convertAndSend("/topic/task/" + taskId, submission);
+        messagingTemplate.convertAndSend("/topic/task/" + taskId,
+                new SubmissionUpdate(submission.getId(), taskId, submission.getStudentId(),
+                        submission.getStatus(), submission.getSubmittedAt()));
         log.debug("WebSocket pushed: taskId={}, studentId={}", taskId, submission.getStudentId());
     }
 
     public void pushSubmissionCount(Long taskId, int count) {
         messagingTemplate.convertAndSend("/topic/task/" + taskId + "/count", count);
     }
+
+    public record SubmissionUpdate(Long submissionId, Long taskId, Long studentId,
+                                   String status, java.time.LocalDateTime submittedAt) {}
 }

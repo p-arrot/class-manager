@@ -11,7 +11,6 @@ public class Project {
     private String name;
     private String description;
     private Long semesterId;
-    private Integer maxTeamSize;
     private LocalDateTime deadline;
     private BigDecimal weight;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;

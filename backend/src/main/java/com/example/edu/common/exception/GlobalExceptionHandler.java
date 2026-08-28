@@ -5,6 +5,7 @@ import com.example.edu.common.result.R;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -24,10 +25,16 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
-    @ResponseStatus(HttpStatus.OK)
-    public R<Void> handleBizException(BizException e) {
+    public ResponseEntity<R<Void>> handleBizException(BizException e) {
         log.warn("业务异常: code={}, msg={}", e.getCode(), e.getMsg());
-        return R.fail(e.getCode(), e.getMsg());
+        HttpStatus status = resolveHttpStatus(e.getCode());
+        return ResponseEntity.status(status).body(R.fail(e.getCode(), e.getMsg()));
+    }
+
+    private HttpStatus resolveHttpStatus(int businessCode) {
+        int statusCode = businessCode < 1000 ? businessCode : businessCode / 100;
+        HttpStatus status = HttpStatus.resolve(statusCode);
+        return status != null && status.isError() ? status : HttpStatus.BAD_REQUEST;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

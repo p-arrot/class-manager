@@ -13,16 +13,14 @@ import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.service.CourseRosterService;
+import com.example.edu.modules.course.service.CourseRosterService.CourseRoster;
 import com.example.edu.modules.evaluation.entity.DimensionScore;
-import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.project.entity.Project;
-import com.example.edu.modules.project.entity.ProjectScore;
 import com.example.edu.modules.project.entity.ProjectSubmission;
 import com.example.edu.modules.project.mapper.ProjectMapper;
 import com.example.edu.modules.project.mapper.ProjectSubmissionMapper;
-import com.example.edu.modules.project.mapper.ProjectTeamMapper;
-import com.example.edu.modules.project.mapper.ProjectTeamMemberMapper;
 import com.example.edu.modules.project.vo.ProjectSubmissionVO;
 import com.example.edu.modules.user.entity.User;
 import com.example.edu.modules.user.mapper.UserMapper;
@@ -51,15 +49,11 @@ import static org.mockito.Mockito.when;
 class ProjectServiceTest {
 
     @Mock private ProjectMapper projectMapper;
-    @Mock private ProjectTeamMapper teamMapper;
-    @Mock private ProjectTeamMemberMapper teamMemberMapper;
     @Mock private ProjectSubmissionMapper submissionMapper;
     @Mock private SemesterMapper semesterMapper;
     @Mock private CourseMapper courseMapper;
     @Mock private CourseClassMapper courseClassMapper;
-    @Mock private SchoolClassMapper schoolClassMapper;
-    @Mock private UserMapper userMapper;
-    @Mock private DimensionScoreMapper dimensionScoreMapper;
+    @Mock private CourseRosterService courseRosterService;
     @Mock private AuditLogService auditLogService;
     @Mock private DimensionScoreService dimensionScoreService;
 
@@ -140,21 +134,21 @@ class ProjectServiceTest {
         when(projectMapper.selectById(1L)).thenReturn(project(LocalDateTime.now().plusDays(1)));
         when(semesterMapper.selectById(3L)).thenReturn(semester());
         when(courseMapper.selectById(4L)).thenReturn(course(9L));
-        CourseClass binding = new CourseClass();
-        binding.setCourseId(4L);
-        binding.setClassId(10L);
-        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(binding));
-        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+        when(courseRosterService.load(4L)).thenReturn(roster(
                 student(102L, "20260002", "周二"),
                 student(101L, "20260001", "林一")
         ));
-        when(schoolClassMapper.selectBatchIds(any())).thenReturn(List.of(schoolClass(10L)));
-        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(submission(31L, 1L, 101L)));
+        ProjectSubmission gradedSubmission = submission(31L, 1L, 101L);
+        gradedSubmission.setStatus("graded");
+        when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(gradedSubmission));
         DimensionScore score = new DimensionScore();
         score.setSourceType("project");
         score.setSourceId(31L);
+        score.setQuestionId("project");
+        score.setDimension("COMPUTING");
         score.setEarnedScore(BigDecimal.valueOf(8));
-        when(dimensionScoreMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(score));
+        score.setMaxScore(BigDecimal.TEN);
+        when(dimensionScoreService.listBySources("project", List.of(31L))).thenReturn(List.of(score));
 
         List<ProjectSubmissionVO> inbox = projectService.listSubmissionInbox(1L);
 
@@ -164,6 +158,11 @@ class ProjectServiceTest {
         assertThat(graded.getSubmissionId()).isEqualTo(31L);
         assertThat(graded.getStatus()).isEqualTo("graded");
         assertThat(graded.getScore()).isEqualByComparingTo("8");
+        assertThat(graded.getDimensionScores()).singleElement().satisfies(detail -> {
+            assertThat(detail.dimension()).isEqualTo("COMPUTING");
+            assertThat(detail.earnedScore()).isEqualByComparingTo("8");
+            assertThat(detail.maxScore()).isEqualByComparingTo("10");
+        });
         assertThat(graded.getClassName()).isEqualTo("2026级1班");
 
         ProjectSubmissionVO notSubmitted = inbox.stream().filter(row -> row.getStudentId().equals(102L)).findFirst().orElseThrow();
@@ -188,18 +187,6 @@ class ProjectServiceTest {
     }
 
     @Test
-    void legacyProjectScoreEndpointRemainsDisabled() {
-        setTeacher(9L);
-
-        assertThatThrownBy(() -> projectService.score(1L, List.of(new ProjectScore())))
-                .isInstanceOf(BizException.class)
-                .hasMessageContaining("旧项目评分接口已停用");
-        assertThatThrownBy(() -> projectService.listScores(1L))
-                .isInstanceOf(BizException.class)
-                .hasMessageContaining("旧项目评分查询接口已停用");
-    }
-
-    @Test
     void existingSubmissionIsUpdatedInsteadOfDuplicated() {
         setStudent(101L, 10L);
         ProjectSubmission existing = submission(31L, 1L, 101L);
@@ -216,6 +203,67 @@ class ProjectServiceTest {
         assertThat(captor.getValue().getId()).isEqualTo(31L);
         assertThat(captor.getValue().getContent()).isEqualTo("{\"files\":[12]}");
         verify(submissionMapper, never()).insert(any(ProjectSubmission.class));
+    }
+
+    @Test
+    void gradedProjectCannotBeOverwrittenByStudent() {
+        setStudent(101L, 10L);
+        ProjectSubmission existing = submission(31L, 1L, 101L);
+        existing.setStatus("graded");
+        when(projectMapper.selectById(1L)).thenReturn(project(LocalDateTime.now().plusDays(1)));
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course(9L));
+        when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        when(submissionMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
+
+        assertThatThrownBy(() -> projectService.submit(1L, "changed"))
+                .isInstanceOf(BizException.class)
+                .hasMessage(ErrorCode.SUBMISSION_LOCKED.getMsg());
+        verify(submissionMapper, never()).updateById(existing);
+    }
+
+    @Test
+    void ownerTeacherReturnsProjectAndClearsScores() {
+        setTeacher(9L);
+        ProjectSubmission existing = submission(31L, 1L, 101L);
+        existing.setStatus("graded");
+        when(submissionMapper.selectById(31L)).thenReturn(existing);
+        when(projectMapper.selectById(1L)).thenReturn(project(LocalDateTime.now().plusDays(1)));
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course(9L));
+
+        projectService.returnSubmission(31L, "请补充演示视频");
+
+        assertThat(existing.getStatus()).isEqualTo("returned");
+        assertThat(existing.getReturnReason()).isEqualTo("请补充演示视频");
+        verify(dimensionScoreService).clearScores("project", 31L);
+    }
+
+    @Test
+    void studentCanReadOwnProjectScoreDetailsButNotAnotherStudents() {
+        setStudent(101L, 10L);
+        ProjectSubmission own = submission(31L, 1L, 101L);
+        when(submissionMapper.selectById(31L)).thenReturn(own);
+        when(projectMapper.selectById(1L)).thenReturn(project(LocalDateTime.now().plusDays(1)));
+        when(semesterMapper.selectById(3L)).thenReturn(semester());
+        when(courseMapper.selectById(4L)).thenReturn(course(9L));
+        when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        DimensionScore score = new DimensionScore();
+        score.setQuestionId("project");
+        score.setDimension("AWARENESS");
+        score.setEarnedScore(BigDecimal.valueOf(9));
+        score.setMaxScore(BigDecimal.TEN);
+        when(dimensionScoreService.listBySources("project", List.of(31L))).thenReturn(List.of(score));
+
+        assertThat(projectService.getSubmissionScoreDetails(31L))
+                .singleElement()
+                .satisfies(detail -> assertThat(detail.earnedScore()).isEqualByComparingTo("9"));
+
+        ProjectSubmission another = submission(32L, 1L, 102L);
+        when(submissionMapper.selectById(32L)).thenReturn(another);
+        assertThatThrownBy(() -> projectService.getSubmissionScoreDetails(32L))
+                .isInstanceOf(BizException.class)
+                .hasMessage(ErrorCode.COURSE_ACCESS_DENIED.getMsg());
     }
 
     private static void setTeacher(Long id) {
@@ -259,6 +307,7 @@ class ProjectServiceTest {
         submission.setProjectId(projectId);
         submission.setStudentId(studentId);
         submission.setContent("{}");
+        submission.setStatus("submitted");
         return submission;
     }
 
@@ -278,5 +327,9 @@ class ProjectServiceTest {
         schoolClass.setGrade("2026");
         schoolClass.setName("1班");
         return schoolClass;
+    }
+
+    private static CourseRoster roster(User... students) {
+        return CourseRoster.of(List.of(students), List.of(schoolClass(10L)));
     }
 }

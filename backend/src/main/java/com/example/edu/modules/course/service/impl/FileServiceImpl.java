@@ -154,31 +154,41 @@ public class FileServiceImpl implements FileService {
                         .last("LIMIT 1"));
         int nextSortOrder = siblings.isEmpty() ? 1 : siblings.get(0).getSortOrder() + 1;
 
-        // 6. Upload file to MinIO
+        // 6. Upload file to MinIO. If the following DB transaction fails, remove
+        // the object so a failed request cannot leave an unreachable file behind.
+        boolean uploaded = false;
         try {
             minioService.uploadObject(objectName, file.getInputStream(), file.getContentType());
+            uploaded = true;
         } catch (IOException e) {
             log.error("Failed to read upload stream: objectName={}", objectName, e);
             throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "文件上传失败");
         }
 
-        // 7. Create DB record
-        CourseResource resource = new CourseResource();
-        resource.setCourseId(dto.getCourseId());
-        resource.setParentId(dto.getParentId());
-        resource.setName(dto.getFileName());
-        resource.setType("FILE");
-        resource.setSortOrder(nextSortOrder);
-        resource.setFileSize(dto.getFileSize());
-        resource.setContentType(dto.getContentType());
-        resource.setObjectName(objectName);
-        courseResourceMapper.insert(resource);
+        try {
+            // 7. Create DB record
+            CourseResource resource = new CourseResource();
+            resource.setCourseId(dto.getCourseId());
+            resource.setParentId(dto.getParentId());
+            resource.setName(dto.getFileName());
+            resource.setType("FILE");
+            resource.setSortOrder(nextSortOrder);
+            resource.setFileSize(dto.getFileSize());
+            resource.setContentType(dto.getContentType());
+            resource.setObjectName(objectName);
+            if (courseResourceMapper.insert(resource) != 1) {
+                throw new BizException(ErrorCode.FILE_UPLOAD_ERROR, "文件记录保存失败");
+            }
 
-        auditLogService.record("上传文件", "course_resource", resource.getId(), resource.getName());
+            auditLogService.record("上传文件", "course_resource", resource.getId(), resource.getName());
 
-        return FileUploadVO.builder()
-                .resourceId(resource.getId())
-                .build();
+            return FileUploadVO.builder()
+                    .resourceId(resource.getId())
+                    .build();
+        } catch (RuntimeException e) {
+            if (uploaded) deleteObjectQuietly(objectName);
+            throw e;
+        }
     }
 
     @Override
@@ -263,6 +273,14 @@ public class FileServiceImpl implements FileService {
         }
         CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
         return resource;
+    }
+
+    private void deleteObjectQuietly(String objectName) {
+        try {
+            minioService.deleteObject(objectName);
+        } catch (RuntimeException cleanupError) {
+            log.error("Failed to clean up uploaded object after DB failure: objectName={}", objectName, cleanupError);
+        }
     }
 
     private String generateObjectName(Long courseId, String fileName) {

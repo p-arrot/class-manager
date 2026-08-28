@@ -53,6 +53,13 @@ public class DimensionScoreService {
                 .eq(DimensionScore::getStudentId, studentId));
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void clearScores(String sourceType, Long sourceId) {
+        dimensionScoreMapper.delete(new LambdaQueryWrapper<DimensionScore>()
+                .eq(DimensionScore::getSourceType, sourceType)
+                .eq(DimensionScore::getSourceId, sourceId));
+    }
+
     private void insertScores(String sourceType, Long sourceId, Long studentId, List<ScoreInput> scores) {
         if (scores == null || scores.isEmpty()) return;
         for (ScoreInput input : scores) {

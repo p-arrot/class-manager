@@ -14,6 +14,8 @@ import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.service.CourseRosterService;
+import com.example.edu.modules.course.service.CourseRosterService.CourseRoster;
 import com.example.edu.modules.evaluation.service.DimensionScoreService;
 import com.example.edu.modules.evaluation.service.QuestionScoreHelper;
 import com.example.edu.modules.realtime.service.RealtimeService;
@@ -56,7 +58,7 @@ class TaskServiceImplTest {
     @Mock private CourseMapper courseMapper;
     @Mock private TeacherClassMapper teacherClassMapper;
     @Mock private CourseClassMapper courseClassMapper;
-    @Mock private SchoolClassMapper schoolClassMapper;
+    @Mock private CourseRosterService courseRosterService;
     @Mock private UserMapper userMapper;
     @Mock private AuditLogService auditLogService;
     @Mock private RealtimeService realtimeService;
@@ -80,8 +82,8 @@ class TaskServiceImplTest {
         when(lessonMapper.selectById(2L)).thenReturn(lesson());
         when(semesterMapper.selectById(3L)).thenReturn(semester());
         when(courseMapper.selectById(4L)).thenReturn(course());
-        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
-        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student(101L, "2026101", "林一"), student(102L, "2026102", "周二")));
+        when(courseRosterService.load(4L, null)).thenReturn(roster(
+                student(101L, "2026101", "林一"), student(102L, "2026102", "周二")));
         when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 submission(11L, 101L, "{\"q1\":\"A\",\"q2\":[\"B\",\"C\"]}", "graded"),
                 submission(12L, 102L, "{\"q1\":\"B\",\"q2\":[\"C\",\"B\"]}", "submitted")
@@ -123,8 +125,7 @@ class TaskServiceImplTest {
         when(lessonMapper.selectById(2L)).thenReturn(lesson());
         when(semesterMapper.selectById(3L)).thenReturn(semester());
         when(courseMapper.selectById(4L)).thenReturn(course());
-        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
-        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student(101L, "2026101", "林一")));
+        when(courseRosterService.load(4L, null)).thenReturn(roster(student(101L, "2026101", "林一")));
         when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 submission(11L, 101L, "{\"q1\":\"A\"}", "submitted")
         ));
@@ -145,12 +146,10 @@ class TaskServiceImplTest {
         when(lessonMapper.selectById(2L)).thenReturn(lesson());
         when(semesterMapper.selectById(3L)).thenReturn(semester());
         when(courseMapper.selectById(4L)).thenReturn(course());
-        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
-        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+        when(courseRosterService.load(4L, null)).thenReturn(roster(
                 student(101L, "2026101", "林一"),
                 student(102L, "2026102", "周二")
         ));
-        when(schoolClassMapper.selectBatchIds(any())).thenReturn(List.of(schoolClass(10L)));
         when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 submission(11L, 101L, "{\"q1\":\"A\"}", "submitted")
         ));
@@ -186,8 +185,7 @@ class TaskServiceImplTest {
         when(lessonMapper.selectById(2L)).thenReturn(lesson());
         when(semesterMapper.selectById(3L)).thenReturn(semester());
         when(courseMapper.selectById(4L)).thenReturn(course());
-        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(courseClass(10L)));
-        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student(101L, "2026101", "林一")));
+        when(courseRosterService.load(4L, null)).thenReturn(roster(student(101L, "2026101", "林一")));
         when(submissionMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
                 submission(11L, 101L, "{\"q1\":\"answer\"}", "submitted")
         ));
@@ -239,6 +237,7 @@ class TaskServiceImplTest {
         verify(submissionMapper, atLeastOnce()).updateById(captor.capture());
         assertThat(captor.getAllValues()).extracting(Submission::getStatus)
                 .containsOnly("submitted");
+        verify(auditLogService).record("提交任务", "submission", 11L, task.getTitle());
     }
 
     @Test
@@ -263,6 +262,7 @@ class TaskServiceImplTest {
         verify(submissionMapper, atLeastOnce()).updateById(captor.capture());
         assertThat(captor.getAllValues()).extracting(Submission::getStatus)
                 .contains("graded");
+        verify(auditLogService).record("提交任务", "submission", 11L, task.getTitle());
     }
 
     @Test
@@ -363,6 +363,10 @@ class TaskServiceImplTest {
         schoolClass.setGrade("2026");
         schoolClass.setName("1班");
         return schoolClass;
+    }
+
+    private static CourseRoster roster(User... students) {
+        return CourseRoster.of(List.of(students), List.of(schoolClass(10L)));
     }
 
     private static Submission submission(Long id, Long studentId, String content, String status) {

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -32,6 +33,8 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    @Value("${app.cors.allowed-origins:http://localhost,http://localhost:5173}")
+    private String allowedOrigins;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -86,12 +89,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/evaluations/grade-scores").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers("/api/submissions/*/evaluate", "/api/tasks/*/auto-grade").hasAnyRole("ADMIN", "TEACHER")
                         // Exams
-                        .requestMatchers(HttpMethod.GET, "/api/exam-papers", "/api/semesters/*/exams", "/api/exams/*/submissions").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/exam-papers").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/semesters/*/exams").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/exams/*/submissions").hasAnyRole("ADMIN", "TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/exams/*/start", "/api/exams/*/submit").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/exams/*/draft").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/exams/*/my-submission").hasRole("STUDENT")
                         .requestMatchers("/api/exam-papers/**", "/api/exams/**", "/api/exam-submissions/**").hasAnyRole("ADMIN", "TEACHER")
-                        // Projects & Teams (specific student rules MUST come before broad /api/projects/**)
+                        // Projects (specific student rules MUST come before broad /api/projects/**)
                         .requestMatchers(HttpMethod.GET, "/api/semesters/*/projects").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
-                        .requestMatchers(HttpMethod.POST, "/api/projects/*/teams", "/api/teams/*/join", "/api/projects/*/submit").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/projects/*/my-submission").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/projects/*/submit").hasRole("STUDENT")
                         .requestMatchers("/api/projects/**").hasAnyRole("ADMIN", "TEACHER")
                         // Drive
                         .requestMatchers("/api/drive/**").hasAnyRole("ADMIN", "TEACHER", "STUDENT")
@@ -132,7 +140,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedOriginPatterns(java.util.Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList());
         config.setAllowedMethods(List.of("*"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

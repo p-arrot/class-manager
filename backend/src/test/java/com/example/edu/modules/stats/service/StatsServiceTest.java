@@ -9,9 +9,11 @@ import com.example.edu.modules.classes.entity.SchoolClass;
 import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.AssessmentScheme;
 import com.example.edu.modules.course.entity.Course;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
 import com.example.edu.modules.course.entity.Semester;
 import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
+import com.example.edu.modules.course.mapper.CourseClassMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
@@ -65,6 +67,7 @@ class StatsServiceTest {
     @Mock private AssessmentSchemeMapper assessmentSchemeMapper;
     @Mock private UserMapper userMapper;
     @Mock private SchoolClassMapper schoolClassMapper;
+    @Mock private CourseClassMapper courseClassMapper;
     @Mock private AuditLogService auditLogService;
 
     @InjectMocks
@@ -124,6 +127,22 @@ class StatsServiceTest {
         when(projectMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
 
         assertThat(statsService.calculateSemesterGrades(SEMESTER_ID)).isEmpty();
+    }
+
+    @Test
+    void courseRosterStudentWithoutSubmissionsStillAppearsInExport() {
+        setAdmin();
+        semesterBelongsToTeacher(9L);
+        when(lessonMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(examMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        when(projectMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
+        baseUsers();
+
+        List<StatsService.GradeRow> rows = statsService.calculateSemesterGrades(SEMESTER_ID);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).studentId()).isEqualTo(STUDENT_ID);
+        assertThat(rows.get(0).totalGrade()).isEqualTo("暂无数据");
     }
 
     @Test
@@ -254,7 +273,12 @@ class StatsServiceTest {
 
     private void baseUsers() {
         when(userMapper.selectBatchIds(anyCollection())).thenReturn(List.of(student));
+        when(userMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(student));
         when(schoolClassMapper.selectBatchIds(anyCollection())).thenReturn(List.of(schoolClass));
+        CourseClass binding = new CourseClass();
+        binding.setCourseId(20L);
+        binding.setClassId(CLASS_ID);
+        when(courseClassMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(binding));
     }
 
     private void semesterBelongsToTeacher(Long teacherId) {

@@ -57,6 +57,7 @@ public enum ErrorCode {
     COURSE_HAS_SEMESTERS(40912, "课程下还有学期，无法删除"),
     SEMESTER_HAS_LESSONS(40913, "学期下还有课时，无法删除"),
     RESOURCE_HAS_CHILDREN(40914, "文件夹下还有子资源，无法删除"),
+    SUBMISSION_LOCKED(40920, "提交已处理，如需修改请先由教师退回"),
 
     // 404 - task module
     TASK_NOT_FOUND(40420, "任务不存在"),

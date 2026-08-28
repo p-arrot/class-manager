@@ -20,8 +20,17 @@ spring:
           min-idle: 5
 
 jwt:
-  secret: ${JWT_SECRET:changeme-dev-only-do-not-use-in-production}
+  secret: ${JWT_SECRET}
   expiration: 86400000
+
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
+
+app:
+  initial-admin-password: ${INITIAL_ADMIN_PASSWORD}
 
 minio:
   endpoint: ${MINIO_ENDPOINT:http://minio:9000}

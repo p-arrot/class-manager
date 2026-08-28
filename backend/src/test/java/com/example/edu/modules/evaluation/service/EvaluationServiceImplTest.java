@@ -94,6 +94,31 @@ class EvaluationServiceImplTest {
         course = new Course();
         course.setId(40L);
         course.setTeacherId(200L);
+
+        User rosterStudent = new User();
+        rosterStudent.setId(100L);
+        rosterStudent.setRole("student");
+        rosterStudent.setClassId(10L);
+        lenient().when(semesterMapper.selectById(anyLong())).thenReturn(semester);
+        lenient().when(courseMapper.selectById(anyLong())).thenReturn(course);
+        lenient().when(courseClassMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        lenient().when(userMapper.selectById(anyLong())).thenReturn(rosterStudent);
+    }
+
+    @Test
+    void returningTaskSubmissionClearsAssessmentAndStoresReason() {
+        when(submissionMapper.selectById(1L)).thenReturn(submission);
+        when(taskMapper.selectById(10L)).thenReturn(task);
+        when(lessonMapper.selectById(20L)).thenReturn(lesson);
+
+        evaluationService.returnSubmission(1L, "请补充算法说明");
+
+        assertThat(submission.getStatus()).isEqualTo("returned");
+        assertThat(submission.getReturnReason()).isEqualTo("请补充算法说明");
+        assertThat(submission.getReturnedAt()).isNotNull();
+        verify(dimensionScoreService).clearScores("process", 1L);
+        verify(submissionFeedbackMapper).deleteById(1L);
+        verify(submissionMapper).updateById(submission);
     }
 
     @AfterEach
@@ -194,6 +219,17 @@ class EvaluationServiceImplTest {
 
         var evals = evaluationService.getStudentEvaluations(100L, 1L);
         assertThat(evals).isEmpty();
+    }
+
+    @Test
+    void studentCannotReadAnotherStudentsEvaluations() {
+        securityUtilsMock.when(SecurityUtils::getCurrentUserRole).thenReturn("student");
+        securityUtilsMock.when(SecurityUtils::getCurrentUserId).thenReturn(100L);
+
+        assertThatThrownBy(() -> evaluationService.getStudentEvaluations(101L, 1L))
+                .isInstanceOf(BizException.class)
+                .extracting("code")
+                .isEqualTo(ErrorCode.COURSE_ACCESS_DENIED.getCode());
     }
 
     @Test

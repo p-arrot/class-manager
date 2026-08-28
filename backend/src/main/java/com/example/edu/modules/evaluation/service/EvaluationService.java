@@ -18,4 +18,6 @@ public interface EvaluationService {
     Map<String, Integer> getGradeScores();
 
     void autoGradeMissedDeadlines(Long taskId);
+
+    void returnSubmission(Long submissionId, String reason);
 }

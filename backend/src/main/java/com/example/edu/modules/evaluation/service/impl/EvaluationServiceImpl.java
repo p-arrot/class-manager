@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
+import com.example.edu.common.submission.SubmissionStatus;
 import com.example.edu.modules.audit.service.AuditLogService;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.Lesson;
@@ -73,6 +74,9 @@ public class EvaluationServiceImpl implements EvaluationService {
         if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
 
         checkTaskOwner(task);
+        if (SubmissionStatus.RETURNED.equals(sub.getStatus())) {
+            throw new BizException(ErrorCode.CONFLICT, "学生尚未重新提交，不能批改");
+        }
 
         boolean isSpecial = dto.getIsSpecial() != null && dto.getIsSpecial();
         boolean hasDimensions = dto.getDimensions() != null && !dto.getDimensions().isEmpty();
@@ -139,7 +143,32 @@ public class EvaluationServiceImpl implements EvaluationService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void returnSubmission(Long submissionId, String reason) {
+        Submission sub = submissionMapper.selectById(submissionId);
+        if (sub == null) throw new BizException(ErrorCode.SUBMISSION_NOT_FOUND);
+        Task task = taskMapper.selectById(sub.getTaskId());
+        if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
+        checkTaskOwner(task);
+
+        String normalizedReason = reason == null ? "" : reason.trim();
+        if (normalizedReason.isEmpty()) throw new BizException(ErrorCode.BAD_REQUEST, "请填写退回原因");
+
+        sub.setStatus(SubmissionStatus.RETURNED);
+        sub.setReturnReason(normalizedReason);
+        sub.setReturnedAt(LocalDateTime.now());
+        submissionMapper.updateById(sub);
+        evaluationMapper.delete(new LambdaQueryWrapper<Evaluation>()
+                .eq(Evaluation::getSourceType, task.getType())
+                .eq(Evaluation::getSourceId, submissionId));
+        dimensionScoreService.clearScores("process", submissionId);
+        submissionFeedbackMapper.deleteById(submissionId);
+        auditLogService.record("退回任务修改", "submission", submissionId, normalizedReason);
+    }
+
+    @Override
     public List<EvaluationVO> getStudentEvaluations(Long studentId, Long semesterId) {
+        checkStudentViewAccess(studentId, semesterId);
         // Get all tasks in this semester
         List<Task> tasks = getTasksInSemester(semesterId);
         Set<Long> taskIds = tasks.stream().map(Task::getId).collect(Collectors.toSet());
@@ -237,6 +266,7 @@ public class EvaluationServiceImpl implements EvaluationService {
     public void autoGradeMissedDeadlines(Long taskId) {
         Task task = taskMapper.selectById(taskId);
         if (task == null || task.getDeadline() == null) return;
+        checkTaskOwner(task);
 
         List<Submission> subs = submissionMapper.selectList(
                 new LambdaQueryWrapper<Submission>().eq(Submission::getTaskId, taskId));
@@ -278,6 +308,37 @@ public class EvaluationServiceImpl implements EvaluationService {
                 }
             }
         }
+    }
+
+    private void checkStudentViewAccess(Long studentId, Long semesterId) {
+        String role = SecurityUtils.getCurrentUserRole();
+        if ("student".equals(role)
+                && !Objects.equals(studentId, SecurityUtils.getCurrentUserId())) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+        Semester semester = semesterMapper.selectById(semesterId);
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        if ("student".equals(role)) {
+            CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
+        } else if ("teacher".equals(role)) {
+            CoursePermissionHelper.checkTeacherOwnsCourse(course);
+            ensureStudentInCourse(studentId, course.getId());
+        } else if (!"admin".equals(role)) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+    }
+
+    private void ensureStudentInCourse(Long studentId, Long courseId) {
+        User student = userMapper.selectById(studentId);
+        if (student == null || student.getClassId() == null) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+        Long count = courseClassMapper.selectCount(new LambdaQueryWrapper<com.example.edu.modules.course.entity.CourseClass>()
+                .eq(com.example.edu.modules.course.entity.CourseClass::getCourseId, courseId)
+                .eq(com.example.edu.modules.course.entity.CourseClass::getClassId, student.getClassId()));
+        if (count == null || count == 0) throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
     }
 
     // ========== helpers ==========

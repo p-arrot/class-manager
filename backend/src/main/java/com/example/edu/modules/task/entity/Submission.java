@@ -15,6 +15,9 @@ public class Submission {
     private String status;
     private String content;
     private LocalDateTime submittedAt;
+    private String returnReason;
+    private LocalDateTime returnedAt;
+    private Integer revisionCount;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE)

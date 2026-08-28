@@ -21,6 +21,11 @@ public class ExamSubmissionVO {
     @Schema(description = "答案JSON") private String answers;
     @Schema(description = "得分") private Integer score;
     @Schema(description = "状态") private String status;
+    @Schema(description = "是否允许再次提交") private Boolean canResubmit;
+    @Schema(description = "退回原因") private String returnReason;
+    @Schema(description = "退回时间") private LocalDateTime returnedAt;
+    @Schema(description = "开始答题时间") private LocalDateTime startedAt;
+    @Schema(description = "修改次数") private Integer revisionCount;
     @Schema(description = "提交时间") private LocalDateTime submittedAt;
     @Schema(description = "创建时间") private LocalDateTime createdAt;
 }

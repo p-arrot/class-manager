@@ -13,6 +13,8 @@ import com.example.edu.modules.course.mapper.AssessmentSchemeMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
+import com.example.edu.modules.course.mapper.CourseClassMapper;
+import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
 import com.example.edu.modules.evaluation.entity.DimensionScore;
 import com.example.edu.modules.evaluation.mapper.DimensionScoreMapper;
@@ -62,6 +64,7 @@ public class StatsService {
     private final AssessmentSchemeMapper assessmentSchemeMapper;
     private final UserMapper userMapper;
     private final SchoolClassMapper schoolClassMapper;
+    private final CourseClassMapper courseClassMapper;
     private final AuditLogService auditLogService;
 
     public record GradeRow(
@@ -72,8 +75,9 @@ public class StatsService {
             Double resultScore, Double totalScore, String totalGrade, String remark) {}
 
     public List<GradeRow> calculateSemesterGrades(Long semesterId) {
-        checkSemesterAccess(semesterId);
+        Course course = checkSemesterAccess(semesterId);
         AssessmentScheme scheme = getScheme(semesterId);
+        List<User> courseStudents = getCourseStudents(course.getId());
         // 1. Collect all tasks in this semester's lessons
         List<Lesson> lessons = lessonMapper.selectList(
                 new LambdaQueryWrapper<Lesson>().eq(Lesson::getSemesterId, semesterId));
@@ -85,7 +89,8 @@ public class StatsService {
         List<Long> taskIds = tasks.stream().map(Task::getId).collect(Collectors.toList());
         List<Submission> allSubs = taskIds.isEmpty() ? List.of() :
                 submissionMapper.selectList(new LambdaQueryWrapper<Submission>().in(Submission::getTaskId, taskIds));
-        Set<Long> studentIds = allSubs.stream().map(Submission::getStudentId).collect(Collectors.toSet());
+        Set<Long> studentIds = courseStudents.stream().map(User::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
 
         // 3. Get numeric process dimension scores
         List<Long> submissionIds = allSubs.stream().map(Submission::getId).collect(Collectors.toList());
@@ -103,7 +108,6 @@ public class StatsService {
             List<ExamSubmission> allExamSubs = examSubmissionMapper.selectList(
                     new LambdaQueryWrapper<ExamSubmission>().in(ExamSubmission::getExamId, examIds));
             examSubmissionIds = allExamSubs.stream().map(ExamSubmission::getId).toList();
-            studentIds.addAll(allExamSubs.stream().map(ExamSubmission::getStudentId).collect(Collectors.toSet()));
         }
         List<DimensionScore> examDimensionScores = examSubmissionIds.isEmpty() ? List.of() :
                 dimensionScoreMapper.selectList(new LambdaQueryWrapper<DimensionScore>()
@@ -118,7 +122,6 @@ public class StatsService {
                 projectSubmissionMapper.selectList(new LambdaQueryWrapper<ProjectSubmission>()
                         .in(ProjectSubmission::getProjectId, projectIds));
         List<Long> projectSubmissionIds = projectSubs.stream().map(ProjectSubmission::getId).toList();
-        studentIds.addAll(projectSubs.stream().map(ProjectSubmission::getStudentId).collect(Collectors.toSet()));
         List<DimensionScore> projectDimensionScores = List.of();
         if (!projectSubmissionIds.isEmpty()) {
             projectDimensionScores = dimensionScoreMapper.selectList(new LambdaQueryWrapper<DimensionScore>()
@@ -262,7 +265,7 @@ public class StatsService {
         return scheme;
     }
 
-    private void checkSemesterAccess(Long semesterId) {
+    private Course checkSemesterAccess(Long semesterId) {
         Semester semester = semesterMapper.selectById(semesterId);
         if (semester == null) {
             throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
@@ -272,6 +275,20 @@ public class StatsService {
             throw new BizException(ErrorCode.COURSE_NOT_FOUND);
         }
         CoursePermissionHelper.checkTeacherOwnsCourse(course);
+        return course;
+    }
+
+    private List<User> getCourseStudents(Long courseId) {
+        List<CourseClass> bindings = Optional.ofNullable(courseClassMapper)
+                .map(mapper -> mapper.selectList(new LambdaQueryWrapper<CourseClass>()
+                        .eq(CourseClass::getCourseId, courseId)))
+                .orElse(List.of());
+        Set<Long> classIds = bindings.stream().map(CourseClass::getClassId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (classIds.isEmpty()) return List.of();
+        return userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getRole, "student")
+                .in(User::getClassId, classIds));
     }
 
     private static Double calculateWeightedScore(List<Double> scores, List<Integer> percents) {

@@ -6,9 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.edu.common.exception.BizException;
 import com.example.edu.common.result.ErrorCode;
 import com.example.edu.common.security.SecurityUtils;
+import com.example.edu.common.submission.SubmissionStatus;
 import com.example.edu.modules.audit.service.AuditLogService;
-import com.example.edu.modules.classes.entity.SchoolClass;
-import com.example.edu.modules.classes.mapper.SchoolClassMapper;
 import com.example.edu.modules.course.entity.Course;
 import com.example.edu.modules.course.entity.CourseClass;
 import com.example.edu.modules.course.entity.Lesson;
@@ -17,6 +16,8 @@ import com.example.edu.modules.course.mapper.LessonMapper;
 import com.example.edu.modules.course.mapper.SemesterMapper;
 import com.example.edu.modules.course.mapper.CourseMapper;
 import com.example.edu.modules.course.service.CoursePermissionHelper;
+import com.example.edu.modules.course.service.CourseRosterService;
+import com.example.edu.modules.course.service.CourseRosterService.CourseRoster;
 import com.example.edu.modules.classes.entity.TeacherClass;
 import com.example.edu.modules.classes.mapper.TeacherClassMapper;
 import com.example.edu.modules.course.mapper.CourseClassMapper;
@@ -64,7 +65,7 @@ public class TaskServiceImpl implements TaskService {
     private final CourseMapper courseMapper;
     private final TeacherClassMapper teacherClassMapper;
     private final CourseClassMapper courseClassMapper;
-    private final SchoolClassMapper schoolClassMapper;
+    private final CourseRosterService courseRosterService;
     private final UserMapper userMapper;
     private final AuditLogService auditLogService;
     private final RealtimeService realtimeService;
@@ -200,13 +201,16 @@ public class TaskServiceImpl implements TaskService {
             sub.setTaskId(taskId);
             sub.setStudentId(userId);
         }
-        // Don't allow re-submit if already graded
-        if ("graded".equals(sub.getStatus())) {
-            throw new BizException(ErrorCode.SUBMISSION_ALREADY_GRADED);
+        if (SubmissionStatus.isLocked(sub.getStatus())) {
+            throw new BizException(ErrorCode.SUBMISSION_LOCKED);
         }
+        boolean returned = SubmissionStatus.RETURNED.equals(sub.getStatus());
         sub.setContent(dto.getContent());
-        sub.setStatus("submitted");
+        sub.setStatus(SubmissionStatus.SUBMITTED);
         sub.setSubmittedAt(LocalDateTime.now());
+        sub.setReturnReason(null);
+        sub.setReturnedAt(null);
+        if (returned) sub.setRevisionCount(Optional.ofNullable(sub.getRevisionCount()).orElse(0) + 1);
         if (sub.getId() == null) {
             submissionMapper.insert(sub);
         } else {
@@ -214,6 +218,9 @@ public class TaskServiceImpl implements TaskService {
         }
 
         autoGradeWorksheet(task, sub);
+
+        auditLogService.record(returned ? "重新提交任务" : "提交任务",
+                "submission", sub.getId(), task.getTitle());
 
         SubmissionVO vo = toSubmissionVO(sub);
         // Push real-time update to teachers subscribed to this task
@@ -276,6 +283,19 @@ public class TaskServiceImpl implements TaskService {
             throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
         }
 
+        Semester semester = semesterMapper.selectById(semesterId);
+        if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
+        Course course = courseMapper.selectById(semester.getCourseId());
+        if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
+        if ("student".equals(role)) {
+            CoursePermissionHelper.checkCourseAccess(course, courseClassMapper);
+        } else if ("teacher".equals(role)) {
+            CoursePermissionHelper.checkTeacherOwnsCourse(course);
+            ensureStudentInCourse(studentId, course.getId());
+        } else if (!"admin".equals(role)) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+
         // Get all tasks in semester's lessons
         List<Lesson> lessons = lessonMapper.selectList(
                 new LambdaQueryWrapper<Lesson>().eq(Lesson::getSemesterId, semesterId));
@@ -299,6 +319,17 @@ public class TaskServiceImpl implements TaskService {
                 .toList();
     }
 
+    private void ensureStudentInCourse(Long studentId, Long courseId) {
+        User student = userMapper.selectById(studentId);
+        if (student == null || student.getClassId() == null) {
+            throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+        }
+        Long count = courseClassMapper.selectCount(new LambdaQueryWrapper<CourseClass>()
+                .eq(CourseClass::getCourseId, courseId)
+                .eq(CourseClass::getClassId, student.getClassId()));
+        if (count == null || count == 0) throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
+    }
+
     @Override
     public java.util.Map<String, Object> getSubmissionStats(Long taskId) {
         Task task = taskMapper.selectById(taskId);
@@ -311,7 +342,7 @@ public class TaskServiceImpl implements TaskService {
         long graded = subs.stream().filter(s -> "graded".equals(s.getStatus())).count();
         long special = subs.stream().filter(s -> "special".equals(s.getStatus())).count();
 
-        long total = getCourseStudents(task).size();
+        long total = getCourseRoster(task, null).students().size();
 
         return java.util.Map.of(
                 "total", total,
@@ -328,7 +359,8 @@ public class TaskServiceImpl implements TaskService {
         if (task == null) throw new BizException(ErrorCode.TASK_NOT_FOUND);
         checkTaskOwner(task);
 
-        List<User> students = getCourseStudents(task, classId);
+        CourseRoster roster = getCourseRoster(task, classId);
+        List<User> students = roster.students();
         Map<Long, User> studentMap = students.stream()
                 .collect(Collectors.toMap(User::getId, user -> user));
 
@@ -376,9 +408,9 @@ public class TaskServiceImpl implements TaskService {
                 .autoQuestionCount(autoQuestionCount)
                 .manualQuestionCount(questions.size() - autoQuestionCount)
                 .selectedClassId(classId)
-                .classScopes(buildClassScopes(students))
+                .classScopes(buildClassScopes(roster))
                 .questions(questions)
-                .submissions(buildStudentStatusRows(students, subs))
+                .submissions(buildStudentStatusRows(roster, subs))
                 .build();
     }
 
@@ -492,6 +524,10 @@ public class TaskServiceImpl implements TaskService {
                 .studentName(student != null ? student.getName() : null)
                 .studentNo(student != null ? student.getStudentNo() : null)
                 .status(sub.getStatus())
+                .canResubmit(SubmissionStatus.canResubmit(sub.getStatus()))
+                .returnReason(sub.getReturnReason())
+                .returnedAt(sub.getReturnedAt())
+                .revisionCount(Optional.ofNullable(sub.getRevisionCount()).orElse(0))
                 .content(sub.getContent())
                 .submittedAt(sub.getSubmittedAt())
                 .createdAt(sub.getCreatedAt())
@@ -529,41 +565,24 @@ public class TaskServiceImpl implements TaskService {
                 .allMatch(question -> Boolean.TRUE.equals(question.get("autoGrade")) && question.get("answer") != null);
     }
 
-    private List<User> getCourseStudents(Task task) {
-        return getCourseStudents(task, null);
-    }
-
-    private List<User> getCourseStudents(Task task, Long classId) {
+    private CourseRoster getCourseRoster(Task task, Long classId) {
         Lesson lesson = lessonMapper.selectById(task.getLessonId());
         if (lesson == null) throw new BizException(ErrorCode.LESSON_NOT_FOUND);
         Semester semester = semesterMapper.selectById(lesson.getSemesterId());
         if (semester == null) throw new BizException(ErrorCode.SEMESTER_NOT_FOUND);
         Course course = courseMapper.selectById(semester.getCourseId());
         if (course == null) throw new BizException(ErrorCode.COURSE_NOT_FOUND);
-        List<CourseClass> bindings = courseClassMapper.selectList(
-                new LambdaQueryWrapper<CourseClass>().eq(CourseClass::getCourseId, course.getId()));
-        Set<Long> classIds = bindings.stream().map(CourseClass::getClassId).collect(Collectors.toSet());
-        if (classIds.isEmpty()) return List.of();
-        if (classId != null) {
-            if (!classIds.contains(classId)) {
-                throw new BizException(ErrorCode.COURSE_ACCESS_DENIED);
-            }
-            classIds = Set.of(classId);
-        }
-        return userMapper.selectList(new LambdaQueryWrapper<User>()
-                .eq(User::getRole, "student")
-                .in(User::getClassId, classIds));
+        return courseRosterService.load(course.getId(), classId);
     }
 
-    private List<TaskAnalyticsVO.ClassScopeVO> buildClassScopes(List<User> students) {
-        Map<Long, SchoolClass> classMap = loadClassMap(students);
-        return students.stream()
+    private List<TaskAnalyticsVO.ClassScopeVO> buildClassScopes(CourseRoster roster) {
+        return roster.students().stream()
                 .filter(student -> student.getClassId() != null)
                 .collect(Collectors.groupingBy(User::getClassId, LinkedHashMap::new, Collectors.counting()))
                 .entrySet()
                 .stream()
                 .map(entry -> {
-                    SchoolClass schoolClass = classMap.get(entry.getKey());
+                    var schoolClass = roster.schoolClass(entry.getKey());
                     return TaskAnalyticsVO.ClassScopeVO.builder()
                             .id(entry.getKey())
                             .grade(schoolClass != null ? schoolClass.getGrade() : null)
@@ -574,44 +593,25 @@ public class TaskServiceImpl implements TaskService {
                 .toList();
     }
 
-    private List<TaskAnalyticsVO.StudentTaskAnswerVO> buildStudentStatusRows(List<User> students, List<Submission> submissions) {
+    private List<TaskAnalyticsVO.StudentTaskAnswerVO> buildStudentStatusRows(CourseRoster roster, List<Submission> submissions) {
         Map<Long, Submission> submissionMap = submissions.stream()
                 .collect(Collectors.toMap(Submission::getStudentId, sub -> sub, (left, right) -> left));
-        Map<Long, SchoolClass> classMap = loadClassMap(students);
-        return students.stream()
+        return roster.students().stream()
                 .map(student -> {
                     Submission sub = submissionMap.get(student.getId());
-                    SchoolClass schoolClass = student.getClassId() != null ? classMap.get(student.getClassId()) : null;
                     return TaskAnalyticsVO.StudentTaskAnswerVO.builder()
                             .submissionId(sub != null ? sub.getId() : null)
                             .studentId(student.getId())
                             .studentName(student.getName())
                             .studentNo(student.getStudentNo())
                             .classId(student.getClassId())
-                            .className(formatClassName(schoolClass))
+                            .className(roster.displayClassName(student.getClassId()))
                             .status(sub != null ? sub.getStatus() : "not_submitted")
                             .content(sub != null ? sub.getContent() : null)
                             .submittedAt(sub != null ? sub.getSubmittedAt() : null)
                             .build();
                 })
                 .toList();
-    }
-
-    private Map<Long, SchoolClass> loadClassMap(List<User> students) {
-        Set<Long> classIds = students.stream()
-                .map(User::getClassId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (classIds.isEmpty()) return Map.of();
-        return Optional.ofNullable(schoolClassMapper.selectBatchIds(classIds)).orElse(List.of()).stream()
-                .collect(Collectors.toMap(SchoolClass::getId, schoolClass -> schoolClass));
-    }
-
-    private String formatClassName(SchoolClass schoolClass) {
-        if (schoolClass == null) return null;
-        return Optional.ofNullable(schoolClass.getGrade()).orElse("")
-                + "级"
-                + Optional.ofNullable(schoolClass.getName()).orElse("");
     }
 
     private List<Map<String, Object>> parseQuestions(String schemaJson) {

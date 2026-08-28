@@ -426,7 +426,7 @@ class ApiIntegrationTest {
     void projects() throws Exception {
         // Create project
         JsonNode r = send(authPost("/semesters/" + testSemesterId + "/projects", teacherToken,
-                "{\"name\":\"ITEST-Python项目-" + RUN_ID + "\",\"description\":\"做一个计算器\",\"maxTeamSize\":3,\"weight\":1.0}"));
+                "{\"name\":\"ITEST-Python项目-" + RUN_ID + "\",\"description\":\"做一个计算器\",\"weight\":1.0}"));
         assertEquals(0, code(r), "Create project failed: " + r);
         testProjectId = r.get("data").get("id").asLong();
 
@@ -437,11 +437,6 @@ class ApiIntegrationTest {
 
         // Student list
         r = send(authGet("/semesters/" + testSemesterId + "/projects", studentToken));
-        assertEquals(0, code(r));
-
-        // Student create team
-        r = send(authPost("/projects/" + testProjectId + "/teams", studentToken,
-                "{\"name\":\"ITEST-Team-" + RUN_ID + "\"}"));
         assertEquals(0, code(r));
 
         // Student submit project

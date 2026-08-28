@@ -20,4 +20,11 @@ public class ExamVO {
     @Schema(description = "结束时间") private LocalDateTime endTime;
     @Schema(description = "权重") private BigDecimal weight;
     @Schema(description = "创建时间") private LocalDateTime createdAt;
+    @Schema(description = "当前学生提交ID") private Long submissionId;
+    @Schema(description = "当前学生提交状态") private String submissionStatus;
+    @Schema(description = "当前学生提交时间") private LocalDateTime submittedAt;
+    @Schema(description = "当前学生得分") private Integer score;
+    @Schema(description = "退回原因") private String returnReason;
+    @Schema(description = "是否允许再次提交") private Boolean canResubmit;
+    @Schema(description = "开始答题时间") private LocalDateTime startedAt;
 }

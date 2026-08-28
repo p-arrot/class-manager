@@ -2,6 +2,8 @@ package com.example.edu.common.config;
 
 import com.example.edu.modules.exam.controller.ExamController;
 import com.example.edu.modules.exam.entity.ExamSubmission;
+import com.example.edu.modules.exam.entity.Exam;
+import com.example.edu.modules.exam.entity.ExamPaper;
 import com.example.edu.modules.exam.service.ExamService;
 import com.example.edu.modules.user.mapper.UserMapper;
 import com.example.edu.common.security.JwtUtils;
@@ -74,5 +76,23 @@ class ExamSecurityConfigTest {
 
         mockMvc.perform(get("/api/exams/5/submissions"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "STUDENT")
+    void studentCanViewExamList() throws Exception {
+        Exam exam = new Exam();
+        exam.setId(5L);
+        exam.setSemesterId(2L);
+        exam.setPaperId(8L);
+        ExamPaper paper = new ExamPaper();
+        paper.setId(8L);
+        paper.setContent("{}");
+        when(examService.listExams(2L)).thenReturn(List.of(exam));
+        when(examService.listPaperByIds(java.util.Set.of(8L))).thenReturn(List.of(paper));
+        when(examService.paperContentForCurrentUser(paper)).thenReturn("{}");
+
+        mockMvc.perform(get("/api/semesters/2/exams"))
+                .andExpect(status().isOk());
     }
 }
