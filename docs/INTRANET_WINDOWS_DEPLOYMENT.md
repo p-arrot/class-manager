@@ -9,7 +9,7 @@
 - `frontend`：Nginx + Vue 静态页面，默认对外端口 `80`
 - `backend`：Spring Boot API，默认端口 `8080`
 - `postgres`：业务数据库，仅绑定服务器本机 `127.0.0.1`
-- `redis`：缓存，仅绑定服务器本机 `127.0.0.1`
+- `redis`：可选缓存，仅在 `cache` profile 启用，并绑定服务器本机 `127.0.0.1`
 - `minio`：文件对象存储，默认仅绑定服务器本机
 - `kkfileview`：Office/PDF 等文件预览，默认对外端口 `8012`
 
@@ -56,10 +56,10 @@ git clone https://github.com/p-arrot/class-manager.git
 cd C:\deploy\class-manager
 ```
 
-初始化内网环境变量文件：
+初始化内网环境变量文件：复制模板并把其中的 `192.168.1.100` 全部替换为服务器实际 IP。
 
 ```powershell
-.\deploy.ps1 init -ServerIp 192.168.1.100
+copy backend\.env.intranet.example backend\.env
 ```
 
 打开 `backend\.env`，至少修改这些值：
@@ -69,13 +69,15 @@ SERVER_IP=192.168.1.100
 DB_PASSWORD=请改成数据库强密码
 MINIO_ROOT_PASSWORD=请改成文件服务强密码
 JWT_SECRET=请改成32字符以上随机字符串
+INITIAL_ADMIN_PASSWORD=请改成管理员初始密码
 KKFILEVIEW_BASE_URL=http://192.168.1.100:8012
 ```
 
 启动服务：
 
 ```powershell
-.\deploy.ps1 start
+cd backend
+docker compose up -d --build
 ```
 
 启动成功后访问：
@@ -83,12 +85,6 @@ KKFILEVIEW_BASE_URL=http://192.168.1.100:8012
 ```text
 http://192.168.1.100
 http://192.168.1.100/api/health
-```
-
-也可以在服务器上执行：
-
-```powershell
-.\scripts\intranet-health-check.ps1 -BaseUrl http://192.168.1.100
 ```
 
 ## 5. 防火墙放行
@@ -109,54 +105,53 @@ New-NetFirewallRule -DisplayName "Class Manager Preview" -Direction Inbound -Pro
 
 ## 6. 日常运维命令
 
+以下命令都在 `backend` 目录下执行（`cd backend`）。
+
 查看状态：
 
 ```powershell
-.\deploy.ps1 status
+docker compose ps
 ```
 
 查看日志：
 
 ```powershell
-.\deploy.ps1 logs
+docker compose logs -f backend
 ```
 
-重启：
+重启全部服务（不重建镜像）：
 
 ```powershell
-.\deploy.ps1 restart
+docker compose restart
 ```
 
 停止：
 
 ```powershell
-.\deploy.ps1 stop
+docker compose down
 ```
 
-更新代码并重新部署：
+更新代码并重新构建部署：
 
 ```powershell
-.\deploy.ps1 update
+git pull
+docker compose up -d --build
 ```
 
 ## 7. 备份
 
-执行：
+在仓库根目录执行（数据卷名可用 `docker volume ls` 确认，默认为 `backend_minio_data`）：
 
 ```powershell
-.\deploy.ps1 backup
+New-Item -ItemType Directory -Force backups | Out-Null
+docker exec edu-postgres pg_dump -U edu edu > backups\postgres-edu.sql
+docker run --rm -v backend_minio_data:/data:ro -v ${PWD}\backups:/backup alpine tar -cf /backup/minio-data.tar -C /data .
 ```
 
-备份会生成到：
+备份包含：
 
-```text
-C:\deploy\class-manager\backups\yyyyMMdd-HHmmss
-```
-
-包含：
-
-- PostgreSQL SQL 备份
-- MinIO 文件数据卷打包
+- PostgreSQL SQL 备份（`backups\postgres-edu.sql`）
+- MinIO 文件数据卷打包（`backups\minio-data.tar`）
 
 建议使用 Windows 任务计划程序每天夜间执行一次备份，并把 `backups` 目录同步到另一块磁盘或 NAS。
 
@@ -167,15 +162,17 @@ C:\deploy\class-manager\backups\yyyyMMdd-HHmmss
 确认重新构建过前端镜像。当前 Nginx 已配置 `client_max_body_size 220m`，匹配系统 200 MB 单文件限制。
 
 ```powershell
-.\deploy.ps1 restart
+cd backend
+docker compose up -d --build
 ```
 
 ### 已经构建过，只想快速重启服务
 
-可以跳过镜像重建：
+不需要重建镜像，直接重启容器即可：
 
 ```powershell
-.\deploy.ps1 restart -SkipBuild
+cd backend
+docker compose restart
 ```
 
 ### 文件预览打不开
@@ -184,7 +181,8 @@ C:\deploy\class-manager\backups\yyyyMMdd-HHmmss
 
 1. 客户端电脑能访问 `http://服务器IP:8012`
 2. `backend\.env` 中 `KKFILEVIEW_BASE_URL` 是校园内网 IP，不是 `localhost`
-3. `kkfileview` 容器状态正常：
+3. `backend\.env` 中已配置 `INITIAL_ADMIN_PASSWORD`，首次登录后立即修改管理员密码
+4. `kkfileview` 容器状态正常：
 
 ```powershell
 docker ps
@@ -215,16 +213,17 @@ SERVER_IP=新的IP
 KKFILEVIEW_BASE_URL=http://新的IP:8012
 ```
 
-然后重启：
+然后重启（修改 `.env` 后 `up -d` 会自动重建受影响的容器）：
 
 ```powershell
-.\deploy.ps1 restart
+cd backend
+docker compose up -d
 ```
 
 ## 9. 不建议的做法
 
 - 不要在生产环境使用默认密码
-- 不要把 PostgreSQL、Redis 暴露给整个校园网
+- 不要把 PostgreSQL、可选 Redis 暴露给整个校园网
 - 不要只依赖 Docker volume 而不做备份
 - 不要把 `.env` 提交到 Git
 - 不要把系统部署在动态 IP 电脑上长期使用

@@ -2,7 +2,7 @@
 
 面向信息科技课程的课堂管理系统，覆盖一个学期内的建班建课、课程资源、任务发布、学生提交、教师批改、考试项目、学生网盘、学习评价、数据分析和成绩导出等流程。
 
-项目主要面向学校内网单机部署。生产环境推荐使用 Docker Compose 一次性启动前端、后端、PostgreSQL、Redis、MinIO 和 kkFileView。
+项目主要面向学校内网单机部署。生产环境推荐使用 Docker Compose 一次性启动前端、后端、PostgreSQL、MinIO 和 kkFileView；Redis 为可选缓存组件。
 
 ## 功能特性
 
@@ -11,7 +11,7 @@
 - 学生：首页待办、我的课程、课程资源、任务提交、考试入口、项目提交备注、学习评价、个人网盘
 - 批改：支持学习单逐题评分、逐题评语、教师总评、维度评价和学生查看批改详情
 - 文件：通过 MinIO 存储课程资源、学生作品和网盘文件，通过 kkFileView 进行文件预览
-- 部署：Docker 优先，根目录提供 `deploy.ps1` 作为内网部署入口
+- 部署：Docker 优先，使用 `docker compose` 一条命令启动全部服务
 
 ## 技术栈
 
@@ -19,7 +19,7 @@
 | --- | --- |
 | 前端 | Vue 3、TypeScript、Vite、Pinia、Vue Router、Naive UI、ECharts |
 | 后端 | Spring Boot 3、Java 21、MyBatis-Plus、Spring Security、Flyway |
-| 数据 | PostgreSQL、Redis |
+| 数据 | PostgreSQL；可选 Redis 缓存 |
 | 文件 | MinIO、kkFileView |
 | 部署 | Docker Compose、Nginx |
 
@@ -29,15 +29,15 @@
 backend/    Spring Boot API、数据库迁移、Docker Compose
 frontend/   Vue 前端、生产 Nginx 镜像
 docs/       产品、API、部署、中间件和用户操作文档
-scripts/    部署、健康检查、Docker 测试辅助脚本
+scripts/    Docker 测试辅助脚本
 ```
 
 ## 快速部署：校园内网 Docker 部署
 
-在仓库根目录执行：
+复制内网环境变量模板（模板内默认 IP 为 `192.168.1.100`，替换成服务器实际 IP）：
 
 ```powershell
-.\deploy.ps1 init -ServerIp 192.168.1.100
+copy backend\.env.intranet.example backend\.env
 ```
 
 打开 `backend/.env`，至少修改：
@@ -45,13 +45,16 @@ scripts/    部署、健康检查、Docker 测试辅助脚本
 - `DB_PASSWORD`
 - `MINIO_ROOT_PASSWORD`
 - `JWT_SECRET`
+- `INITIAL_ADMIN_PASSWORD`
+- `APP_TIME_ZONE`（默认 `Asia/Shanghai`，用于考试、任务截止时间等服务端时间判断）
 - `SERVER_IP`
 - `KKFILEVIEW_BASE_URL`
 
 启动系统：
 
 ```powershell
-.\deploy.ps1 start
+cd backend
+docker compose up -d --build
 ```
 
 访问：
@@ -68,10 +71,12 @@ http://192.168.1.100
 
 ```powershell
 cd backend
-docker compose up -d postgres redis minio kkfileview
+docker compose up -d postgres minio kkfileview
 mvn test
 mvn spring-boot:run
 ```
+
+需要启用可选 Redis 缓存时，将 `CACHE_TYPE=redis`、`APP_CACHE_REDIS_ENABLED=true` 写入 `.env`，并使用 `docker compose --profile cache up -d`。
 
 前端：
 
@@ -81,7 +86,7 @@ npm install
 npm run dev
 ```
 
-前端开发服务运行在 `http://localhost:5173`，并将 `/api` 代理到 `http://localhost:8080`。
+前端开发服务运行在 `http://localhost:5173`，并将 `/api` 代理到 `http://localhost:8080`。Docker profile 启动时必须显式提供 `JWT_SECRET` 和 `INITIAL_ADMIN_PASSWORD`。
 
 ## 测试
 

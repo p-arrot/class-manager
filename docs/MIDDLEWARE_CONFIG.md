@@ -13,14 +13,13 @@
 | `backend/.env.intranet.example` | Windows Server / 校园内网部署环境变量模板 |
 | `backend/src/main/resources/application-docker.yml` | 后端 docker profile 下的数据库、Redis、MinIO、JWT、日志配置 |
 | `frontend/nginx.conf` | 前端 Nginx 静态文件、API 代理、WebSocket 代理配置 |
-| `deploy.ps1` | 根目录部署入口，转调 `scripts/intranet-deploy.ps1` |
 
 ## 服务总览
 
 | 服务 | 容器名 | 镜像/构建 | 默认端口 | 默认账号 | 默认密码 |
 | --- | --- | --- | --- | --- | --- |
 | PostgreSQL | `edu-postgres` | `postgres:16.6-alpine` | `127.0.0.1:5432` | `edu` | `edu123` |
-| Redis | `edu-redis` | `redis:7.4-alpine` | `127.0.0.1:6379` | 无 | 空 |
+| Redis（可选） | `edu-redis` | `redis:7.4-alpine` | `127.0.0.1:6379` | 无 | 空 |
 | MinIO | `edu-minio` | `minio/minio:RELEASE.2025-04-22T22-12-26Z` | `127.0.0.1:9000`, `127.0.0.1:9001` | `minioadmin` | `minioadmin` |
 | kkFileView | `edu-kkfileview` | `keking/kkfileview:4.1.0` | `8012` | 无 | 无 |
 | Backend | `edu-backend` | 本地 `backend/Dockerfile` 多阶段构建 | `127.0.0.1:8080` | 不适用 | 不适用 |
@@ -68,7 +67,9 @@ Compose 配置：
 
 ## Redis
 
-用途：后端缓存/临时状态存储。
+用途：预留的后端缓存/临时状态存储。默认部署不启动，也不影响核心业务。
+
+启用方式：在 `.env` 设置 `CACHE_TYPE=redis`、`APP_CACHE_REDIS_ENABLED=true`，然后执行 `docker compose --profile cache up -d`。
 
 Compose 配置：
 
@@ -185,7 +186,9 @@ Compose 配置：
 | --- | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | `docker` | Spring profile |
 | `BACKEND_PORT` | `8080` | 主机侧后端端口 |
-| `JWT_SECRET` | `dev-only-change-this-secret-32chars-min` | JWT 签名密钥，compose fallback |
+| `JWT_SECRET` | 无默认值（Docker 必填） | JWT 签名密钥，至少 32 字符 |
+| `INITIAL_ADMIN_PASSWORD` | 无默认值（Docker 必填） | 首次创建管理员时使用的初始密码 |
+| `APP_TIME_ZONE` | `Asia/Shanghai` | JVM 业务时区，用于考试起止、任务截止和提交时间判断 |
 | `APP_LOG_LEVEL` | `info` | 应用日志级别 |
 | `SECURITY_LOG_LEVEL` | `warn` | Spring Security 日志级别 |
 
@@ -234,13 +237,13 @@ Nginx 配置：
 
 | 来源 | 账号 | 密码 | 说明 |
 | --- | --- | --- | --- |
-| `AdminInitializer` | `admin` | `admin123` | 当数据库中不存在管理员时自动创建 |
+| `AdminInitializer` | `admin` | `INITIAL_ADMIN_PASSWORD` | 当数据库中不存在管理员时自动创建；开发 profile 未配置时回退为 `admin123` |
 | `backend/test-data.sql` | `zhang` / `li` / `wang` / `chen` | `teacher123` | 测试教师账号，仅在手动导入测试数据后存在 |
 | `backend/test-data.sql` | 示例学号如 `2024001` | `123456` | 测试学生账号，仅在手动导入测试数据后存在 |
 
 生产建议：
 
-- 首次登录后立即修改 `admin / admin123`。
+- 首次登录后立即修改管理员初始密码；Docker 部署必须使用自定义 `INITIAL_ADMIN_PASSWORD`。
 - 生产数据库不要导入 `backend/test-data.sql`，除非明确是演示环境。
 
 ## 默认值速查
@@ -255,7 +258,7 @@ Nginx 配置：
 | MinIO Console | `http://127.0.0.1:9001` |
 | MinIO root | `minioadmin / minioadmin` |
 | kkFileView | `http://服务器IP:8012` |
-| 应用管理员 | `admin / admin123` |
+| 应用管理员 | `admin / INITIAL_ADMIN_PASSWORD`（开发环境未配置时为 `admin123`） |
 
 ## 上线前必须修改
 
